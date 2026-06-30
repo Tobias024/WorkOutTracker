@@ -1,0 +1,31 @@
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { TabBar } from "@/components/TabBar";
+
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!profile?.username) redirect("/onboarding");
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 pt-5 pb-24">
+      {children}
+      <TabBar />
+    </div>
+  );
+}
