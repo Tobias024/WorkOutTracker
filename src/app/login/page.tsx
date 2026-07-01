@@ -13,8 +13,21 @@ const AUTH_ERROR_ES: Record<string, string> = {
     "La contraseña tiene que tener al menos 6 caracteres.",
 };
 
+// Coincidencias parciales para errores largos/variables (p. ej. los que
+// arma el SDK con detalle técnico en inglés).
+const AUTH_ERROR_PARTIAL_ES: [string, string][] = [
+  [
+    "PKCE code verifier not found",
+    "El navegador no guardó el estado del login con Google a tiempo. Probá tocar \"Continuar con Google\" de nuevo.",
+  ],
+];
+
 function translateError(message: string) {
-  return AUTH_ERROR_ES[message] ?? message;
+  if (AUTH_ERROR_ES[message]) return AUTH_ERROR_ES[message];
+  const partial = AUTH_ERROR_PARTIAL_ES.find(([needle]) =>
+    message.includes(needle),
+  );
+  return partial?.[1] ?? message;
 }
 
 function LoginForm() {
@@ -29,7 +42,10 @@ function LoginForm() {
   const [loading, setLoading] = useState<
     "password" | "signup" | "magic" | "google" | null
   >(null);
-  const [error, setError] = useState<string | null>(params.get("error"));
+  const rawError = params.get("error");
+  const [error, setError] = useState<string | null>(
+    rawError ? translateError(rawError) : null,
+  );
 
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??

@@ -18,6 +18,19 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-
 
 /** Refresca la sesión y protege rutas privadas. */
 export async function updateSession(request: NextRequest) {
+  // Los prefetch de Next.js (Link precargando otras tabs en segundo plano)
+  // no deben disparar un refresh de sesión: si el access token está por
+  // vencer, varias requests de prefetch en simultáneo pueden refrescarlo
+  // a la vez y Supabase invalida el refresh token para todas menos la
+  // primera, cortando la sesión sin motivo aparente. La navegación real
+  // (sin estos headers) sí hace el refresh normalmente.
+  if (
+    request.headers.get("next-router-prefetch") ||
+    request.headers.get("next-router-segment-prefetch")
+  ) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(URL, ANON_KEY, {
