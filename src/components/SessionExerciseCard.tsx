@@ -39,6 +39,19 @@ export function SessionExerciseCard({
 
   const volume = totalVolume(we.sets.filter((s) => s.completed));
 
+  // Si se completa la última serie del ejercicio, completa también las anteriores
+  // (evita tener que tildear una por una cuando se hicieron todas seguidas).
+  function handleSetChange(set: WorkoutSet, patch: Partial<WorkoutSet>) {
+    onUpdateSet(set.id, patch);
+    if (!patch.completed) return;
+    const sorted = [...we.sets].sort((a, b) => a.set_number - b.set_number);
+    const isLast = sorted[sorted.length - 1]?.id === set.id;
+    if (!isLast) return;
+    for (const s of sorted) {
+      if (s.id !== set.id && !s.completed) onUpdateSet(s.id, { completed: true });
+    }
+  }
+
   return (
     <div className="card p-3">
       <div className="flex items-center gap-3">
@@ -117,7 +130,7 @@ export function SessionExerciseCard({
           <SetRow
             key={set.id}
             set={set}
-            onChange={(patch) => onUpdateSet(set.id, patch)}
+            onChange={(patch) => handleSetChange(set, patch)}
             onDelete={() => onDeleteSet(set.id)}
           />
         ))}

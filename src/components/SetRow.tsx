@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, MessageSquare, X } from "lucide-react";
+import { Check, MessageSquare, Plus, X } from "lucide-react";
 import { clsx } from "@/lib/clsx";
-import type { WorkoutSet } from "@/lib/types";
+import type { SetDrop, WorkoutSet } from "@/lib/types";
 
 export function SetRow({
   set,
@@ -15,6 +15,32 @@ export function SetRow({
   onDelete: () => void;
 }) {
   const [showComment, setShowComment] = useState(!!set.comment);
+
+  const drops: SetDrop[] =
+    set.drops && set.drops.length > 0
+      ? set.drops
+      : [{ reps: set.reps, weight: set.weight }];
+
+  function commitDrops(next: SetDrop[]) {
+    const first = next[0] ?? { reps: null, weight: null };
+    onChange({
+      drops: next.length > 1 ? next : null,
+      weight: first.weight,
+      reps: first.reps,
+    });
+  }
+
+  function updateDrop(index: number, patch: Partial<SetDrop>) {
+    commitDrops(drops.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+  }
+
+  function addDrop() {
+    commitDrops([...drops, { reps: null, weight: null }]);
+  }
+
+  function removeDrop(index: number) {
+    commitDrops(drops.filter((_, i) => i !== index));
+  }
 
   return (
     <div
@@ -29,17 +55,17 @@ export function SetRow({
         </span>
 
         <NumberField
-          value={set.weight}
+          value={drops[0].weight}
           placeholder="kg"
           step={2.5}
-          onCommit={(v) => onChange({ weight: v })}
+          onCommit={(v) => updateDrop(0, { weight: v })}
         />
         <span className="text-muted text-xs">×</span>
         <NumberField
-          value={set.reps}
+          value={drops[0].reps}
           placeholder="reps"
           step={1}
-          onCommit={(v) => onChange({ reps: v })}
+          onCommit={(v) => updateDrop(0, { reps: v })}
         />
 
         <button
@@ -71,6 +97,38 @@ export function SetRow({
           <X className="size-4" />
         </button>
       </div>
+
+      {drops.slice(1).map((d, i) => (
+        <div key={i + 1} className="flex items-center gap-2 mt-1.5 pl-8">
+          <span className="text-muted text-xs shrink-0">+ bajada</span>
+          <NumberField
+            value={d.weight}
+            placeholder="kg"
+            step={2.5}
+            onCommit={(v) => updateDrop(i + 1, { weight: v })}
+          />
+          <span className="text-muted text-xs">×</span>
+          <NumberField
+            value={d.reps}
+            placeholder="reps"
+            step={1}
+            onCommit={(v) => updateDrop(i + 1, { reps: v })}
+          />
+          <button
+            onClick={() => removeDrop(i + 1)}
+            className="size-7 grid place-items-center rounded shrink-0 text-muted hover:text-danger"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
+
+      <button
+        onClick={addDrop}
+        className="flex items-center gap-1 mt-1.5 ml-8 text-xs text-muted hover:text-fg"
+      >
+        <Plus className="size-3.5" /> Agregar bajada
+      </button>
 
       {showComment && (
         <input

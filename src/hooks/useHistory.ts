@@ -2,11 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { SetDrop } from "@/lib/types";
 
 export interface HistorySet {
   reps: number | null;
   weight: number | null;
   completed: boolean;
+  drops: SetDrop[] | null;
 }
 export interface HistoryExercise {
   exercise_id: string;
@@ -32,7 +34,7 @@ export function useHistory() {
       const { data, error } = await supabase
         .from("workout_sessions")
         .select(
-          "id, name, created_at, started_at, ended_at, duration_seconds, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed))",
+          "id, name, created_at, started_at, ended_at, duration_seconds, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, drops))",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;

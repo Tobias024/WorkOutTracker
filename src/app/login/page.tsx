@@ -1,26 +1,80 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Dumbbell } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input } from "@/components/ui";
 
+const AUTH_ERROR_ES: Record<string, string> = {
+  "Invalid login credentials": "Mail o contraseña incorrectos.",
+  "User already registered": "Ya existe una cuenta con ese mail. Iniciá sesión.",
+  "Password should be at least 6 characters.":
+    "La contraseña tiene que tener al menos 6 caracteres.",
+};
+
+function translateError(message: string) {
+  return AUTH_ERROR_ES[message] ?? message;
+}
+
 function LoginForm() {
   const params = useSearchParams();
+  const router = useRouter();
   const next = params.get("next") ?? "/rutinas";
+  const [mode, setMode] = useState<"password" | "magic">("password");
+  const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState<"email" | "google" | null>(null);
+  const [loading, setLoading] = useState<
+    "password" | "signup" | "magic" | "google" | null
+  >(null);
   const [error, setError] = useState<string | null>(params.get("error"));
 
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
     (typeof window !== "undefined" ? window.location.origin : "");
 
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const supabase = createClient();
+
+    if (isSignup) {
+      setLoading("signup");
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      });
+      setLoading(null);
+      if (error) {
+        setError(translateError(error.message));
+        return;
+      }
+      if (data.session) {
+        router.replace(next);
+      } else {
+        setSent(true);
+      }
+      return;
+    }
+
+    setLoading("password");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(null);
+    if (error) {
+      setError(translateError(error.message));
+      return;
+    }
+    router.replace(next);
+  }
+
   async function sendMagicLink(e: React.FormEvent) {
     e.preventDefault();
-    setLoading("email");
+    setLoading("magic");
     setError(null);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
@@ -30,7 +84,7 @@ function LoginForm() {
       },
     });
     setLoading(null);
-    if (error) setError(error.message);
+    if (error) setError(translateError(error.message));
     else setSent(true);
   }
 
@@ -46,7 +100,7 @@ function LoginForm() {
     });
     if (error) {
       setLoading(null);
-      setError(error.message);
+      setError(translateError(error.message));
     }
   }
 
@@ -69,23 +123,74 @@ function LoginForm() {
           <div className="card p-6 text-center">
             <p className="font-medium">Revisá tu mail ✉️</p>
             <p className="text-sm text-muted mt-2">
-              Te enviamos un link de acceso a <strong>{email}</strong>.
+              Te enviamos un link a <strong>{email}</strong>.
             </p>
           </div>
         ) : (
           <div className="card p-6 flex flex-col gap-4">
-            <form onSubmit={sendMagicLink} className="flex flex-col gap-3">
-              <Input
-                type="email"
-                required
-                placeholder="tu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <Button type="submit" loading={loading === "email"}>
-                Enviar link de acceso
-              </Button>
-            </form>
+            {mode === "password" ? (
+              <form onSubmit={submitPassword} className="flex flex-col gap-3">
+                <Input
+                  type="email"
+                  required
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <Input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="Contraseña"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <Button
+                  type="submit"
+                  loading={loading === "password" || loading === "signup"}
+                >
+                  {isSignup ? "Crear cuenta" : "Iniciar sesión"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignup((v) => !v);
+                    setError(null);
+                  }}
+                  className="text-xs text-muted hover:text-fg text-center"
+                >
+                  {isSignup
+                    ? "¿Ya tenés cuenta? Iniciá sesión"
+                    : "¿No tenés cuenta? Creá una"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={sendMagicLink} className="flex flex-col gap-3">
+                <Input
+                  type="email"
+                  required
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <Button type="submit" loading={loading === "magic"}>
+                  Enviar link de acceso
+                </Button>
+              </form>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode((m) => (m === "password" ? "magic" : "password"));
+                setError(null);
+              }}
+              className="text-xs text-muted hover:text-fg text-center"
+            >
+              {mode === "password"
+                ? "Prefiero un link mágico por mail"
+                : "Prefiero usar contraseña"}
+            </button>
 
             <div className="flex items-center gap-3 text-xs text-muted">
               <div className="h-px flex-1 bg-border" />o<div className="h-px flex-1 bg-border" />

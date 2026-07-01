@@ -1,12 +1,23 @@
-import type { WorkoutSet } from "@/lib/types";
+import type { SetDrop, WorkoutSet } from "@/lib/types";
 
-/** Volumen de un set = reps × peso (0 si falta alguno). */
-export function setVolume(s: Pick<WorkoutSet, "reps" | "weight">): number {
-  if (!s.reps || !s.weight) return 0;
-  return s.reps * s.weight;
+type SetLike = Pick<WorkoutSet, "reps" | "weight" | "drops">;
+
+/** Bajadas efectivas de un set: las suyas propias, o un único par reps/peso si es una serie simple. */
+export function effectiveDrops(s: SetLike): SetDrop[] {
+  return s.drops && s.drops.length > 0
+    ? s.drops
+    : [{ reps: s.reps, weight: s.weight }];
 }
 
-export function totalVolume(sets: Pick<WorkoutSet, "reps" | "weight">[]): number {
+/** Volumen de un set = suma de reps × peso de cada bajada (0 si falta alguno). */
+export function setVolume(s: SetLike): number {
+  return effectiveDrops(s).reduce(
+    (acc, d) => acc + (d.reps && d.weight ? d.reps * d.weight : 0),
+    0,
+  );
+}
+
+export function totalVolume(sets: SetLike[]): number {
   return sets.reduce((acc, s) => acc + setVolume(s), 0);
 }
 
@@ -24,13 +35,16 @@ export interface SessionSummary {
 }
 
 export function summarizeSets(
-  sets: Pick<WorkoutSet, "reps" | "weight" | "completed">[],
+  sets: (SetLike & Pick<WorkoutSet, "completed">)[],
 ): SessionSummary {
   const done = sets.filter((s) => s.completed);
   return {
     volume: totalVolume(done),
     sets: done.length,
-    topWeight: done.reduce((m, s) => Math.max(m, s.weight ?? 0), 0),
+    topWeight: done.reduce(
+      (m, s) => Math.max(m, ...effectiveDrops(s).map((d) => d.weight ?? 0)),
+      0,
+    ),
   };
 }
 

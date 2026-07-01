@@ -73,6 +73,11 @@ export type WorkoutExercise = {
   notes: string | null;
 };
 
+export type SetDrop = {
+  reps: number | null;
+  weight: number | null;
+};
+
 export type WorkoutSet = {
   id: string;
   workout_exercise_id: string;
@@ -83,6 +88,8 @@ export type WorkoutSet = {
   comment: string | null;
   is_warmup: boolean;
   completed: boolean;
+  /** Bajadas de peso sin descanso dentro de la misma serie. null = serie simple (usar reps/weight). */
+  drops: SetDrop[] | null;
 };
 
 export type ExerciseSubstitution = {

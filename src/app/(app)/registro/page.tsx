@@ -9,7 +9,7 @@ import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
-import { totalVolume, estimate1RM, weekStart } from "@/lib/metrics";
+import { totalVolume, estimate1RM, weekStart, effectiveDrops } from "@/lib/metrics";
 import { formatDate, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 
@@ -79,11 +79,14 @@ export default function RegistroPage() {
     for (const s of sessions) {
       for (const we of s.workout_exercises) {
         for (const set of we.workout_sets) {
-          if (!set.completed || !set.weight || !set.reps) continue;
-          const orm = estimate1RM(set.weight, set.reps);
-          const cur = prMap.get(we.exercise_id);
-          if (!cur || orm > cur.orm) {
-            prMap.set(we.exercise_id, { weight: set.weight, orm });
+          if (!set.completed) continue;
+          for (const d of effectiveDrops(set)) {
+            if (!d.weight || !d.reps) continue;
+            const orm = estimate1RM(d.weight, d.reps);
+            const cur = prMap.get(we.exercise_id);
+            if (!cur || orm > cur.orm) {
+              prMap.set(we.exercise_id, { weight: d.weight, orm });
+            }
           }
         }
       }
