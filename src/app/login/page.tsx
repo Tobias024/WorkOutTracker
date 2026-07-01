@@ -12,7 +12,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState<"email" | "google" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(params.get("error"));
 
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??

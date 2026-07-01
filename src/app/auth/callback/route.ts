@@ -14,12 +14,20 @@ export async function GET(request: Request) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(`${origin}${next}`);
+    console.error("auth/callback: exchangeCodeForSession falló", error);
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(error.message)}`,
+    );
   } else if (tokenHash && type) {
     const { error } = await supabase.auth.verifyOtp({
       type: type as "email" | "magiclink",
       token_hash: tokenHash,
     });
     if (!error) return NextResponse.redirect(`${origin}${next}`);
+    console.error("auth/callback: verifyOtp falló", error);
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(error.message)}`,
+    );
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth`);
