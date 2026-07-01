@@ -54,8 +54,7 @@ export default function OnboardingPage() {
 
     const { error } = await supabase
       .from("profiles")
-      .update({ username: clean, display_name: displayName.trim() || clean })
-      .eq("id", user.id);
+      .upsert({ id: user.id, username: clean, display_name: displayName.trim() || clean });
 
     setLoading(false);
     if (error) {
