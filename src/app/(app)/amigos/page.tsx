@@ -13,6 +13,7 @@ import {
 } from "@/components/ui";
 import { useFriends, useCreateInvite, useRemoveFriend } from "@/hooks/useFriends";
 import { createClient } from "@/lib/supabase/client";
+import { copyToClipboard } from "@/lib/clipboard";
 
 export default function AmigosPage() {
   const { data, isLoading } = useFriends();
@@ -30,6 +31,7 @@ export default function AmigosPage() {
   }
 
   async function logout() {
+    if (!confirm("¿Cerrar sesión?")) return;
     await createClient().auth.signOut();
     router.push("/login");
   }
@@ -74,11 +76,14 @@ export default function AmigosPage() {
                 <p className="font-medium truncate">
                   {f.display_name ?? f.username}
                 </p>
-                <p className="text-xs text-muted">@{f.username}</p>
               </div>
               <button
                 onClick={() => {
-                  if (confirm(`¿Eliminar a ${f.username} de tus amigos?`))
+                  if (
+                    confirm(
+                      `¿Eliminar a ${f.display_name ?? f.username} de tus amigos?`,
+                    )
+                  )
                     removeFriend.mutate(f.id);
                 }}
                 className="text-muted hover:text-danger p-1"
@@ -102,9 +107,8 @@ export default function AmigosPage() {
         <div className="flex gap-2">
           <Input readOnly value={inviteUrl ?? ""} />
           <Button
-            onClick={() => {
-              navigator.clipboard.writeText(inviteUrl ?? "");
-              setCopied(true);
+            onClick={async () => {
+              if (inviteUrl) setCopied(await copyToClipboard(inviteUrl));
             }}
           >
             {copied ? <Check className="size-4" /> : <Copy className="size-4" />}

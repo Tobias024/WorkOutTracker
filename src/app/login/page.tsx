@@ -13,21 +13,8 @@ const AUTH_ERROR_ES: Record<string, string> = {
     "La contraseña tiene que tener al menos 6 caracteres.",
 };
 
-// Coincidencias parciales para errores largos/variables (p. ej. los que
-// arma el SDK con detalle técnico en inglés).
-const AUTH_ERROR_PARTIAL_ES: [string, string][] = [
-  [
-    "PKCE code verifier not found",
-    "El navegador no guardó el estado del login con Google a tiempo. Probá tocar \"Continuar con Google\" de nuevo.",
-  ],
-];
-
 function translateError(message: string) {
-  if (AUTH_ERROR_ES[message]) return AUTH_ERROR_ES[message];
-  const partial = AUTH_ERROR_PARTIAL_ES.find(([needle]) =>
-    message.includes(needle),
-  );
-  return partial?.[1] ?? message;
+  return AUTH_ERROR_ES[message] ?? message;
 }
 
 function LoginForm() {
@@ -40,7 +27,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState<
-    "password" | "signup" | "magic" | "google" | null
+    "password" | "signup" | "magic" | null
   >(null);
   const rawError = params.get("error");
   const [error, setError] = useState<string | null>(
@@ -102,22 +89,6 @@ function LoginForm() {
     setLoading(null);
     if (error) setError(translateError(error.message));
     else setSent(true);
-  }
-
-  async function signInGoogle() {
-    setLoading("google");
-    setError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-    if (error) {
-      setLoading(null);
-      setError(translateError(error.message));
-    }
   }
 
   return (
@@ -207,18 +178,6 @@ function LoginForm() {
                 ? "Prefiero un link mágico por mail"
                 : "Prefiero usar contraseña"}
             </button>
-
-            <div className="flex items-center gap-3 text-xs text-muted">
-              <div className="h-px flex-1 bg-border" />o<div className="h-px flex-1 bg-border" />
-            </div>
-
-            <Button
-              variant="secondary"
-              onClick={signInGoogle}
-              loading={loading === "google"}
-            >
-              Continuar con Google
-            </Button>
 
             {error && <p className="text-sm text-danger text-center">{error}</p>}
           </div>

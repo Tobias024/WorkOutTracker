@@ -3,7 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/client";
-import type { Routine, RoutineExercise } from "@/lib/types";
+import type { Routine, RoutineExercise, RoutineSet } from "@/lib/types";
+
+export type RoutineExerciseWithSets = RoutineExercise & { sets: RoutineSet[] };
+
+/** Objetivo planeado de una serie (sin id). */
+export type SetPlan = { target_reps: number | null; target_weight: number | null };
 
 export function useRoutines() {
   return useQuery({
@@ -30,15 +35,29 @@ export function useRoutine(id: string) {
           supabase.from("routines").select("*").eq("id", id).single(),
           supabase
             .from("routine_exercises")
-            .select("*")
+            .select("*, routine_sets(*)")
             .eq("routine_id", id)
             .order("position"),
         ]);
       if (e1) throw e1;
       if (e2) throw e2;
+
+      const rows = (exercises ?? []) as unknown as (RoutineExercise & {
+        routine_sets: RoutineSet[];
+      })[];
+      const mapped: RoutineExerciseWithSets[] = rows.map((e) => {
+        const { routine_sets, ...rex } = e;
+        return {
+          ...rex,
+          sets: (routine_sets ?? []).sort(
+            (a, b) => a.set_number - b.set_number,
+          ),
+        };
+      });
+
       return {
         routine: routine as Routine,
-        exercises: (exercises ?? []) as RoutineExercise[],
+        exercises: mapped,
       };
     },
   });
@@ -110,14 +129,71 @@ export function useRoutineExerciseOps(routineId: string) {
       position: number;
     }) => {
       const supabase = createClient();
-      const { error } = await supabase.from("routine_exercises").insert({
-        routine_id: routineId,
-        exercise_id: exerciseId,
-        position,
-        target_sets: 3,
-        target_reps: 10,
-      });
+      const { data: rex, error } = await supabase
+        .from("routine_exercises")
+        .insert({
+          routine_id: routineId,
+          exercise_id: exerciseId,
+          position,
+          target_sets: 3,
+          target_reps: 10,
+        })
+        .select()
+        .single();
       if (error) throw error;
+      // Series planeadas por defecto: 3×10 sin peso.
+      const { error: e2 } = await supabase.from("routine_sets").insert(
+        [1, 2, 3].map((n) => ({
+          routine_exercise_id: rex.id,
+          set_number: n,
+          target_reps: 10,
+        })),
+      );
+      if (e2) throw e2;
+    },
+    onSuccess: invalidate,
+  });
+
+  /**
+   * Reemplaza el plan de series de un ejercicio. Mantiene set_number contiguo
+   * (1..N) vía upsert + borrado del sobrante, y sincroniza target_sets/reps
+   * en routine_exercises (que siguen usándose para la vista previa al
+   * compartir).
+   */
+  const saveSets = useMutation({
+    mutationFn: async ({
+      rexId,
+      plans,
+    }: {
+      rexId: string;
+      plans: SetPlan[];
+    }) => {
+      const supabase = createClient();
+      const list = plans.length ? plans : [{ target_reps: null, target_weight: null }];
+
+      const { error: e1 } = await supabase.from("routine_sets").upsert(
+        list.map((p, i) => ({
+          routine_exercise_id: rexId,
+          set_number: i + 1,
+          target_reps: p.target_reps,
+          target_weight: p.target_weight,
+        })),
+        { onConflict: "routine_exercise_id,set_number" },
+      );
+      if (e1) throw e1;
+
+      const { error: e2 } = await supabase
+        .from("routine_sets")
+        .delete()
+        .eq("routine_exercise_id", rexId)
+        .gt("set_number", list.length);
+      if (e2) throw e2;
+
+      const { error: e3 } = await supabase
+        .from("routine_exercises")
+        .update({ target_sets: list.length, target_reps: list[0].target_reps })
+        .eq("id", rexId);
+      if (e3) throw e3;
     },
     onSuccess: invalidate,
   });
@@ -174,7 +250,7 @@ export function useRoutineExerciseOps(routineId: string) {
     onSuccess: invalidate,
   });
 
-  return { add, update, remove, swap };
+  return { add, update, remove, swap, saveSets };
 }
 
 /** Genera (o devuelve) el share_code de una rutina. */

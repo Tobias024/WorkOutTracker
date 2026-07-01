@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Trophy, Medal, ChevronDown } from "lucide-react";
 import { PageHeader, Spinner, EmptyState, Button } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
+import { NotificationToggle } from "@/components/NotificationToggle";
 import {
   useScoreboard,
   type Metric,
@@ -44,7 +45,11 @@ export default function ScoreboardPage() {
 
   return (
     <div>
-      <PageHeader title="Ranking" subtitle="Competí con tus amigos" />
+      <PageHeader
+        title="Ranking"
+        subtitle="Competí con tus amigos"
+        action={<NotificationToggle />}
+      />
 
       <div className="flex gap-1.5 mb-2">
         {METRICS.map((mt) => (
@@ -130,7 +135,6 @@ export default function ScoreboardPage() {
                 <p className="font-medium truncate">
                   {row.display_name ?? row.username}
                 </p>
-                <p className="text-xs text-muted">@{row.username}</p>
               </div>
               <span className="font-semibold tabular-nums">
                 {fmt(Number(row.value))}

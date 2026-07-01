@@ -4,11 +4,14 @@
 
 export type FriendshipStatus = "pending" | "accepted";
 
+export type Sex = "male" | "female";
+
 export type Profile = {
   id: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+  sex: Sex | null;
   created_at: string;
 };
 
@@ -49,6 +52,14 @@ export type RoutineExercise = {
   target_reps: number | null;
   notes: string | null;
   superset_group: number | null;
+};
+
+export type RoutineSet = {
+  id: string;
+  routine_exercise_id: string;
+  set_number: number;
+  target_reps: number | null;
+  target_weight: number | null;
 };
 
 export type WorkoutSession = {
@@ -97,6 +108,15 @@ export type ExerciseSubstitution = {
   user_id: string;
   routine_exercise_id: string;
   substitute_exercise_id: string;
+  created_at: string;
+};
+
+export type PushSubscription = {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
   created_at: string;
 };
 
@@ -149,12 +169,14 @@ export type Database = {
       exercises: Table<Exercise>;
       routines: Table<Routine>;
       routine_exercises: Table<RoutineExercise>;
+      routine_sets: Table<RoutineSet>;
       workout_sessions: Table<WorkoutSession>;
       workout_exercises: Table<WorkoutExercise>;
       workout_sets: Table<WorkoutSet>;
       exercise_substitutions: Table<ExerciseSubstitution>;
       friendships: Table<Friendship>;
       invites: Table<Invite>;
+      push_subscriptions: Table<PushSubscription>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -177,6 +199,10 @@ export type Database = {
       scoreboard_stats: {
         Args: { p_metric: string; p_since: string; p_exercise_id?: string };
         Returns: ScoreboardRow[];
+      };
+      detect_rank_overtakes: {
+        Args: Record<string, never>;
+        Returns: { user_id: string; by_name: string | null; by_id: string }[];
       };
     };
   };

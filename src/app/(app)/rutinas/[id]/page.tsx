@@ -12,8 +12,11 @@ import {
   ChevronDown,
   Play,
   Check,
+  Copy,
+  X,
 } from "lucide-react";
 import { Button, Input, Spinner, Badge, Modal } from "@/components/ui";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import {
@@ -22,11 +25,12 @@ import {
   useRoutineExerciseOps,
   useDeleteRoutine,
   useShareRoutine,
+  type RoutineExerciseWithSets,
+  type SetPlan,
 } from "@/hooks/useRoutines";
 import { useStartWorkout } from "@/hooks/useWorkout";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
-import type { RoutineExercise } from "@/lib/types";
 
 export default function RoutineEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +45,7 @@ export default function RoutineEditorPage() {
 
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
 
   if (isLoading || !data) {
     return (
@@ -56,7 +61,14 @@ export default function RoutineEditorPage() {
     const code = await share.mutateAsync(routine);
     const base =
       process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
+    setCopyState("idle");
     setShareModal(`${base}/r/${code}`);
+  }
+
+  async function handleCopyShare() {
+    if (!shareModal) return;
+    const ok = await copyToClipboard(shareModal);
+    setCopyState(ok ? "ok" : "fail");
   }
 
   async function handleStart() {
@@ -112,7 +124,9 @@ export default function RoutineEditorPage() {
               exercise={exMap.get(rex.exercise_id)}
               isFirst={i === 0}
               isLast={i === exercises.length - 1}
-              onUpdate={(patch) => ops.update.mutate({ id: rex.id, patch })}
+              onSaveSets={(plans) =>
+                ops.saveSets.mutate({ rexId: rex.id, plans })
+              }
               onRemove={() => ops.remove.mutate(rex.id)}
               onMoveUp={() => ops.swap.mutate({ a: rex, b: exercises[i - 1] })}
               onMoveDown={() => ops.swap.mutate({ a: rex, b: exercises[i + 1] })}
@@ -162,14 +176,21 @@ export default function RoutineEditorPage() {
         </p>
         <div className="flex gap-2">
           <Input readOnly value={shareModal ?? ""} />
-          <Button
-            onClick={() => {
-              navigator.clipboard.writeText(shareModal ?? "");
-            }}
-          >
-            <Check className="size-4" /> Copiar
+          <Button onClick={handleCopyShare}>
+            {copyState === "ok" ? (
+              <Check className="size-4" />
+            ) : (
+              <Copy className="size-4" />
+            )}
+            {copyState === "ok" ? "Copiado" : "Copiar"}
           </Button>
         </div>
+        {copyState === "fail" && (
+          <p className="text-xs text-muted mt-2">
+            No se pudo copiar automáticamente. Mantené presionado el link de
+            arriba para copiarlo a mano.
+          </p>
+        )}
       </Modal>
     </div>
   );
@@ -180,16 +201,16 @@ function RoutineExerciseRow({
   exercise,
   isFirst,
   isLast,
-  onUpdate,
+  onSaveSets,
   onRemove,
   onMoveUp,
   onMoveDown,
 }: {
-  rex: RoutineExercise;
+  rex: RoutineExerciseWithSets;
   exercise?: { name: string; images: string[]; primary_muscles: string[] };
   isFirst: boolean;
   isLast: boolean;
-  onUpdate: (patch: Partial<RoutineExercise>) => void;
+  onSaveSets: (plans: SetPlan[]) => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -229,32 +250,117 @@ function RoutineExerciseRow({
         </button>
       </div>
 
-      <div className="flex items-center gap-3 mt-3 text-sm">
-        <label className="flex items-center gap-1.5 text-muted">
-          Series
-          <Input
-            type="number"
-            min={1}
-            defaultValue={rex.target_sets ?? 3}
-            onBlur={(e) =>
-              onUpdate({ target_sets: Number(e.target.value) || 1 })
-            }
-            className="h-9 w-16 text-center"
-          />
-        </label>
-        <label className="flex items-center gap-1.5 text-muted">
-          Reps
-          <Input
-            type="number"
-            min={1}
-            defaultValue={rex.target_reps ?? 10}
-            onBlur={(e) =>
-              onUpdate({ target_reps: Number(e.target.value) || 1 })
-            }
-            className="h-9 w-16 text-center"
-          />
-        </label>
-      </div>
+      <SetPlanner sets={rex.sets} onSave={onSaveSets} />
     </li>
+  );
+}
+
+/** Editor de series planeadas: reps + peso por serie, para planear la progresión. */
+function SetPlanner({
+  sets,
+  onSave,
+}: {
+  sets: { target_reps: number | null; target_weight: number | null }[];
+  onSave: (plans: SetPlan[]) => void;
+}) {
+  const [rows, setRows] = useState<SetPlan[]>(
+    sets.length
+      ? sets.map((s) => ({
+          target_reps: s.target_reps,
+          target_weight: s.target_weight,
+        }))
+      : [{ target_reps: 10, target_weight: null }],
+  );
+
+  function updateRow(i: number, patch: Partial<SetPlan>) {
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  function addRow() {
+    setRows((rs) => {
+      const last = rs[rs.length - 1];
+      const next = [
+        ...rs,
+        {
+          target_reps: last?.target_reps ?? 10,
+          target_weight: last?.target_weight ?? null,
+        },
+      ];
+      onSave(next);
+      return next;
+    });
+  }
+
+  function removeRow(i: number) {
+    setRows((rs) => {
+      if (rs.length <= 1) return rs;
+      const next = rs.filter((_, idx) => idx !== i);
+      onSave(next);
+      return next;
+    });
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-muted">
+        <span className="w-8">Serie</span>
+        <span className="flex-1 text-center">Reps</span>
+        <span className="flex-1 text-center">Peso (kg)</span>
+        <span className="w-7" />
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-8 text-center text-sm text-muted tabular-nums">
+            {i + 1}
+          </span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            placeholder="—"
+            value={r.target_reps ?? ""}
+            onChange={(e) =>
+              updateRow(i, {
+                target_reps:
+                  e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+            onBlur={() => onSave(rows)}
+            className="h-9 flex-1 text-center"
+          />
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.5"
+            placeholder="—"
+            value={r.target_weight ?? ""}
+            onChange={(e) =>
+              updateRow(i, {
+                target_weight:
+                  e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+            onBlur={() => onSave(rows)}
+            className="h-9 flex-1 text-center"
+          />
+          <button
+            onClick={() => removeRow(i)}
+            disabled={rows.length <= 1}
+            className="w-7 text-muted hover:text-danger disabled:opacity-30"
+            aria-label="Quitar serie"
+          >
+            <X className="size-4 mx-auto" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="mt-1 flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium text-muted ring-1 ring-border hover:text-fg"
+      >
+        <Plus className="size-4" /> Agregar serie
+      </button>
+    </div>
   );
 }

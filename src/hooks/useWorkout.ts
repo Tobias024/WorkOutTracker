@@ -33,7 +33,7 @@ export function useStartWorkout() {
           supabase.from("routines").select("name").eq("id", routineId).single(),
           supabase
             .from("routine_exercises")
-            .select("*")
+            .select("*, routine_sets(*)")
             .eq("routine_id", routineId)
             .order("position"),
           supabase
@@ -77,12 +77,32 @@ export function useStartWorkout() {
           .select()
           .single();
 
-        const setCount = Math.max(1, rex.target_sets ?? 3);
-        const sets = Array.from({ length: setCount }, (_, i) => ({
-          workout_exercise_id: we!.id,
-          set_number: i + 1,
-          reps: rex.target_reps,
-        }));
+        // Usa el plan por serie (reps + peso) si existe; si no, cae a los
+        // valores "flat" target_sets/target_reps.
+        const planned = (
+          (rex as unknown as {
+            routine_sets?: {
+              set_number: number;
+              target_reps: number | null;
+              target_weight: number | null;
+            }[];
+          }).routine_sets ?? []
+        ).sort((a, b) => a.set_number - b.set_number);
+
+        const sets =
+          planned.length > 0
+            ? planned.map((p, i) => ({
+                workout_exercise_id: we!.id,
+                set_number: i + 1,
+                reps: p.target_reps,
+                weight: p.target_weight,
+              }))
+            : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, (_, i) => ({
+                workout_exercise_id: we!.id,
+                set_number: i + 1,
+                reps: rex.target_reps,
+                weight: null,
+              }));
         await supabase.from("workout_sets").insert(sets);
       }
 
