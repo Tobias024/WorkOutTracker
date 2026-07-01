@@ -102,7 +102,7 @@ function Chip({
     <button
       onClick={onClick}
       className={clsx(
-        "shrink-0 rounded-full px-3 py-1 text-xs ring-1 transition",
+        "shrink-0 rounded-md px-3 py-1 text-xs ring-1 transition",
         active
           ? "bg-primary text-primary-fg ring-primary"
           : "bg-surface-2 text-muted ring-border hover:text-fg",

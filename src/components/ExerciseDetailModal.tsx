@@ -30,7 +30,7 @@ export function ExerciseDetailModal({
                   key={img}
                   src={img}
                   alt={exercise.name}
-                  className="h-44 w-60 rounded-xl shrink-0"
+                  className="h-44 w-60 rounded-md shrink-0"
                 />
               ))}
             </div>

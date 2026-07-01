@@ -119,7 +119,7 @@ export default function WorkoutPage() {
                     : null,
                 })
               }
-              className="mt-1 h-9 w-full rounded-lg bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </label>
           <label className="text-xs text-muted">
@@ -134,7 +134,7 @@ export default function WorkoutPage() {
                     : null,
                 })
               }
-              className="mt-1 h-9 w-full rounded-lg bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </label>
         </div>

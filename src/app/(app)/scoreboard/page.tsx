@@ -163,7 +163,7 @@ function Pill({
     <button
       onClick={onClick}
       className={clsx(
-        "flex-1 rounded-xl py-2 text-sm font-medium ring-1 transition",
+        "flex-1 rounded-md py-2 text-sm font-medium ring-1 transition",
         active
           ? "bg-primary text-primary-fg ring-primary"
           : "bg-surface-2 text-muted ring-border hover:text-fg",

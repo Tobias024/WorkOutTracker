@@ -32,13 +32,13 @@ export function StopwatchFab() {
           </span>
           <button
             onClick={running ? pause : start}
-            className="size-9 rounded-lg bg-primary text-primary-fg grid place-items-center"
+            className="size-9 rounded bg-primary text-primary-fg grid place-items-center"
           >
             {running ? <Pause className="size-4" /> : <Play className="size-4" />}
           </button>
           <button
             onClick={reset}
-            className="size-9 rounded-lg bg-surface-2 grid place-items-center text-muted hover:text-fg"
+            className="size-9 rounded bg-surface-2 grid place-items-center text-muted hover:text-fg"
           >
             <RotateCcw className="size-4" />
           </button>

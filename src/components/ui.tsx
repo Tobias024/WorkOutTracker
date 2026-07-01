@@ -24,9 +24,9 @@ export function Button({
     success: "bg-success/15 text-success hover:bg-success/25",
   };
   const sizes: Record<string, string> = {
-    sm: "h-8 px-3 text-sm rounded-lg",
-    md: "h-11 px-4 text-sm rounded-xl",
-    lg: "h-14 px-6 text-base rounded-2xl",
+    sm: "h-8 px-3 text-sm rounded",
+    md: "h-11 px-4 text-sm rounded-md",
+    lg: "h-14 px-6 text-base rounded-lg",
   };
   return (
     <button
@@ -52,7 +52,7 @@ export function Input({
   return (
     <input
       className={clsx(
-        "h-11 w-full rounded-xl bg-surface-2 px-3 text-fg placeholder:text-muted/60 outline-none ring-1 ring-border focus:ring-2 focus:ring-primary transition",
+        "h-11 w-full rounded-md bg-surface-2 px-3 text-fg placeholder:text-muted/60 outline-none ring-1 ring-border focus:ring-2 focus:ring-primary transition",
         className,
       )}
       {...props}
@@ -67,7 +67,7 @@ export function Textarea({
   return (
     <textarea
       className={clsx(
-        "w-full rounded-xl bg-surface-2 px-3 py-2 text-fg placeholder:text-muted/60 outline-none ring-1 ring-border focus:ring-2 focus:ring-primary transition",
+        "w-full rounded-md bg-surface-2 px-3 py-2 text-fg placeholder:text-muted/60 outline-none ring-1 ring-border focus:ring-2 focus:ring-primary transition",
         className,
       )}
       {...props}
@@ -151,7 +151,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="card w-full sm:max-w-lg max-h-[85vh] flex flex-col rounded-b-none sm:rounded-2xl"
+        className="card w-full sm:max-w-lg max-h-[85vh] flex flex-col rounded-b-none sm:rounded-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -176,7 +176,7 @@ export function Badge({
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full bg-surface-2 px-2.5 py-0.5 text-xs text-muted ring-1 ring-border",
+        "inline-flex items-center rounded-md bg-surface-2 px-2.5 py-0.5 text-xs text-muted ring-1 ring-border",
         className,
       )}
     >

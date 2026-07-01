@@ -45,7 +45,7 @@ export default function RoutinesPage() {
         href="/ejercicios"
         className="card flex items-center gap-3 p-3 mb-4 hover:ring-1 hover:ring-primary transition"
       >
-        <div className="size-9 rounded-lg bg-surface-2 grid place-items-center">
+        <div className="size-9 rounded bg-surface-2 grid place-items-center">
           <Library className="size-5 text-muted" />
         </div>
         <span className="text-sm font-medium flex-1">Explorar catálogo de ejercicios</span>
@@ -75,7 +75,7 @@ export default function RoutinesPage() {
                 href={`/rutinas/${r.id}`}
                 className="card flex items-center gap-3 p-4 hover:ring-1 hover:ring-primary transition"
               >
-                <div className="size-10 rounded-xl bg-primary/15 grid place-items-center">
+                <div className="size-10 rounded-md bg-primary/15 grid place-items-center">
                   <Dumbbell className="size-5 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">

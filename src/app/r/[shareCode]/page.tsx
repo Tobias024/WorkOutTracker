@@ -80,7 +80,7 @@ export default function SharedRoutinePage() {
     <main className="min-h-dvh px-4 py-8">
       <div className="mx-auto max-w-2xl">
         <div className="flex items-center gap-3 mb-1">
-          <div className="size-11 rounded-xl bg-primary/15 grid place-items-center">
+          <div className="size-11 rounded-md bg-primary/15 grid place-items-center">
             <Dumbbell className="size-6 text-primary" />
           </div>
           <div>
@@ -98,7 +98,7 @@ export default function SharedRoutinePage() {
               <ExerciseImage
                 src={ex.image ?? undefined}
                 alt={ex.name}
-                className="size-11 rounded-lg shrink-0"
+                className="size-11 rounded shrink-0"
               />
               <span className="font-medium flex-1 truncate">{ex.name}</span>
               {ex.target_sets && (

@@ -71,12 +71,12 @@ export function ReplaceExerciseModal({
                     onReplace(ex, saveForFuture);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 rounded-xl p-2 hover:bg-surface-2 text-left transition"
+                  className="w-full flex items-center gap-3 rounded-md p-2 hover:bg-surface-2 text-left transition"
                 >
                   <ExerciseImage
                     src={ex.images[0]}
                     alt={ex.name}
-                    className="size-12 rounded-lg shrink-0"
+                    className="size-12 rounded shrink-0"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{ex.name}</p>

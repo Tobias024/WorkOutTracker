@@ -71,12 +71,12 @@ export function ExercisePickerModal({
                     onSelect(ex);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 rounded-xl p-2 hover:bg-surface-2 text-left transition"
+                  className="w-full flex items-center gap-3 rounded-md p-2 hover:bg-surface-2 text-left transition"
                 >
                   <ExerciseImage
                     src={ex.images[0]}
                     alt={ex.name}
-                    className="size-12 rounded-lg shrink-0"
+                    className="size-12 rounded shrink-0"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{ex.name}</p>
@@ -112,7 +112,7 @@ function Chip({
     <button
       onClick={onClick}
       className={clsx(
-        "shrink-0 rounded-full px-3 py-1 text-xs ring-1 transition",
+        "shrink-0 rounded-md px-3 py-1 text-xs ring-1 transition",
         active
           ? "bg-primary text-primary-fg ring-primary"
           : "bg-surface-2 text-muted ring-border hover:text-fg",

@@ -46,7 +46,7 @@ export function SessionExerciseCard({
           <ExerciseImage
             src={exercise?.images[0]}
             alt={exercise?.name ?? ""}
-            className="size-12 rounded-lg"
+            className="size-12 rounded"
           />
         </button>
         <div className="min-w-0 flex-1">
@@ -67,7 +67,7 @@ export function SessionExerciseCard({
         <div className="relative">
           <button
             onClick={() => setMenu((m) => !m)}
-            className="size-9 grid place-items-center rounded-lg text-muted hover:text-fg"
+            className="size-9 grid place-items-center rounded text-muted hover:text-fg"
           >
             <MoreVertical className="size-5" />
           </button>
@@ -157,7 +157,7 @@ function MenuItem({
     <button
       onClick={onClick}
       className={clsx(
-        "w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-left hover:bg-surface-2",
+        "w-full flex items-center gap-2.5 rounded px-3 py-2 text-sm text-left hover:bg-surface-2",
         danger ? "text-danger" : "text-fg",
       )}
     >

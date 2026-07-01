@@ -54,7 +54,7 @@ function LoginForm() {
     <main className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="size-14 rounded-2xl bg-primary/15 grid place-items-center">
+          <div className="size-14 rounded-lg bg-primary/15 grid place-items-center">
             <Dumbbell className="size-7 text-primary" />
           </div>
           <div className="text-center">

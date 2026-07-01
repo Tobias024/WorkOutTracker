@@ -19,7 +19,7 @@ export function SetRow({
   return (
     <div
       className={clsx(
-        "rounded-xl px-2 py-1.5 transition",
+        "rounded-md px-2 py-1.5 transition",
         set.completed ? "bg-success/10" : "bg-surface-2",
       )}
     >
@@ -45,7 +45,7 @@ export function SetRow({
         <button
           onClick={() => setShowComment((s) => !s)}
           className={clsx(
-            "size-9 grid place-items-center rounded-lg shrink-0",
+            "size-9 grid place-items-center rounded shrink-0",
             set.comment ? "text-accent" : "text-muted hover:text-fg",
           )}
         >
@@ -55,7 +55,7 @@ export function SetRow({
         <button
           onClick={() => onChange({ completed: !set.completed })}
           className={clsx(
-            "size-9 grid place-items-center rounded-lg shrink-0 transition",
+            "size-9 grid place-items-center rounded shrink-0 transition",
             set.completed
               ? "bg-success text-bg"
               : "bg-surface ring-1 ring-border text-muted hover:text-fg",
@@ -66,7 +66,7 @@ export function SetRow({
 
         <button
           onClick={onDelete}
-          className="size-9 grid place-items-center rounded-lg shrink-0 text-muted hover:text-danger"
+          className="size-9 grid place-items-center rounded shrink-0 text-muted hover:text-danger"
         >
           <X className="size-4" />
         </button>
@@ -77,7 +77,7 @@ export function SetRow({
           defaultValue={set.comment ?? ""}
           placeholder="Comentario…"
           onBlur={(e) => onChange({ comment: e.target.value || null })}
-          className="mt-1.5 w-full rounded-lg bg-surface px-2.5 py-1.5 text-sm outline-none ring-1 ring-border focus:ring-primary"
+          className="mt-1.5 w-full rounded bg-surface px-2.5 py-1.5 text-sm outline-none ring-1 ring-border focus:ring-primary"
         />
       )}
     </div>
@@ -107,7 +107,7 @@ function NumberField({
         const v = e.target.value === "" ? null : Number(e.target.value);
         if (v !== value) onCommit(v);
       }}
-      className="h-9 flex-1 min-w-0 rounded-lg bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"
+      className="h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"
     />
   );
 }

@@ -194,7 +194,7 @@ export default function RegistroPage() {
                     href={`/entrenar/${s.id}`}
                     className="card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition"
                   >
-                    <div className="size-10 rounded-xl bg-surface-2 grid place-items-center">
+                    <div className="size-10 rounded-md bg-surface-2 grid place-items-center">
                       <Dumbbell className="size-5 text-muted" />
                     </div>
                     <div className="min-w-0 flex-1">

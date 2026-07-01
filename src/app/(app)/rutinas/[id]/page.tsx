@@ -200,7 +200,7 @@ function RoutineExerciseRow({
         <ExerciseImage
           src={exercise?.images[0]}
           alt={exercise?.name ?? ""}
-          className="size-12 rounded-lg shrink-0"
+          className="size-12 rounded shrink-0"
         />
         <div className="min-w-0 flex-1">
           <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
