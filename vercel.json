@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/rank-check",
-      "schedule": "7 * * * *"
+      "schedule": "7 23 * * *"
     }
   ]
 }
