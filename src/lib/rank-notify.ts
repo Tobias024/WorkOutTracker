@@ -1,0 +1,62 @@
+import webpush from "web-push";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+// Lógica compartida: detecta a quién superaron en el ranking semanal y le manda
+// el push. La usan el cron diario (respaldo) y el disparo al terminar un
+// entrenamiento (event-driven).
+export async function runRankCheck(): Promise<{
+  overtakes: number;
+  sent: number;
+}> {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) {
+    throw new Error("Faltan las VAPID keys");
+  }
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT ?? "mailto:admin@example.com",
+    publicKey,
+    privateKey,
+  );
+
+  const supabase = createAdminClient();
+  const { data: overtakes, error } = await supabase.rpc(
+    "detect_rank_overtakes",
+  );
+  if (error) throw new Error(error.message);
+
+  let sent = 0;
+  for (const o of overtakes ?? []) {
+    const { data: subs } = await supabase
+      .from("push_subscriptions")
+      .select("*")
+      .eq("user_id", o.user_id);
+
+    const payload = JSON.stringify({
+      title: "Te pasaron en el ranking 🏋️",
+      body: `${o.by_name ?? "Alguien"} te superó en volumen esta semana. ¡A recuperar el puesto!`,
+      url: "/scoreboard",
+    });
+
+    for (const s of subs ?? []) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+          payload,
+        );
+        sent++;
+      } catch (e) {
+        const status = (e as { statusCode?: number })?.statusCode;
+        // 404/410 => suscripción muerta: la limpiamos.
+        if (status === 404 || status === 410) {
+          await supabase
+            .from("push_subscriptions")
+            .delete()
+            .eq("endpoint", s.endpoint);
+        }
+      }
+    }
+  }
+
+  return { overtakes: overtakes?.length ?? 0, sent };
+}

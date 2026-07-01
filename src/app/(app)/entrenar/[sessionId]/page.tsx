@@ -73,6 +73,9 @@ export default function WorkoutPage() {
       ended_at: endIso,
       duration_seconds: duration,
     });
+    // Recién ahora cambió el volumen: avisamos si superaste a algún amigo en el
+    // ranking. Fire-and-forget: no bloquea la navegación ni importa si falla.
+    fetch("/api/rank/notify", { method: "POST" }).catch(() => {});
     router.push("/registro");
   }
 
