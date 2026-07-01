@@ -169,7 +169,7 @@ $$;
 
 -- Genera un link de invitación (código corto). Devuelve el código.
 create or replace function create_invite()
-returns text language plpgsql security definer set search_path = public as $$
+returns text language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_code text;
 begin
