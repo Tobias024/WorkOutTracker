@@ -34,9 +34,11 @@ function LoginForm() {
     rawError ? translateError(rawError) : null,
   );
 
+  // Para los redirects de auth usamos siempre el dominio donde está parado el
+  // usuario (no NEXT_PUBLIC_SITE_URL): así el link de vuelta matchea el dominio
+  // real aunque esa env var quede mal seteada.
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "");
+    typeof window !== "undefined" ? window.location.origin : "";
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
