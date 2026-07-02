@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, UserPlus, Copy, Check, LogOut, UserMinus } from "lucide-react";
+import Link from "next/link";
+import {
+  Users,
+  UserPlus,
+  Copy,
+  Check,
+  LogOut,
+  UserMinus,
+  UserCog,
+} from "lucide-react";
 import {
   PageHeader,
   Button,
@@ -42,9 +51,16 @@ export default function AmigosPage() {
         title="Amigos"
         subtitle="Competí y compartí rutinas"
         action={
-          <Button size="sm" variant="ghost" onClick={logout}>
-            <LogOut className="size-4" /> Salir
-          </Button>
+          <div className="flex items-center gap-1">
+            <Link href="/perfil">
+              <Button size="sm" variant="ghost">
+                <UserCog className="size-4" /> Mi perfil
+              </Button>
+            </Link>
+            <Button size="sm" variant="ghost" onClick={logout}>
+              <LogOut className="size-4" /> Salir
+            </Button>
+          </div>
         }
       />
 
@@ -65,31 +81,35 @@ export default function AmigosPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {data.map((f) => (
-            <li
-              key={f.id}
-              className="card flex items-center gap-3 p-3.5"
-            >
-              <div className="size-10 rounded-full bg-primary/15 grid place-items-center text-primary font-semibold uppercase">
-                {(f.display_name ?? f.username ?? "?").slice(0, 1)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium truncate">
-                  {f.display_name ?? f.username}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  if (
-                    confirm(
-                      `¿Eliminar a ${f.display_name ?? f.username} de tus amigos?`,
-                    )
-                  )
-                    removeFriend.mutate(f.id);
-                }}
-                className="text-muted hover:text-danger p-1"
+            <li key={f.id}>
+              <Link
+                href={`/amigos/${f.id}`}
+                className="card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition"
               >
-                <UserMinus className="size-4" />
-              </button>
+                <div className="size-10 rounded-full bg-primary/15 grid place-items-center text-primary font-semibold uppercase">
+                  {(f.display_name ?? f.username ?? "?").slice(0, 1)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">
+                    {f.display_name ?? f.username}
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (
+                      confirm(
+                        `¿Eliminar a ${f.display_name ?? f.username} de tus amigos?`,
+                      )
+                    )
+                      removeFriend.mutate(f.id);
+                  }}
+                  className="text-muted hover:text-danger p-1"
+                >
+                  <UserMinus className="size-4" />
+                </button>
+              </Link>
             </li>
           ))}
         </ul>

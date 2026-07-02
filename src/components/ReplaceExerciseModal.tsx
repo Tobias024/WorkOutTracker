@@ -12,12 +12,14 @@ export function ReplaceExerciseModal({
   open,
   onClose,
   currentName,
+  currentMuscle,
   canSaveForFuture,
   onReplace,
 }: {
   open: boolean;
   onClose: () => void;
   currentName: string;
+  currentMuscle?: string;
   canSaveForFuture: boolean;
   onReplace: (newExercise: Exercise, saveForFuture: boolean) => void;
 }) {
@@ -25,7 +27,15 @@ export function ReplaceExerciseModal({
   const [query, setQuery] = useState("");
   const [saveForFuture, setSaveForFuture] = useState(false);
 
-  const list = filterExercises(data ?? [], query).slice(0, 60);
+  // Prioriza (sin ocultar el resto) las opciones del mismo grupo muscular.
+  const list = filterExercises(data ?? [], query)
+    .slice()
+    .sort((a, b) => {
+      const aMatch = a.primary_muscles[0] === currentMuscle ? 0 : 1;
+      const bMatch = b.primary_muscles[0] === currentMuscle ? 0 : 1;
+      return aMatch - bMatch;
+    })
+    .slice(0, 60);
 
   return (
     <Modal open={open} onClose={onClose} title={`Reemplazar "${currentName}"`}>

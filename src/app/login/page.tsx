@@ -27,7 +27,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState<
-    "password" | "signup" | "magic" | null
+    "password" | "signup" | "magic" | "reset" | null
   >(null);
   const rawError = params.get("error");
   const [error, setError] = useState<string | null>(
@@ -75,6 +75,22 @@ function LoginForm() {
       return;
     }
     router.replace(next);
+  }
+
+  async function sendPasswordReset() {
+    if (!email) {
+      setError("Escribí tu mail primero.");
+      return;
+    }
+    setLoading("reset");
+    setError(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent("/auth/reset-password")}`,
+    });
+    setLoading(null);
+    if (error) setError(translateError(error.message));
+    else setSent(true);
   }
 
   async function sendMagicLink(e: React.FormEvent) {
@@ -152,6 +168,16 @@ function LoginForm() {
                     ? "¿Ya tenés cuenta? Iniciá sesión"
                     : "¿No tenés cuenta? Creá una"}
                 </button>
+                {!isSignup && (
+                  <button
+                    type="button"
+                    onClick={sendPasswordReset}
+                    disabled={loading === "reset"}
+                    className="text-xs text-muted hover:text-fg text-center disabled:opacity-50"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                )}
               </form>
             ) : (
               <form onSubmit={sendMagicLink} className="flex flex-col gap-3">

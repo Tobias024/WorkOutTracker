@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { Search } from "lucide-react";
-import { Modal, Input, Spinner, Badge } from "@/components/ui";
+import { Modal, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
 import { MUSCLES_ES, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
-import { clsx } from "@/lib/clsx";
 
 export function ExercisePickerModal({
   open,
@@ -43,16 +42,15 @@ export function ExercisePickerModal({
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          <Chip active={!muscle} onClick={() => setMuscle("")}>
-            Todos
-          </Chip>
-          {Object.keys(MUSCLES_ES).map((m) => (
-            <Chip key={m} active={muscle === m} onClick={() => setMuscle(m)}>
-              {MUSCLES_ES[m]}
-            </Chip>
-          ))}
-        </div>
+        <Tabs
+          scroll
+          value={muscle}
+          onChange={setMuscle}
+          options={[
+            { value: "", label: "Todos" },
+            ...Object.keys(MUSCLES_ES).map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+          ]}
+        />
 
         {isLoading ? (
           <div className="grid place-items-center py-10">
@@ -96,29 +94,5 @@ export function ExercisePickerModal({
         )}
       </div>
     </Modal>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        "shrink-0 rounded-md px-3 py-1 text-xs ring-1 transition",
-        active
-          ? "bg-primary text-primary-fg ring-primary"
-          : "bg-surface-2 text-muted ring-border hover:text-fg",
-      )}
-    >
-      {children}
-    </button>
   );
 }

@@ -144,6 +144,7 @@ export function SessionExerciseCard({
         open={replace}
         onClose={() => setReplace(false)}
         currentName={exercise?.name ?? ""}
+        currentMuscle={exercise?.primary_muscles[0]}
         canSaveForFuture={!!we.routine_exercise_id}
         onReplace={onReplace}
       />

@@ -61,3 +61,43 @@ export function weekStart(d: Date): Date {
   date.setDate(date.getDate() - day);
   return date;
 }
+
+/** Índice de masa corporal. */
+export function bmi(heightCm: number, weightKg: number): number {
+  const heightM = heightCm / 100;
+  return weightKg / (heightM * heightM);
+}
+
+export type BmiCategory = "bajo peso" | "normal" | "sobrepeso" | "obesidad";
+
+export function bmiCategory(value: number): BmiCategory {
+  if (value < 18.5) return "bajo peso";
+  if (value < 25) return "normal";
+  if (value < 30) return "sobrepeso";
+  return "obesidad";
+}
+
+/**
+ * Racha de días consecutivos con al menos una sesión, contando hacia atrás
+ * desde hoy (o desde ayer, si hoy todavía no hay sesión registrada).
+ */
+export function streak(sessions: { created_at: string }[]): number {
+  const days = new Set(sessions.map((s) => dateKey(s.created_at)));
+  const cursor = new Date();
+  if (!days.has(dateKey(cursor.toISOString()))) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  let count = 0;
+  while (days.has(dateKey(cursor.toISOString()))) {
+    count++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return count;
+}
+
+/** Promedio de duración (segundos) de las sesiones finalizadas. */
+export function avgDuration(sessions: { duration_seconds: number | null }[]): number {
+  const done = sessions.filter((s) => s.duration_seconds != null);
+  if (!done.length) return 0;
+  return done.reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0) / done.length;
+}

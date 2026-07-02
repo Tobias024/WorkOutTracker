@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { Search } from "lucide-react";
-import { PageHeader, Input, Spinner, Badge } from "@/components/ui";
+import { PageHeader, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
 import { MUSCLES_ES, equipmentEs, categoryEs } from "@/lib/i18n-exercise";
-import { clsx } from "@/lib/clsx";
 import type { Exercise } from "@/lib/types";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 
@@ -38,15 +37,16 @@ export default function ExercisesPage() {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 mb-4">
-        <Chip active={!muscle} onClick={() => setMuscle("")}>
-          Todos
-        </Chip>
-        {Object.keys(MUSCLES_ES).map((m) => (
-          <Chip key={m} active={muscle === m} onClick={() => setMuscle(m)}>
-            {MUSCLES_ES[m]}
-          </Chip>
-        ))}
+      <div className="mb-4">
+        <Tabs
+          scroll
+          value={muscle}
+          onChange={setMuscle}
+          options={[
+            { value: "", label: "Todos" },
+            ...Object.keys(MUSCLES_ES).map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+          ]}
+        />
       </div>
 
       {isLoading ? (
@@ -86,29 +86,5 @@ export default function ExercisesPage() {
         onClose={() => setSelected(null)}
       />
     </div>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        "shrink-0 rounded-md px-3 py-1 text-xs ring-1 transition",
-        active
-          ? "bg-primary text-primary-fg ring-primary"
-          : "bg-surface-2 text-muted ring-border hover:text-fg",
-      )}
-    >
-      {children}
-    </button>
   );
 }

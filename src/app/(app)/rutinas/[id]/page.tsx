@@ -19,6 +19,7 @@ import { Button, Input, Spinner, Badge, Modal } from "@/components/ui";
 import { copyToClipboard } from "@/lib/clipboard";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
+import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import {
   useRoutine,
   useUpdateRoutine,
@@ -28,9 +29,17 @@ import {
   type RoutineExerciseWithSets,
   type SetPlan,
 } from "@/hooks/useRoutines";
+import {
+  useRoutineSchedule,
+  useSetRoutineSchedule,
+} from "@/hooks/useRoutineSchedule";
 import { useStartWorkout } from "@/hooks/useWorkout";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { clsx } from "@/lib/clsx";
+import type { Exercise } from "@/lib/types";
+
+const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 
 export default function RoutineEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +51,8 @@ export default function RoutineEditorPage() {
   const del = useDeleteRoutine();
   const share = useShareRoutine();
   const start = useStartWorkout();
+  const { data: schedule } = useRoutineSchedule(id);
+  const setSchedule = useSetRoutineSchedule(id);
 
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
@@ -109,6 +120,35 @@ export default function RoutineEditorPage() {
         >
           <Trash2 className="size-4" /> Eliminar
         </Button>
+      </div>
+
+      <div className="mb-4">
+        <p className="text-xs text-muted mb-1.5">Días planificados</p>
+        <div className="flex gap-1.5">
+          {WEEKDAYS.map((label, weekday) => {
+            const active = schedule?.includes(weekday) ?? false;
+            return (
+              <button
+                key={weekday}
+                onClick={() => {
+                  const current = schedule ?? [];
+                  const next = active
+                    ? current.filter((d) => d !== weekday)
+                    : [...current, weekday];
+                  setSchedule.mutate(next);
+                }}
+                className={clsx(
+                  "size-9 rounded-md text-sm font-medium transition",
+                  active
+                    ? "bg-primary text-primary-fg"
+                    : "bg-surface-2 text-muted hover:text-fg",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {exercises.length === 0 ? (
@@ -207,7 +247,7 @@ function RoutineExerciseRow({
   onMoveDown,
 }: {
   rex: RoutineExerciseWithSets;
-  exercise?: { name: string; images: string[]; primary_muscles: string[] };
+  exercise?: Exercise;
   isFirst: boolean;
   isLast: boolean;
   onSaveSets: (plans: SetPlan[]) => void;
@@ -215,20 +255,27 @@ function RoutineExerciseRow({
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const [detail, setDetail] = useState(false);
+
   return (
     <li className="card p-3">
       <div className="flex items-center gap-3">
-        <ExerciseImage
-          src={exercise?.images[0]}
-          alt={exercise?.name ?? ""}
-          className="size-12 rounded shrink-0"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
-          {exercise?.primary_muscles[0] && (
-            <Badge>{muscleEs(exercise.primary_muscles[0])}</Badge>
-          )}
-        </div>
+        <button
+          onClick={() => setDetail(true)}
+          className="flex items-center gap-3 min-w-0 flex-1 text-left"
+        >
+          <ExerciseImage
+            src={exercise?.images[0]}
+            alt={exercise?.name ?? ""}
+            className="size-12 rounded shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
+            {exercise?.primary_muscles[0] && (
+              <Badge>{muscleEs(exercise.primary_muscles[0])}</Badge>
+            )}
+          </div>
+        </button>
         <div className="flex flex-col">
           <button
             disabled={isFirst}
@@ -251,6 +298,11 @@ function RoutineExerciseRow({
       </div>
 
       <SetPlanner sets={rex.sets} onSave={onSaveSets} />
+
+      <ExerciseDetailModal
+        exercise={detail ? exercise ?? null : null}
+        onClose={() => setDetail(false)}
+      />
     </li>
   );
 }

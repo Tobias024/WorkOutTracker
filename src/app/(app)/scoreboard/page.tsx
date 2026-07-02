@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Trophy, Medal, ChevronDown } from "lucide-react";
-import { PageHeader, Spinner, EmptyState, Button } from "@/components/ui";
+import { PageHeader, Spinner, EmptyState, Button, Tabs } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { NotificationToggle } from "@/components/NotificationToggle";
 import {
@@ -12,22 +12,31 @@ import {
 } from "@/hooks/useScoreboard";
 import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
-import type { Exercise } from "@/lib/types";
+import type { Exercise, Sex } from "@/lib/types";
 
 const METRICS: { key: Metric; label: string }[] = [
   { key: "volume", label: "Volumen" },
   { key: "frequency", label: "Frecuencia" },
   { key: "weight", label: "Peso" },
+  { key: "strength", label: "Fuerza" },
+  { key: "reps", label: "Reps" },
 ];
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },
   { key: "month", label: "Mes" },
   { key: "all", label: "Todo" },
 ];
+const SEXES: { key: Sex | ""; label: string }[] = [
+  { key: "", label: "Todos" },
+  { key: "male", label: "Varones" },
+  { key: "female", label: "Mujeres" },
+];
+const NEEDS_EXERCISE: Metric[] = ["weight", "strength"];
 
 export default function ScoreboardPage() {
   const [metric, setMetric] = useState<Metric>("volume");
   const [period, setPeriod] = useState<Period>("week");
+  const [sex, setSex] = useState<Sex | "">("");
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [picker, setPicker] = useState(false);
 
@@ -35,10 +44,12 @@ export default function ScoreboardPage() {
     metric,
     period,
     exercise?.id,
+    sex || null,
   );
 
   function fmt(v: number) {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
+    if (metric === "reps") return `${v} reps`;
     if (metric === "volume") return formatVolume(v);
     return formatWeight(v);
   }
@@ -51,30 +62,29 @@ export default function ScoreboardPage() {
         action={<NotificationToggle />}
       />
 
-      <div className="flex gap-1.5 mb-2">
-        {METRICS.map((mt) => (
-          <Pill
-            key={mt.key}
-            active={metric === mt.key}
-            onClick={() => setMetric(mt.key)}
-          >
-            {mt.label}
-          </Pill>
-        ))}
+      <div className="mb-2">
+        <Tabs
+          value={metric}
+          onChange={setMetric}
+          options={METRICS.map((mt) => ({ value: mt.key, label: mt.label }))}
+        />
       </div>
-      <div className="flex gap-1.5 mb-4">
-        {PERIODS.map((p) => (
-          <Pill
-            key={p.key}
-            active={period === p.key}
-            onClick={() => setPeriod(p.key)}
-          >
-            {p.label}
-          </Pill>
-        ))}
+      <div className="mb-2">
+        <Tabs
+          value={period}
+          onChange={setPeriod}
+          options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+        />
+      </div>
+      <div className="mb-4">
+        <Tabs
+          value={sex}
+          onChange={setSex}
+          options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
+        />
       </div>
 
-      {metric === "weight" && (
+      {NEEDS_EXERCISE.includes(metric) && (
         <Button
           variant="secondary"
           className="w-full mb-4 justify-between"
@@ -87,11 +97,11 @@ export default function ScoreboardPage() {
         </Button>
       )}
 
-      {metric === "weight" && !exercise ? (
+      {NEEDS_EXERCISE.includes(metric) && !exercise ? (
         <EmptyState
           icon={<Trophy className="size-8" />}
           title="Elegí un ejercicio"
-          description="Para comparar pesos máximos entre amigos."
+          description="Para comparar entre amigos."
         />
       ) : isLoading ? (
         <div className="grid place-items-center py-16">
@@ -151,29 +161,5 @@ export default function ScoreboardPage() {
         onSelect={(ex) => setExercise(ex)}
       />
     </div>
-  );
-}
-
-function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        "flex-1 rounded-md py-2 text-sm font-medium ring-1 transition",
-        active
-          ? "bg-primary text-primary-fg ring-primary"
-          : "bg-surface-2 text-muted ring-border hover:text-fg",
-      )}
-    >
-      {children}
-    </button>
   );
 }

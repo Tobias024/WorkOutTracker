@@ -193,3 +193,45 @@ export function Stat({ label, value }: { label: string; value: React.ReactNode }
     </div>
   );
 }
+
+/**
+ * Filtro tipo tabs. `scroll` = fila scrolleable de ancho natural (muchas
+ * opciones, ej. categorías); por defecto, segmented control de ancho igual
+ * (pocas opciones fijas, ej. métrica/período).
+ */
+export function Tabs<T extends string>({
+  value,
+  onChange,
+  options,
+  scroll,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+  scroll?: boolean;
+}) {
+  return (
+    <div
+      className={clsx(
+        "flex gap-1 rounded-md bg-surface-2 p-1",
+        scroll ? "overflow-x-auto no-scrollbar" : "",
+      )}
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={clsx(
+            "rounded py-1.5 text-sm font-medium transition whitespace-nowrap",
+            scroll ? "px-3" : "flex-1",
+            value === opt.value
+              ? "bg-primary text-primary-fg"
+              : "text-muted hover:text-fg",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}

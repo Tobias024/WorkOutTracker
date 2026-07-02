@@ -12,6 +12,8 @@ export type Profile = {
   display_name: string | null;
   avatar_url: string | null;
   sex: Sex | null;
+  height_cm: number | null;
+  weight_kg: number | null;
   created_at: string;
 };
 
@@ -60,6 +62,13 @@ export type RoutineSet = {
   set_number: number;
   target_reps: number | null;
   target_weight: number | null;
+};
+
+export type RoutineScheduleEntry = {
+  id: string;
+  routine_id: string;
+  weekday: number; // 0=domingo ... 6=sábado
+  created_at: string;
 };
 
 export type WorkoutSession = {
@@ -155,6 +164,28 @@ export type ScoreboardRow = {
   value: number;
 };
 
+export type FriendMetrics = {
+  total_volume: number;
+  session_count: number;
+  frequency_days: number;
+  weekly_volume: { week: string; volume: number }[];
+  top_prs: { exercise_id: string; weight: number; orm: number }[];
+};
+
+export type CommonExerciseMax = {
+  exercise_id: string;
+  my_weight: number;
+  my_orm: number;
+  friend_weight: number;
+  friend_orm: number;
+};
+
+export type ComplianceStats = {
+  planned_days: number;
+  completed_days: number;
+  pct: number;
+};
+
 type Table<T extends Record<string, unknown>> = {
   Row: T;
   Insert: Partial<T>;
@@ -177,6 +208,7 @@ export type Database = {
       friendships: Table<Friendship>;
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
+      routine_schedule: Table<RoutineScheduleEntry>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -197,12 +229,29 @@ export type Database = {
         Returns: RoutinePreview;
       };
       scoreboard_stats: {
-        Args: { p_metric: string; p_since: string; p_exercise_id?: string };
+        Args: {
+          p_metric: string;
+          p_since: string;
+          p_exercise_id?: string;
+          p_sex?: string | null;
+        };
         Returns: ScoreboardRow[];
       };
       detect_rank_overtakes: {
         Args: Record<string, never>;
         Returns: { user_id: string; by_name: string | null; by_id: string }[];
+      };
+      friend_metrics: {
+        Args: { p_friend_id: string; p_since: string };
+        Returns: FriendMetrics;
+      };
+      common_exercise_maxes: {
+        Args: { p_friend_id: string; p_since?: string };
+        Returns: CommonExerciseMax[];
+      };
+      compliance_stats: {
+        Args: { p_from: string; p_to: string };
+        Returns: ComplianceStats[];
       };
     };
   };

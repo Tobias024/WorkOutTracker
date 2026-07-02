@@ -1,16 +1,30 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LineChart, ChevronRight, Dumbbell, Zap } from "lucide-react";
-import { PageHeader, Spinner, EmptyState, Stat, Button } from "@/components/ui";
+import { LineChart, ChevronRight, Dumbbell, Zap, Info } from "lucide-react";
+import {
+  PageHeader,
+  Spinner,
+  EmptyState,
+  Stat,
+  Button,
+  Modal,
+} from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
-import { totalVolume, estimate1RM, weekStart, effectiveDrops } from "@/lib/metrics";
-import { formatDate, formatDuration, formatVolume } from "@/lib/format";
+import {
+  totalVolume,
+  estimate1RM,
+  weekStart,
+  effectiveDrops,
+  streak,
+  avgDuration,
+} from "@/lib/metrics";
+import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 
 function sessionVolume(s: HistorySession): number {
@@ -75,7 +89,7 @@ export default function RegistroPage() {
     const maxMuscle = byMuscle[0]?.[1] ?? 1;
 
     // Récords por ejercicio (mejor 1RM estimado).
-    const prMap = new Map<string, { weight: number; orm: number }>();
+    const prMap = new Map<string, { weight: number; orm: number; date: string }>();
     for (const s of sessions) {
       for (const we of s.workout_exercises) {
         for (const set of we.workout_sets) {
@@ -85,7 +99,7 @@ export default function RegistroPage() {
             const orm = estimate1RM(d.weight, d.reps);
             const cur = prMap.get(we.exercise_id);
             if (!cur || orm > cur.orm) {
-              prMap.set(we.exercise_id, { weight: d.weight, orm });
+              prMap.set(we.exercise_id, { weight: d.weight, orm, date: s.created_at });
             }
           }
         }
@@ -95,8 +109,21 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    return { totalVol, chart, freq, byMuscle, maxMuscle, prs, count: sessions.length };
+    return {
+      totalVol,
+      chart,
+      freq,
+      byMuscle,
+      maxMuscle,
+      prs,
+      count: sessions.length,
+      streakDays: streak(sessions),
+      avgDurationSec: avgDuration(sessions),
+      favoriteMuscle: byMuscle[0]?.[0] ?? null,
+    };
   }, [data, exMap]);
+
+  const [volumeInfo, setVolumeInfo] = useState(false);
 
   if (isLoading) {
     return (
@@ -140,8 +167,38 @@ export default function RegistroPage() {
             <Stat label="Esta semana" value={metrics.freq} />
           </div>
 
+          <div className="grid grid-cols-3 gap-2.5">
+            <Stat
+              label="Racha"
+              value={`${metrics.streakDays} ${metrics.streakDays === 1 ? "día" : "días"}`}
+            />
+            <Stat
+              label="Duración promedio"
+              value={
+                metrics.avgDurationSec
+                  ? formatDuration(metrics.avgDurationSec)
+                  : "—"
+              }
+            />
+            <Stat
+              label="Músculo preferido"
+              value={
+                metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "—"
+              }
+            />
+          </div>
+
           <div className="card p-4">
-            <p className="text-sm font-medium mb-2">Volumen semanal</p>
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="text-sm font-medium">Volumen semanal</p>
+              <button
+                onClick={() => setVolumeInfo(true)}
+                className="text-muted hover:text-fg"
+                aria-label="¿Cómo se calcula el volumen?"
+              >
+                <Info className="size-3.5" />
+              </button>
+            </div>
             <VolumeChart data={metrics.chart} />
           </div>
 
@@ -176,8 +233,13 @@ export default function RegistroPage() {
                     key={exId}
                     className="flex items-center justify-between text-sm"
                   >
-                    <span className="truncate mr-2">
-                      {exMap.get(exId)?.name ?? "—"}
+                    <span className="min-w-0 mr-2">
+                      <span className="block truncate">
+                        {exMap.get(exId)?.name ?? "—"}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {formatDateTime(pr.date)}
+                      </span>
                     </span>
                     <span className="text-accent font-medium shrink-0">
                       {pr.orm} kg
@@ -218,6 +280,17 @@ export default function RegistroPage() {
           </div>
         </div>
       )}
+
+      <Modal
+        open={volumeInfo}
+        onClose={() => setVolumeInfo(false)}
+        title="¿Cómo se calcula el volumen?"
+      >
+        <p className="text-sm text-muted">
+          Volumen = reps × peso de cada serie completada. Si una serie tiene
+          bajadas (drop set), se suman todas las bajadas.
+        </p>
+      </Modal>
     </div>
   );
 }
