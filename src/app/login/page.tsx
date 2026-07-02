@@ -11,10 +11,22 @@ const AUTH_ERROR_ES: Record<string, string> = {
   "User already registered": "Ya existe una cuenta con ese mail. Iniciá sesión.",
   "Password should be at least 6 characters.":
     "La contraseña tiene que tener al menos 6 caracteres.",
+  "Email rate limit exceeded":
+    "Se enviaron demasiados mails a esta dirección. Esperá unos minutos y volvé a intentar.",
+  "email rate limit exceeded":
+    "Se enviaron demasiados mails a esta dirección. Esperá unos minutos y volvé a intentar.",
 };
 
 function translateError(message: string) {
-  return AUTH_ERROR_ES[message] ?? message;
+  if (AUTH_ERROR_ES[message]) return AUTH_ERROR_ES[message];
+  if (/rate limit exceeded/i.test(message)) {
+    return "Se enviaron demasiados mails a esta dirección. Esperá unos minutos y volvé a intentar.";
+  }
+  const cooldown = message.match(/after (\d+) seconds/i);
+  if (cooldown) {
+    return `Por seguridad, esperá ${cooldown[1]} segundos antes de volver a pedir el mail.`;
+  }
+  return message;
 }
 
 function LoginForm() {
