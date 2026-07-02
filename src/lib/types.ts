@@ -14,6 +14,8 @@ export type Profile = {
   sex: Sex | null;
   height_cm: number | null;
   weight_kg: number | null;
+  /** Días de la semana que el usuario planea entrenar (0=domingo … 6=sábado). */
+  planned_weekdays: number[];
   created_at: string;
 };
 
@@ -62,13 +64,6 @@ export type RoutineSet = {
   set_number: number;
   target_reps: number | null;
   target_weight: number | null;
-};
-
-export type RoutineScheduleEntry = {
-  id: string;
-  routine_id: string;
-  weekday: number; // 0=domingo ... 6=sábado
-  created_at: string;
 };
 
 export type WorkoutSession = {
@@ -180,12 +175,6 @@ export type CommonExerciseMax = {
   friend_orm: number;
 };
 
-export type ComplianceStats = {
-  planned_days: number;
-  completed_days: number;
-  pct: number;
-};
-
 type Table<T extends Record<string, unknown>> = {
   Row: T;
   Insert: Partial<T>;
@@ -208,7 +197,6 @@ export type Database = {
       friendships: Table<Friendship>;
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
-      routine_schedule: Table<RoutineScheduleEntry>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -248,10 +236,6 @@ export type Database = {
       common_exercise_maxes: {
         Args: { p_friend_id: string; p_since?: string };
         Returns: CommonExerciseMax[];
-      };
-      compliance_stats: {
-        Args: { p_from: string; p_to: string };
-        Returns: ComplianceStats[];
       };
     };
   };

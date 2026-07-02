@@ -29,17 +29,10 @@ import {
   type RoutineExerciseWithSets,
   type SetPlan,
 } from "@/hooks/useRoutines";
-import {
-  useRoutineSchedule,
-  useSetRoutineSchedule,
-} from "@/hooks/useRoutineSchedule";
 import { useStartWorkout } from "@/hooks/useWorkout";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
-import { clsx } from "@/lib/clsx";
 import type { Exercise } from "@/lib/types";
-
-const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 
 export default function RoutineEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,8 +44,6 @@ export default function RoutineEditorPage() {
   const del = useDeleteRoutine();
   const share = useShareRoutine();
   const start = useStartWorkout();
-  const { data: schedule } = useRoutineSchedule(id);
-  const setSchedule = useSetRoutineSchedule(id);
 
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
@@ -120,35 +111,6 @@ export default function RoutineEditorPage() {
         >
           <Trash2 className="size-4" /> Eliminar
         </Button>
-      </div>
-
-      <div className="mb-4">
-        <p className="text-xs text-muted mb-1.5">Días planificados</p>
-        <div className="flex gap-1.5">
-          {WEEKDAYS.map((label, weekday) => {
-            const active = schedule?.includes(weekday) ?? false;
-            return (
-              <button
-                key={weekday}
-                onClick={() => {
-                  const current = schedule ?? [];
-                  const next = active
-                    ? current.filter((d) => d !== weekday)
-                    : [...current, weekday];
-                  setSchedule.mutate(next);
-                }}
-                className={clsx(
-                  "size-9 rounded-md text-sm font-medium transition",
-                  active
-                    ? "bg-primary text-primary-fg"
-                    : "bg-surface-2 text-muted hover:text-fg",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {exercises.length === 0 ? (

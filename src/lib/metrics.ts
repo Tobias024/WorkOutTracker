@@ -77,22 +77,81 @@ export function bmiCategory(value: number): BmiCategory {
   return "obesidad";
 }
 
-/**
- * Racha de días consecutivos con al menos una sesión, contando hacia atrás
- * desde hoy (o desde ayer, si hoy todavía no hay sesión registrada).
- */
-export function streak(sessions: { created_at: string }[]): number {
-  const days = new Set(sessions.map((s) => dateKey(s.created_at)));
-  const cursor = new Date();
-  if (!days.has(dateKey(cursor.toISOString()))) {
-    cursor.setDate(cursor.getDate() - 1);
+/** Cantidad de días distintos con sesión, agrupados por semana (timestamp del lunes). */
+function visitsByWeek(sessions: { created_at: string }[]): Map<number, Set<string>> {
+  const map = new Map<number, Set<string>>();
+  for (const s of sessions) {
+    const wk = weekStart(new Date(s.created_at)).getTime();
+    const set = map.get(wk) ?? new Set<string>();
+    set.add(dateKey(s.created_at));
+    map.set(wk, set);
   }
+  return map;
+}
+
+/**
+ * Racha en semanas según el plan semanal. Una semana "cumple" si tuvo al menos
+ * `plannedCount` días distintos con sesión. Cuenta semanas consecutivas hacia
+ * atrás desde la última semana completa; suma 1 si la semana en curso ya cumplió.
+ * La semana en curso sin cumplir todavía NO rompe la racha (recuperable).
+ */
+export function weeklyStreak(
+  sessions: { created_at: string }[],
+  plannedCount: number,
+): number {
+  if (plannedCount <= 0) return 0;
+  const byWeek = visitsByWeek(sessions);
+  const met = (wkMs: number) => (byWeek.get(wkMs)?.size ?? 0) >= plannedCount;
+
+  const thisWeek = weekStart(new Date());
   let count = 0;
-  while (days.has(dateKey(cursor.toISOString()))) {
+  if (met(thisWeek.getTime())) count++;
+
+  const cursor = new Date(thisWeek);
+  cursor.setDate(cursor.getDate() - 7);
+  while (met(cursor.getTime())) {
     count++;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor.setDate(cursor.getDate() - 7);
   }
   return count;
+}
+
+export interface Compliance {
+  plannedDays: number;
+  completedDays: number;
+  pct: number;
+}
+
+/**
+ * Cumplimiento del mes de `ref`: cuenta los días planificados (según
+ * plannedWeekdays) desde el 1° hasta hoy, y cuántos de esos tienen sesión.
+ * Los días futuros no entran en el denominador.
+ */
+export function monthlyCompliance(
+  sessions: { created_at: string }[],
+  plannedWeekdays: number[],
+  ref: Date,
+): Compliance {
+  const planned = new Set(plannedWeekdays);
+  const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
+  const todayKey = dateKey(ref.toISOString());
+  const year = ref.getFullYear();
+  const month = ref.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let plannedDays = 0;
+  let completedDays = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const key = dateKey(date.toISOString());
+    if (key > todayKey) break; // no contar el futuro
+    if (!planned.has(date.getDay())) continue;
+    plannedDays++;
+    if (sessionDays.has(key)) completedDays++;
+  }
+  const pct =
+    plannedDays === 0 ? 0 : Math.round((completedDays / plannedDays) * 1000) / 10;
+  return { plannedDays, completedDays, pct };
 }
 
 /** Promedio de duración (segundos) de las sesiones finalizadas. */

@@ -16,16 +16,22 @@ import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
+import { useWeeklyPlan, useSetWeeklyPlan } from "@/hooks/useWeeklyPlan";
 import {
   totalVolume,
   estimate1RM,
   weekStart,
   effectiveDrops,
-  streak,
+  weeklyStreak,
   avgDuration,
+  monthlyCompliance,
+  dateKey,
 } from "@/lib/metrics";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { clsx } from "@/lib/clsx";
+
+const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 
 function sessionVolume(s: HistorySession): number {
   return s.workout_exercises.reduce(
@@ -45,6 +51,9 @@ export default function RegistroPage() {
   const exMap = useExerciseMap();
   const router = useRouter();
   const startEmpty = useStartEmptyWorkout();
+  const { data: plan } = useWeeklyPlan();
+  const setPlan = useSetWeeklyPlan();
+  const plannedWeekdays = plan ?? [];
 
   const metrics = useMemo(() => {
     const sessions = data ?? [];
@@ -117,11 +126,38 @@ export default function RegistroPage() {
       maxMuscle,
       prs,
       count: sessions.length,
-      streakDays: streak(sessions),
       avgDurationSec: avgDuration(sessions),
       favoriteMuscle: byMuscle[0]?.[0] ?? null,
     };
   }, [data, exMap]);
+
+  // Racha semanal + calendario de cumplimiento (dependen del plan).
+  const planStats = useMemo(() => {
+    const sessions = data ?? [];
+    const now = new Date();
+    const streakWeeks = weeklyStreak(sessions, plannedWeekdays.length);
+    const compliance = monthlyCompliance(sessions, plannedWeekdays, now);
+
+    const planned = new Set(plannedWeekdays);
+    const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
+    const todayKey = dateKey(now.toISOString());
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const leadingBlanks = new Date(year, month, 1).getDay();
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month, d);
+      const key = dateKey(date.toISOString());
+      days.push({
+        day: d,
+        planned: planned.has(date.getDay()),
+        completed: sessionDays.has(key),
+        isPast: key <= todayKey,
+      });
+    }
+    return { streakWeeks, compliance, days, leadingBlanks };
+  }, [data, plannedWeekdays]);
 
   const [volumeInfo, setVolumeInfo] = useState(false);
 
@@ -170,7 +206,11 @@ export default function RegistroPage() {
           <div className="grid grid-cols-3 gap-2.5">
             <Stat
               label="Racha"
-              value={`${metrics.streakDays} ${metrics.streakDays === 1 ? "día" : "días"}`}
+              value={
+                plannedWeekdays.length === 0
+                  ? "—"
+                  : `${planStats.streakWeeks} sem`
+              }
             />
             <Stat
               label="Duración promedio"
@@ -186,6 +226,82 @@ export default function RegistroPage() {
                 metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "—"
               }
             />
+          </div>
+
+          <div className="card p-4">
+            <p className="text-sm font-medium mb-1">Plan semanal</p>
+            <p className="text-xs text-muted mb-3">
+              Elegí los días que planeás entrenar. Tu meta es{" "}
+              {plannedWeekdays.length || "—"}{" "}
+              {plannedWeekdays.length === 1 ? "día" : "días"} por semana.
+            </p>
+            <div className="flex gap-1.5 mb-4">
+              {WEEKDAYS.map((label, weekday) => {
+                const active = plannedWeekdays.includes(weekday);
+                return (
+                  <button
+                    key={weekday}
+                    onClick={() => {
+                      const next = active
+                        ? plannedWeekdays.filter((d) => d !== weekday)
+                        : [...plannedWeekdays, weekday];
+                      setPlan.mutate(next);
+                    }}
+                    className={clsx(
+                      "size-9 rounded-md text-sm font-medium transition",
+                      active
+                        ? "bg-primary text-primary-fg"
+                        : "bg-surface-2 text-muted hover:text-fg",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {setPlan.isError && (
+              <p className="text-xs text-danger mb-3">
+                No se pudo guardar. Probá de nuevo.
+              </p>
+            )}
+
+            {plannedWeekdays.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-muted">Cumplimiento del mes</span>
+                  <span className="text-lg font-bold">
+                    {planStats.compliance.pct}%
+                  </span>
+                </div>
+                <div className="grid grid-cols-7 gap-1.5 text-center text-xs text-muted mb-1.5">
+                  {WEEKDAYS.map((d, i) => (
+                    <span key={i}>{d}</span>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {Array.from({ length: planStats.leadingBlanks }).map((_, i) => (
+                    <div key={`blank-${i}`} />
+                  ))}
+                  {planStats.days.map(({ day, planned, completed, isPast }) => (
+                    <div
+                      key={day}
+                      className={clsx(
+                        "aspect-square rounded-md grid place-items-center text-xs font-medium",
+                        !planned && "bg-surface-2 text-muted",
+                        planned && completed && "bg-success/20 text-success",
+                        planned && !completed && isPast && "bg-danger/20 text-danger",
+                        planned &&
+                          !completed &&
+                          !isPast &&
+                          "ring-1 ring-primary/40 text-fg",
+                      )}
+                    >
+                      {day}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="card p-4">

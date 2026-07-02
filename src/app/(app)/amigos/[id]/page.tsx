@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowDown } from "lucide-react";
 import { Spinner, Tabs, EmptyState } from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { createClient } from "@/lib/supabase/client";
@@ -33,32 +33,52 @@ function useFriendInfo(friendId: string) {
   });
 }
 
-function CompareRow({
+/** Un lado del head-to-head: verde + ▲ si gana, rojo + ▼ si pierde. */
+function Side({
+  value,
+  state,
+  align,
+}: {
+  value: string;
+  state: -1 | 0 | 1;
+  align: "start" | "end";
+}) {
+  const Arrow = state === 1 ? ArrowUp : state === -1 ? ArrowDown : null;
+  return (
+    <div
+      className={clsx(
+        "flex items-center gap-1 font-semibold tabular-nums text-sm",
+        align === "end" ? "justify-end" : "justify-start",
+        state === 1 ? "text-success" : state === -1 ? "text-danger" : "text-fg",
+      )}
+    >
+      {align === "start" && Arrow && <Arrow className="size-3.5 shrink-0" />}
+      <span className="truncate">{value}</span>
+      {align === "end" && Arrow && <Arrow className="size-3.5 shrink-0" />}
+    </div>
+  );
+}
+
+/** Fila de comparación head-to-head (vos a la izquierda, el amigo a la derecha). */
+function VsRow({
   label,
   mine,
   theirs,
   format,
 }: {
-  label: string;
+  label: React.ReactNode;
   mine: number;
   theirs: number;
   format: (v: number) => string;
 }) {
-  const color =
-    mine === theirs
-      ? "text-fg"
-      : mine > theirs
-        ? "text-success"
-        : "text-danger";
+  const cmp: -1 | 0 | 1 = mine === theirs ? 0 : mine > theirs ? 1 : -1;
   return (
-    <div className="flex items-center justify-between text-sm py-1.5">
-      <span className="text-muted">{label}</span>
-      <span className={clsx("font-semibold tabular-nums", color)}>
-        {format(mine)}
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2 border-t border-border first:border-t-0">
+      <Side value={format(mine)} state={cmp} align="end" />
+      <span className="text-[11px] uppercase tracking-wide text-muted text-center px-1 truncate">
+        {label}
       </span>
-      <span className="font-semibold tabular-nums text-muted">
-        {format(theirs)}
-      </span>
+      <Side value={format(theirs)} state={(-cmp) as -1 | 0 | 1} align="start" />
     </div>
   );
 }
@@ -115,28 +135,32 @@ export default function FriendProfilePage() {
       ) : (
         <div className="flex flex-col gap-5 mt-4">
           <div className="card p-4">
-            <div className="flex items-center justify-between text-xs text-muted mb-1 px-0">
-              <span />
-              <span>Vos</span>
-              <span>{friend?.display_name ?? friend?.username}</span>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 mb-2">
+              <span className="text-right font-semibold text-primary truncate">
+                Vos
+              </span>
+              <span className="text-xs text-muted">vs</span>
+              <span className="font-semibold truncate">
+                {friend?.display_name ?? friend?.username}
+              </span>
             </div>
-            <CompareRow
+            <VsRow
               label="Volumen"
               mine={mine.total_volume}
               theirs={theirs.total_volume}
               format={formatVolume}
             />
-            <CompareRow
+            <VsRow
               label="Entrenos"
               mine={mine.session_count}
               theirs={theirs.session_count}
               format={(v) => String(v)}
             />
-            <CompareRow
+            <VsRow
               label="Frecuencia"
               mine={mine.frequency_days}
               theirs={theirs.frequency_days}
-              format={(v) => `${v} días`}
+              format={(v) => `${v} d`}
             />
           </div>
 
@@ -150,29 +174,24 @@ export default function FriendProfilePage() {
           )}
 
           <div className="card p-4">
-            <p className="text-sm font-medium mb-3">Ejercicios en común</p>
+            <p className="text-sm font-medium mb-1">Ejercicios en común</p>
+            <p className="text-xs text-muted mb-2">Mejor 1RM estimado</p>
             {!common?.length ? (
               <p className="text-sm text-muted">
                 Todavía no entrenaron el mismo ejercicio.
               </p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <div className="flex flex-col">
                 {common.map((c) => (
-                  <li key={c.exercise_id}>
-                    <div className="flex items-center justify-between text-sm mb-0.5">
-                      <span className="truncate mr-2">
-                        {exMap.get(c.exercise_id)?.name ?? "—"}
-                      </span>
-                    </div>
-                    <CompareRow
-                      label=""
-                      mine={c.my_orm}
-                      theirs={c.friend_orm}
-                      format={(v) => `${formatWeight(v)} (1RM)`}
-                    />
-                  </li>
+                  <VsRow
+                    key={c.exercise_id}
+                    label={exMap.get(c.exercise_id)?.name ?? "—"}
+                    mine={c.my_orm}
+                    theirs={c.friend_orm}
+                    format={(v) => formatWeight(v)}
+                  />
                 ))}
-              </ul>
+              </div>
             )}
           </div>
 
