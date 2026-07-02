@@ -48,9 +48,19 @@ export function summarizeSets(
   };
 }
 
-/** Agrupa por clave ISO de fecha (YYYY-MM-DD). */
+/** Agrupa por clave de fecha local (YYYY-MM-DD). Usa getters locales, no UTC:
+ *  slicear el ISO crudo desalinea el día para usuarios en UTC negativo que
+ *  entrenan de noche (el timestamptz ya rodó al día UTC siguiente). */
 export function dateKey(iso: string): string {
-  return iso.slice(0, 10);
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Medianoche local a partir de una columna `date` de Postgres ("YYYY-MM-DD",
+ *  sin hora). `new Date("YYYY-MM-DD")` sin la hora se interpreta como UTC, lo
+ *  que reintroduciría el mismo desfase que dateKey corrige arriba. */
+export function localMidnight(dateOnly: string): Date {
+  return new Date(`${dateOnly}T00:00:00`);
 }
 
 /** Inicio de semana (lunes) para una fecha dada. */
@@ -89,19 +99,26 @@ function visitsByWeek(sessions: { created_at: string }[]): Map<number, Set<strin
   return map;
 }
 
+/** Resuelve los días planificados (0=domingo…6=sábado) vigentes para la
+ *  semana que arranca en `weekStartMs` (timestamp del lunes 00:00 local). */
+export type PlanResolver = (weekStartMs: number) => number[];
+
 /**
- * Racha en semanas según el plan semanal. Una semana "cumple" si tuvo al menos
- * `plannedCount` días distintos con sesión. Cuenta semanas consecutivas hacia
- * atrás desde la última semana completa; suma 1 si la semana en curso ya cumplió.
- * La semana en curso sin cumplir todavía NO rompe la racha (recuperable).
+ * Racha en semanas según el plan semanal (resuelto por semana). Una semana
+ * "cumple" si tuvo al menos tantos días distintos con sesión como días
+ * planificados esa semana. Cuenta semanas consecutivas hacia atrás desde la
+ * última semana completa; suma 1 si la semana en curso ya cumplió. La semana
+ * en curso sin cumplir todavía NO rompe la racha (recuperable).
  */
 export function weeklyStreak(
   sessions: { created_at: string }[],
-  plannedCount: number,
+  resolvePlanned: PlanResolver,
 ): number {
-  if (plannedCount <= 0) return 0;
   const byWeek = visitsByWeek(sessions);
-  const met = (wkMs: number) => (byWeek.get(wkMs)?.size ?? 0) >= plannedCount;
+  const met = (wkMs: number) => {
+    const plannedCount = resolvePlanned(wkMs).length;
+    return plannedCount > 0 && (byWeek.get(wkMs)?.size ?? 0) >= plannedCount;
+  };
 
   const thisWeek = weekStart(new Date());
   let count = 0;
@@ -123,16 +140,15 @@ export interface Compliance {
 }
 
 /**
- * Cumplimiento del mes de `ref`: cuenta los días planificados (según
- * plannedWeekdays) desde el 1° hasta hoy, y cuántos de esos tienen sesión.
- * Los días futuros no entran en el denominador.
+ * Cumplimiento del mes de `ref`: cuenta los días planificados (según el plan
+ * vigente de cada semana, plantilla u override) desde el 1° hasta hoy, y
+ * cuántos de esos tienen sesión. Los días futuros no entran en el denominador.
  */
 export function monthlyCompliance(
   sessions: { created_at: string }[],
-  plannedWeekdays: number[],
+  resolvePlanned: PlanResolver,
   ref: Date,
 ): Compliance {
-  const planned = new Set(plannedWeekdays);
   const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
   const todayKey = dateKey(ref.toISOString());
   const year = ref.getFullYear();
@@ -145,6 +161,7 @@ export function monthlyCompliance(
     const date = new Date(year, month, d);
     const key = dateKey(date.toISOString());
     if (key > todayKey) break; // no contar el futuro
+    const planned = new Set(resolvePlanned(weekStart(date).getTime()));
     if (!planned.has(date.getDay())) continue;
     plannedDays++;
     if (sessionDays.has(key)) completedDays++;
@@ -159,4 +176,16 @@ export function avgDuration(sessions: { duration_seconds: number | null }[]): nu
   const done = sessions.filter((s) => s.duration_seconds != null);
   if (!done.length) return 0;
   return done.reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0) / done.length;
+}
+
+/** Promedio de entrenamientos por semana desde la primera sesión hasta hoy.
+ *  weeksElapsed se acota a mínimo 1 para no inflar el promedio en usuarios
+ *  nuevos (ej. 2 sesiones en 3 días no debería mostrar "4.7/sem"). */
+export function avgWeeklyWorkouts(sessions: { created_at: string }[]): number {
+  if (sessions.length === 0) return 0;
+  const earliest = Math.min(
+    ...sessions.map((s) => new Date(s.created_at).getTime()),
+  );
+  const weeksElapsed = Math.max(1, (Date.now() - earliest) / (7 * 86400000));
+  return sessions.length / weeksElapsed;
 }

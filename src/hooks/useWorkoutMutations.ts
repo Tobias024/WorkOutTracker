@@ -156,7 +156,12 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", sessionId);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    // Además de la sesión activa, esto puede tocar ended_at/duration_seconds
+    // al terminar el entrenamiento — Registro necesita verlo de inmediato.
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["history"] });
+    },
   });
 
   return {

@@ -106,7 +106,7 @@ export function useStartWorkout() {
         await supabase.from("workout_sets").insert(sets);
       }
 
-      qc.invalidateQueries({ queryKey: ["sessions"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
       return session.id;
     },
   });

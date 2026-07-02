@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LineChart, ChevronRight, Dumbbell, Zap, Info } from "lucide-react";
+import {
+  LineChart,
+  ChevronRight,
+  ChevronDown,
+  Dumbbell,
+  Zap,
+  Info,
+} from "lucide-react";
 import {
   PageHeader,
   Spinner,
@@ -16,7 +23,12 @@ import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
-import { useWeeklyPlan, useSetWeeklyPlan } from "@/hooks/useWeeklyPlan";
+import {
+  useWeeklyPlan,
+  useSetWeeklyPlan,
+  useWeeklyPlanOverrides,
+  useSetWeeklyPlanOverride,
+} from "@/hooks/useWeeklyPlan";
 import {
   totalVolume,
   estimate1RM,
@@ -24,14 +36,28 @@ import {
   effectiveDrops,
   weeklyStreak,
   avgDuration,
+  avgWeeklyWorkouts,
   monthlyCompliance,
   dateKey,
+  localMidnight,
+  type PlanResolver,
 } from "@/lib/metrics";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
 
 const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
+
+interface PlanDay {
+  day: number;
+  weekday: number;
+  wkMs: number;
+  planned: boolean;
+  completed: boolean;
+  isPast: boolean;
+  isEditableWeek: boolean;
+  isCurrentWeek: boolean;
+}
 
 function sessionVolume(s: HistorySession): number {
   return s.workout_exercises.reduce(
@@ -53,7 +79,23 @@ export default function RegistroPage() {
   const startEmpty = useStartEmptyWorkout();
   const { data: plan } = useWeeklyPlan();
   const setPlan = useSetWeeklyPlan();
-  const plannedWeekdays = plan ?? [];
+  const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
+  const { data: overrides } = useWeeklyPlanOverrides();
+  const setOverride = useSetWeeklyPlanOverride();
+
+  // Plan efectivo por semana: la excepción de esa semana si existe, si no la
+  // plantilla global. Ver "plantilla + excepciones" en useWeeklyPlan.ts.
+  const overrideMap = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const o of overrides ?? []) {
+      m.set(weekStart(localMidnight(o.week_start)).getTime(), o.weekdays);
+    }
+    return m;
+  }, [overrides]);
+  const resolvePlanned: PlanResolver = useCallback(
+    (wkMs: number) => overrideMap.get(wkMs) ?? plannedWeekdays,
+    [overrideMap, plannedWeekdays],
+  );
 
   const metrics = useMemo(() => {
     const sessions = data ?? [];
@@ -127,39 +169,71 @@ export default function RegistroPage() {
       prs,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
+      avgWeekly: avgWeeklyWorkouts(sessions),
       favoriteMuscle: byMuscle[0]?.[0] ?? null,
     };
   }, [data, exMap]);
 
-  // Racha semanal + calendario de cumplimiento (dependen del plan).
+  // Racha semanal + calendario de cumplimiento (dependen del plan, resuelto
+  // por semana: excepción puntual si existe, si no la plantilla global).
   const planStats = useMemo(() => {
     const sessions = data ?? [];
     const now = new Date();
-    const streakWeeks = weeklyStreak(sessions, plannedWeekdays.length);
-    const compliance = monthlyCompliance(sessions, plannedWeekdays, now);
+    const streakWeeks = weeklyStreak(sessions, resolvePlanned);
+    const compliance = monthlyCompliance(sessions, resolvePlanned, now);
 
-    const planned = new Set(plannedWeekdays);
     const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
     const todayKey = dateKey(now.toISOString());
+    const thisWeekMs = weekStart(now).getTime();
     const year = now.getFullYear();
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const leadingBlanks = new Date(year, month, 1).getDay();
-    const days = [];
+    const days: PlanDay[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
       const key = dateKey(date.toISOString());
+      const wkMs = weekStart(date).getTime();
+      const planned = new Set(resolvePlanned(wkMs));
       days.push({
         day: d,
+        weekday: date.getDay(),
+        wkMs,
         planned: planned.has(date.getDay()),
         completed: sessionDays.has(key),
         isPast: key <= todayKey,
+        isEditableWeek: wkMs >= thisWeekMs,
+        isCurrentWeek: wkMs === thisWeekMs,
       });
     }
     return { streakWeeks, compliance, days, leadingBlanks };
-  }, [data, plannedWeekdays]);
+  }, [data, resolvePlanned]);
 
   const [volumeInfo, setVolumeInfo] = useState(false);
+  const [planExpanded, setPlanExpanded] = useState(false);
+  const [pendingToggle, setPendingToggle] = useState<{
+    wkMs: number;
+    weekday: number;
+  } | null>(null);
+
+  function toggleDayForWeek(wkMs: number, weekday: number) {
+    const current = resolvePlanned(wkMs);
+    const next = current.includes(weekday)
+      ? current.filter((d) => d !== weekday)
+      : [...current, weekday];
+    const d = new Date(wkMs);
+    const weekStartKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setOverride.mutate({ weekStart: weekStartKey, weekdays: next });
+  }
+
+  function handleDayClick(day: PlanDay) {
+    if (!day.isEditableWeek) return;
+    if (day.isCurrentWeek) {
+      setPendingToggle({ wkMs: day.wkMs, weekday: day.weekday });
+      return;
+    }
+    toggleDayForWeek(day.wkMs, day.weekday);
+  }
 
   if (isLoading) {
     return (
@@ -228,81 +302,31 @@ export default function RegistroPage() {
             />
           </div>
 
-          <div className="card p-4">
-            <p className="text-sm font-medium mb-1">Plan semanal</p>
-            <p className="text-xs text-muted mb-3">
-              Elegí los días que planeás entrenar. Tu meta es{" "}
-              {plannedWeekdays.length || "—"}{" "}
-              {plannedWeekdays.length === 1 ? "día" : "días"} por semana.
-            </p>
-            <div className="flex gap-1.5 mb-4">
-              {WEEKDAYS.map((label, weekday) => {
-                const active = plannedWeekdays.includes(weekday);
-                return (
-                  <button
-                    key={weekday}
-                    onClick={() => {
-                      const next = active
-                        ? plannedWeekdays.filter((d) => d !== weekday)
-                        : [...plannedWeekdays, weekday];
-                      setPlan.mutate(next);
-                    }}
-                    className={clsx(
-                      "size-9 rounded-md text-sm font-medium transition",
-                      active
-                        ? "bg-primary text-primary-fg"
-                        : "bg-surface-2 text-muted hover:text-fg",
-                    )}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            {setPlan.isError && (
-              <p className="text-xs text-danger mb-3">
-                No se pudo guardar. Probá de nuevo.
-              </p>
-            )}
-
-            {plannedWeekdays.length > 0 && (
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-muted">Cumplimiento del mes</span>
-                  <span className="text-lg font-bold">
-                    {planStats.compliance.pct}%
-                  </span>
-                </div>
-                <div className="grid grid-cols-7 gap-1.5 text-center text-xs text-muted mb-1.5">
-                  {WEEKDAYS.map((d, i) => (
-                    <span key={i}>{d}</span>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1.5">
-                  {Array.from({ length: planStats.leadingBlanks }).map((_, i) => (
-                    <div key={`blank-${i}`} />
-                  ))}
-                  {planStats.days.map(({ day, planned, completed, isPast }) => (
-                    <div
-                      key={day}
-                      className={clsx(
-                        "aspect-square rounded-md grid place-items-center text-xs font-medium",
-                        !planned && "bg-surface-2 text-muted",
-                        planned && completed && "bg-success/20 text-success",
-                        planned && !completed && isPast && "bg-danger/20 text-danger",
-                        planned &&
-                          !completed &&
-                          !isPast &&
-                          "ring-1 ring-primary/40 text-fg",
-                      )}
-                    >
-                      {day}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+          <div className="grid grid-cols-2 gap-2.5">
+            <Stat
+              label="Cumplimiento"
+              value={
+                plannedWeekdays.length === 0
+                  ? "—"
+                  : `${planStats.compliance.pct}%`
+              }
+            />
+            <Stat
+              label="Promedio semanal"
+              value={
+                metrics.avgWeekly ? `${metrics.avgWeekly.toFixed(1)}/sem` : "—"
+              }
+            />
           </div>
+
+          <WeeklyPlanCard
+            plannedWeekdays={plannedWeekdays}
+            setPlan={setPlan}
+            planStats={planStats}
+            expanded={planExpanded}
+            onToggleExpanded={() => setPlanExpanded((v) => !v)}
+            onDayClick={handleDayClick}
+          />
 
           <div className="card p-4">
             <div className="flex items-center gap-1.5 mb-2">
@@ -407,6 +431,145 @@ export default function RegistroPage() {
           bajadas (drop set), se suman todas las bajadas.
         </p>
       </Modal>
+
+      <Modal
+        open={pendingToggle !== null}
+        onClose={() => setPendingToggle(null)}
+        title="Solo te mentís a vos"
+      >
+        <p className="text-sm text-muted mb-4">
+          Estás editando el plan de esta semana, la que ya está en curso.
+          Cambiar la meta ahora no borra lo que ya entrenaste (o no
+          entrenaste) — solo ajusta cuánto te exigís de acá al domingo.
+          ¿Confirmás el cambio?
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={() => setPendingToggle(null)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => {
+              if (pendingToggle) {
+                toggleDayForWeek(pendingToggle.wkMs, pendingToggle.weekday);
+              }
+              setPendingToggle(null);
+            }}
+          >
+            Confirmar
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function WeeklyPlanCard({
+  plannedWeekdays,
+  setPlan,
+  planStats,
+  expanded,
+  onToggleExpanded,
+  onDayClick,
+}: {
+  plannedWeekdays: number[];
+  setPlan: ReturnType<typeof useSetWeeklyPlan>;
+  planStats: {
+    days: PlanDay[];
+    leadingBlanks: number;
+  };
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  onDayClick: (day: PlanDay) => void;
+}) {
+  return (
+    <div className="card p-4">
+      <button
+        onClick={onToggleExpanded}
+        className="flex items-center justify-between w-full mb-1"
+        aria-expanded={expanded}
+      >
+        <p className="text-sm font-medium">Plan semanal</p>
+        <ChevronDown
+          className={clsx(
+            "size-4 text-muted transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+      <p className="text-xs text-muted mb-3">
+        Elegí los días que planeás entrenar. Tu meta es{" "}
+        {plannedWeekdays.length || "—"}{" "}
+        {plannedWeekdays.length === 1 ? "día" : "días"} por semana.
+      </p>
+      <div className="flex gap-1.5 mb-1">
+        {WEEKDAYS.map((label, weekday) => {
+          const active = plannedWeekdays.includes(weekday);
+          return (
+            <button
+              key={weekday}
+              onClick={() => {
+                const next = active
+                  ? plannedWeekdays.filter((d) => d !== weekday)
+                  : [...plannedWeekdays, weekday];
+                setPlan.mutate(next);
+              }}
+              className={clsx(
+                "size-9 rounded-md text-sm font-medium transition",
+                active
+                  ? "bg-primary text-primary-fg"
+                  : "bg-surface-2 text-muted hover:text-fg",
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      {setPlan.isError && (
+        <p className="text-xs text-danger mt-2">
+          No se pudo guardar. Probá de nuevo.
+        </p>
+      )}
+
+      {expanded && (
+        <div className="mt-4">
+          <div className="grid grid-cols-7 gap-1.5 text-center text-xs text-muted mb-1.5">
+            {WEEKDAYS.map((d, i) => (
+              <span key={i}>{d}</span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {Array.from({ length: planStats.leadingBlanks }).map((_, i) => (
+              <div key={`blank-${i}`} />
+            ))}
+            {planStats.days.map((pd) => (
+              <button
+                key={pd.day}
+                type="button"
+                disabled={!pd.isEditableWeek}
+                onClick={() => onDayClick(pd)}
+                className={clsx(
+                  "aspect-square rounded-md grid place-items-center text-xs font-medium",
+                  pd.isEditableWeek && "cursor-pointer",
+                  !pd.isEditableWeek && "cursor-default",
+                  !pd.planned && "bg-surface-2 text-muted",
+                  pd.planned && pd.completed && "bg-success/20 text-success",
+                  pd.planned &&
+                    !pd.completed &&
+                    pd.isPast &&
+                    "bg-danger/20 text-danger",
+                  pd.planned &&
+                    !pd.completed &&
+                    !pd.isPast &&
+                    "ring-1 ring-primary/40 text-fg",
+                )}
+              >
+                {pd.day}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

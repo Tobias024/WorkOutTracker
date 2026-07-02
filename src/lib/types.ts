@@ -115,6 +115,13 @@ export type ExerciseSubstitution = {
   created_at: string;
 };
 
+export type WeeklyPlanOverrideRow = {
+  user_id: string;
+  week_start: string;
+  weekdays: number[];
+  created_at: string;
+};
+
 export type PushSubscription = {
   id: string;
   user_id: string;
@@ -197,6 +204,7 @@ export type Database = {
       friendships: Table<Friendship>;
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
+      weekly_plan_overrides: Table<WeeklyPlanOverrideRow>;
     };
     Views: Record<string, never>;
     Functions: {
