@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, ArrowUp, ArrowDown } from "lucide-react";
 import { clsx } from "@/lib/clsx";
 import { useEffect } from "react";
 
@@ -185,11 +185,74 @@ export function Badge({
   );
 }
 
-export function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+export function Stat({
+  label,
+  value,
+  unit,
+  delta,
+}: {
+  label: string;
+  value: React.ReactNode;
+  unit?: string;
+  delta?: number | null;
+}) {
   return (
-    <div className="card p-4">
+    <div className="card p-3.5 rounded-lg">
       <p className="text-xs text-muted">{label}</p>
-      <p className="text-xl font-bold mt-1">{value}</p>
+      <p className="text-xl font-bold mt-1.5 tracking-tight">
+        {value}
+        {unit && <span className="text-xs text-muted font-medium ml-1">{unit}</span>}
+      </p>
+      {delta != null && (
+        <div className="mt-2">
+          <DeltaChip pct={delta} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Chip de variación: flecha + % redondeado, verde si sube, rojo si baja. */
+export function DeltaChip({ pct, suffix }: { pct: number; suffix?: string }) {
+  const up = pct >= 0;
+  const Arrow = up ? ArrowUp : ArrowDown;
+  return (
+    <span
+      className={clsx(
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold",
+        up ? "bg-success/15 text-success" : "bg-danger/15 text-danger",
+      )}
+    >
+      <Arrow className="size-2.5" strokeWidth={3} />
+      {Math.abs(Math.round(pct))}%{suffix ? ` ${suffix}` : ""}
+    </span>
+  );
+}
+
+/** Card de sección con header (título + subtítulo opcional). */
+export function SectionCard({
+  title,
+  subtitle,
+  action,
+  children,
+  className,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={clsx("card rounded-xl p-4", className)}>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          {subtitle && <p className="text-xs text-muted mt-0.5">{subtitle}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
     </div>
   );
 }

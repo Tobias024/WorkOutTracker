@@ -3,7 +3,17 @@
 import { useState } from "react";
 import { Check, MessageSquare, Plus, X } from "lucide-react";
 import { clsx } from "@/lib/clsx";
+import { rirOf } from "@/lib/metrics";
 import type { SetDrop, WorkoutSet } from "@/lib/types";
+
+const RIR_OPTS = [0, 1, 2, 3, 4, 5];
+
+/** Color de zona del RIR: 0–1 al fallo (danger), 2–3 productivo (success), 4–5+ lejos (muted). */
+function rirZone(rir: number): "danger" | "success" | "muted" {
+  if (rir <= 1) return "danger";
+  if (rir <= 3) return "success";
+  return "muted";
+}
 
 export function SetRow({
   set,
@@ -20,6 +30,8 @@ export function SetRow({
     set.drops && set.drops.length > 0
       ? set.drops
       : [{ reps: set.reps, weight: set.weight }];
+
+  const rir = rirOf(set);
 
   function commitDrops(next: SetDrop[]) {
     const first = next[0] ?? { reps: null, weight: null };
@@ -42,11 +54,17 @@ export function SetRow({
     commitDrops(drops.filter((_, i) => i !== index));
   }
 
+  function setRir(v: number | null) {
+    // Guarda en la columna rpe (rpe = 10 − rir); toggle si se re-toca el mismo.
+    onChange({ rpe: v == null ? null : 10 - v });
+  }
+
   return (
     <div
       className={clsx(
         "rounded-md px-2 py-1.5 transition",
         set.completed ? "bg-success/10" : "bg-surface-2",
+        set.is_warmup && "opacity-60",
       )}
     >
       <div className="flex items-center gap-2">
@@ -69,13 +87,16 @@ export function SetRow({
         />
 
         <button
-          onClick={() => setShowComment((s) => !s)}
+          onClick={() => onChange({ is_warmup: !set.is_warmup })}
+          title="Calentamiento (no cuenta)"
           className={clsx(
-            "size-9 grid place-items-center rounded shrink-0",
-            set.comment ? "text-accent" : "text-muted hover:text-fg",
+            "size-9 grid place-items-center rounded shrink-0 text-xs font-bold transition",
+            set.is_warmup
+              ? "bg-warning/20 text-warning ring-1 ring-warning/40"
+              : "bg-surface ring-1 ring-border text-muted hover:text-fg",
           )}
         >
-          <MessageSquare className="size-4" />
+          W
         </button>
 
         <button
@@ -97,6 +118,43 @@ export function SetRow({
           <X className="size-4" />
         </button>
       </div>
+
+      {/* RIR segmentado (oculto en warmups, que no llevan proximidad al fallo) */}
+      {!set.is_warmup && (
+        <div className="flex items-center gap-2 mt-1.5 pl-8">
+          <span className="text-muted text-xs shrink-0">RIR</span>
+          <div className="flex gap-1">
+            {RIR_OPTS.map((v) => {
+              const active = rir === v;
+              const zone = rirZone(v);
+              return (
+                <button
+                  key={v}
+                  onClick={() => setRir(active ? null : v)}
+                  className={clsx(
+                    "h-6 w-6 rounded text-[11px] font-bold ring-1 transition",
+                    active && zone === "danger" && "bg-danger/20 text-danger ring-danger/50",
+                    active && zone === "success" && "bg-success/20 text-success ring-success/50",
+                    active && zone === "muted" && "bg-surface-2 text-fg ring-border",
+                    !active && "bg-surface text-muted ring-border hover:text-fg",
+                  )}
+                >
+                  {v === 5 ? "5+" : v}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => setShowComment((s) => !s)}
+            className={clsx(
+              "size-6 grid place-items-center rounded shrink-0 ml-auto",
+              set.comment ? "text-accent" : "text-muted hover:text-fg",
+            )}
+          >
+            <MessageSquare className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {drops.slice(1).map((d, i) => (
         <div key={i + 1} className="flex items-center gap-2 mt-1.5 pl-8">

@@ -12,6 +12,7 @@
   --color-success: #34d399;
   --color-accent: #e8c468;
   --color-danger: #f87171;
+  --color-warning: #e0913a;
 
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;

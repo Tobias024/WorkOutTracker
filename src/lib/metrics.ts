@@ -9,6 +9,109 @@ export function effectiveDrops(s: SetLike): SetDrop[] {
     : [{ reps: s.reps, weight: s.weight }];
 }
 
+/** RIR (reps en reserva) derivado de la columna rpe (rpe = 10 − rir). null si no cargado. */
+export function rirOf(s: { rpe: number | null }): number | null {
+  return s.rpe == null ? null : 10 - s.rpe;
+}
+
+/** Un set "cuenta" para las métricas si está completado y no es calentamiento. */
+export function isCountableSet(s: {
+  completed: boolean;
+  is_warmup?: boolean | null;
+}): boolean {
+  return s.completed && !s.is_warmup;
+}
+
+/**
+ * "Hard set" (serie efectiva): set contable, con ≥5 reps y cerca del fallo
+ * (RIR ≤ 3, o sin RIR cargado). Es el driver de hipertrofia mejor soportado.
+ */
+export function isHardSet(s: {
+  completed: boolean;
+  is_warmup?: boolean | null;
+  reps: number | null;
+  rpe: number | null;
+}): boolean {
+  if (!isCountableSet(s)) return false;
+  if ((s.reps ?? 0) < 5) return false;
+  const rir = rirOf(s);
+  return rir == null || rir <= 3;
+}
+
+/** Reparto fraccional de un set entre músculos: primarios 1.0/n, secundarios 0.5/n. */
+export function muscleContributions(ex: {
+  primary_muscles: string[];
+  secondary_muscles: string[];
+}): { muscle: string; weight: number }[] {
+  const out: { muscle: string; weight: number }[] = [];
+  const prim = ex.primary_muscles ?? [];
+  const sec = ex.secondary_muscles ?? [];
+  for (const m of prim) out.push({ muscle: m, weight: 1 / prim.length });
+  for (const m of sec) out.push({ muscle: m, weight: 0.5 / sec.length });
+  return out;
+}
+
+/** Volume landmarks aproximados (sets/semana) por músculo, estilo Schoenfeld/RP. */
+export interface Landmark {
+  mev: number;
+  mav: number;
+  mrv: number;
+}
+const DEFAULT_LANDMARK: Landmark = { mev: 8, mav: 14, mrv: 20 };
+export const MUSCLE_LANDMARKS: Record<string, Landmark> = {
+  chest: { mev: 10, mav: 16, mrv: 22 },
+  lats: { mev: 10, mav: 16, mrv: 22 },
+  "middle back": { mev: 10, mav: 16, mrv: 22 },
+  "lower back": { mev: 6, mav: 10, mrv: 16 },
+  traps: { mev: 6, mav: 12, mrv: 20 },
+  shoulders: { mev: 8, mav: 18, mrv: 26 },
+  biceps: { mev: 8, mav: 14, mrv: 20 },
+  triceps: { mev: 6, mav: 12, mrv: 18 },
+  forearms: { mev: 6, mav: 12, mrv: 16 },
+  quadriceps: { mev: 8, mav: 14, mrv: 20 },
+  hamstrings: { mev: 6, mav: 12, mrv: 16 },
+  glutes: { mev: 4, mav: 12, mrv: 16 },
+  calves: { mev: 8, mav: 14, mrv: 20 },
+  abdominals: { mev: 6, mav: 16, mrv: 25 },
+  abductors: { mev: 6, mav: 12, mrv: 16 },
+  adductors: { mev: 6, mav: 12, mrv: 16 },
+  neck: { mev: 4, mav: 8, mrv: 12 },
+};
+export function landmarkFor(muscle: string): Landmark {
+  return MUSCLE_LANDMARKS[muscle] ?? DEFAULT_LANDMARK;
+}
+
+/**
+ * Delta de un valor entre el período actual y el anterior (semana o mes).
+ * `valueOf` recibe el subconjunto de sesiones de cada ventana. deltaPct = null
+ * si el período previo fue 0 (no hay base de comparación).
+ */
+export function periodDelta<T extends SessionDateLike>(
+  sessions: T[],
+  valueOf: (subset: T[]) => number,
+  period: "week" | "month",
+): { current: number; previous: number; deltaPct: number | null } {
+  const now = new Date();
+  let curStart: Date;
+  let prevStart: Date;
+  if (period === "week") {
+    curStart = weekStart(now);
+    prevStart = new Date(curStart);
+    prevStart.setDate(prevStart.getDate() - 7);
+  } else {
+    curStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  }
+  const inRange = (s: T, start: Date, end: Date) => {
+    const d = new Date(sessionDate(s));
+    return d >= start && d < end;
+  };
+  const cur = valueOf(sessions.filter((s) => inRange(s, curStart, now)));
+  const prev = valueOf(sessions.filter((s) => inRange(s, prevStart, curStart)));
+  const deltaPct = prev > 0 ? ((cur - prev) / prev) * 100 : null;
+  return { current: cur, previous: prev, deltaPct };
+}
+
 /** Volumen de un set = suma de reps × peso de cada bajada (0 si falta alguno). */
 export function setVolume(s: SetLike): number {
   return effectiveDrops(s).reduce(

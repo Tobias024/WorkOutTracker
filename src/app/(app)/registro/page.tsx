@@ -19,9 +19,13 @@ import {
   Stat,
   Button,
   Modal,
+  SectionCard,
 } from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
+import { MuscleSetsBar, type MuscleSetRow } from "@/components/MuscleSetsBar";
+import { PatternBalance, type BalanceData } from "@/components/PatternBalance";
+import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatmap";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
@@ -44,6 +48,11 @@ import {
   sessionDate,
   dateKey,
   localMidnight,
+  isCountableSet,
+  isHardSet,
+  muscleContributions,
+  landmarkFor,
+  periodDelta,
   type PlanResolver,
 } from "@/lib/metrics";
 import { buildSessionsCsv, downloadCsv } from "@/lib/export-csv";
@@ -66,13 +75,13 @@ interface PlanDay {
 
 function sessionVolume(s: HistorySession): number {
   return s.workout_exercises.reduce(
-    (acc, we) => acc + totalVolume(we.workout_sets.filter((x) => x.completed)),
+    (acc, we) => acc + totalVolume(we.workout_sets.filter(isCountableSet)),
     0,
   );
 }
 function sessionSets(s: HistorySession): number {
   return s.workout_exercises.reduce(
-    (acc, we) => acc + we.workout_sets.filter((x) => x.completed).length,
+    (acc, we) => acc + we.workout_sets.filter(isCountableSet).length,
     0,
   );
 }
@@ -141,7 +150,7 @@ export default function RegistroPage() {
         const ex = exMap.get(we.exercise_id);
         const m = ex?.primary_muscles[0];
         if (!m) continue;
-        const done = we.workout_sets.filter((x) => x.completed);
+        const done = we.workout_sets.filter(isCountableSet);
         muscleVol.set(m, (muscleVol.get(m) ?? 0) + totalVolume(done));
         if (within30) {
           muscleSets30.set(m, (muscleSets30.get(m) ?? 0) + done.length);
@@ -175,7 +184,7 @@ export default function RegistroPage() {
     for (const s of sessions) {
       for (const we of s.workout_exercises) {
         for (const set of we.workout_sets) {
-          if (!set.completed) continue;
+          if (!isCountableSet(set)) continue;
           for (const d of effectiveDrops(set)) {
             if (!d.weight || !d.reps) continue;
             const orm = estimate1RM(d.weight, d.reps);
@@ -191,6 +200,89 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
+    // Series efectivas (hard sets) por músculo, semana actual, atribución fraccional.
+    const weekMs = weekStart(now).getTime();
+    const hardByMuscle = new Map<string, number>();
+    for (const s of sessions) {
+      if (weekStart(new Date(sessionDate(s))).getTime() !== weekMs) continue;
+      for (const we of s.workout_exercises) {
+        const ex = exMap.get(we.exercise_id);
+        if (!ex) continue;
+        const contribs = muscleContributions(ex);
+        for (const set of we.workout_sets) {
+          if (!isHardSet(set)) continue;
+          for (const c of contribs) {
+            hardByMuscle.set(c.muscle, (hardByMuscle.get(c.muscle) ?? 0) + c.weight);
+          }
+        }
+      }
+    }
+    const hardSets: MuscleSetRow[] = [...hardByMuscle.entries()]
+      .map(([muscle, sets]) => ({ muscle, sets, ...landmarkFor(muscle) }))
+      .sort((a, b) => b.sets - a.sets)
+      .slice(0, 8);
+
+    // Balance de patrones (últimas 4 semanas): push/pull de force, comp/aisl de mechanic.
+    const cutoff28 = new Date(now);
+    cutoff28.setDate(cutoff28.getDate() - 28);
+    const balance: BalanceData = { push: 0, pull: 0, compound: 0, isolation: 0 };
+    for (const s of sessions) {
+      if (new Date(sessionDate(s)) < cutoff28) continue;
+      for (const we of s.workout_exercises) {
+        const ex = exMap.get(we.exercise_id);
+        if (!ex) continue;
+        const vol = totalVolume(we.workout_sets.filter(isCountableSet));
+        if (ex.force === "push") balance.push += vol;
+        else if (ex.force === "pull") balance.pull += vol;
+        if (ex.mechanic === "compound") balance.compound += vol;
+        else if (ex.mechanic === "isolation") balance.isolation += vol;
+      }
+    }
+
+    // Heatmap de constancia: 12 semanas × 7 días, volumen por día.
+    const dayVol = new Map<string, number>();
+    for (const s of sessions) {
+      const k = dateKey(sessionDate(s));
+      dayVol.set(k, (dayVol.get(k) ?? 0) + sessionVolume(s));
+    }
+    const monday = weekStart(now);
+    const heatWeeks: HeatCell[][] = [];
+    let heatMax = 0;
+    for (let w = 11; w >= 0; w--) {
+      const col: HeatCell[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(monday);
+        day.setDate(day.getDate() - w * 7 + d);
+        const k = dateKey(day.toISOString());
+        const v = dayVol.get(k) ?? 0;
+        heatMax = Math.max(heatMax, v);
+        col.push({ key: k, value: v });
+      }
+      heatWeeks.push(col);
+    }
+
+    // Deltas semana actual vs previa.
+    const volDelta = periodDelta(
+      sessions,
+      (subset) => subset.reduce((a, s) => a + sessionVolume(s), 0),
+      "week",
+    );
+    const hardDelta = periodDelta(
+      sessions,
+      (subset) => {
+        let n = 0;
+        for (const s of subset)
+          for (const we of s.workout_exercises)
+            for (const set of we.workout_sets) if (isHardSet(set)) n++;
+        return n;
+      },
+      "week",
+    );
+
+    // Músculo estrella: top de la ventana de 30 días (no histórico).
+    const favoriteMuscle =
+      [...muscleSets30.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
     return {
       totalVol,
       chart,
@@ -200,10 +292,17 @@ export default function RegistroPage() {
       muscleDonut,
       byMonth,
       prs,
+      hardSets,
+      balance,
+      heatWeeks,
+      heatMax,
+      volDelta,
+      hardDelta,
+      hardSetsThisWeek: hardDelta.current,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
       avgWeekly: avgWeeklyWorkouts(sessions),
-      favoriteMuscle: byMuscle[0]?.[0] ?? null,
+      favoriteMuscle,
     };
     // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,6 +438,20 @@ export default function RegistroPage() {
         />
       ) : (
         <div className="flex flex-col gap-5">
+          <div className="grid grid-cols-2 gap-2.5">
+            <Stat
+              label="Volumen semanal"
+              value={formatVolume(metrics.volDelta.current)}
+              delta={metrics.volDelta.deltaPct}
+            />
+            <Stat
+              label="Series efectivas"
+              value={metrics.hardSetsThisWeek}
+              unit="sets"
+              delta={metrics.hardDelta.deltaPct}
+            />
+          </div>
+
           <div className="grid grid-cols-3 gap-2.5">
             <Stat label="Entrenos" value={metrics.count} />
             <Stat label="Volumen total" value={formatVolume(metrics.totalVol)} />
@@ -409,6 +522,24 @@ export default function RegistroPage() {
             </div>
             <VolumeChart data={metrics.chart} />
           </div>
+
+          <SectionCard
+            title="Series efectivas por grupo"
+            subtitle="Esta semana · marcas MEV / MAV / MRV"
+          >
+            <MuscleSetsBar data={metrics.hardSets} />
+          </SectionCard>
+
+          <SectionCard
+            title="Balance de patrones"
+            subtitle="Volumen de las últimas 4 semanas"
+          >
+            <PatternBalance data={metrics.balance} />
+          </SectionCard>
+
+          <SectionCard title="Constancia" subtitle="Últimas 12 semanas">
+            <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
+          </SectionCard>
 
           {metrics.muscleDonut.length > 0 && (
             <div className="card p-4">
