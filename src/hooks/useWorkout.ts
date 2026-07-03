@@ -136,6 +136,24 @@ export function useStartEmptyWorkout() {
   });
 }
 
+/** Último peso corporal registrado en una sesión (para prefill del input). */
+export function useLastBodyWeight() {
+  return useQuery({
+    queryKey: ["last-bodyweight"],
+    queryFn: async (): Promise<number | null> => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("workout_sessions")
+        .select("body_weight_kg")
+        .not("body_weight_kg", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.body_weight_kg ?? null;
+    },
+  });
+}
+
 export function useWorkoutSession(sessionId: string) {
   return useQuery({
     queryKey: ["session", sessionId],

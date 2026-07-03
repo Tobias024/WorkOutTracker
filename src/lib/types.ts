@@ -74,6 +74,7 @@ export type WorkoutSession = {
   started_at: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+  body_weight_kg: number | null;
   notes: string | null;
   created_at: string;
 };
@@ -182,6 +183,24 @@ export type CommonExerciseMax = {
   friend_orm: number;
 };
 
+export type AchievementKind = "e1rm_pr" | "streak_milestone" | "volume_pr_week";
+
+export type Achievement = {
+  id: string;
+  user_id: string;
+  kind: AchievementKind;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+/** Fila devuelta por record_session_achievements (PR de e1RM para el modal). */
+export type SessionPr = {
+  exercise_id: string;
+  weight: number;
+  orm: number;
+  prev_orm: number;
+};
+
 type Table<T extends Record<string, unknown>> = {
   Row: T;
   Insert: Partial<T>;
@@ -205,6 +224,7 @@ export type Database = {
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
       weekly_plan_overrides: Table<WeeklyPlanOverrideRow>;
+      achievements: Table<Achievement>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -244,6 +264,10 @@ export type Database = {
       common_exercise_maxes: {
         Args: { p_friend_id: string; p_since?: string };
         Returns: CommonExerciseMax[];
+      };
+      record_session_achievements: {
+        Args: { p_session_id: string };
+        Returns: SessionPr[];
       };
     };
   };

@@ -2,15 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Flag, Clock } from "lucide-react";
 import { Button, Input, Spinner } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
 import { StopwatchFab } from "@/components/Stopwatch";
-import { useWorkoutSession } from "@/hooks/useWorkout";
+import { PrCelebrationModal } from "@/components/PrCelebrationModal";
+import { useWorkoutSession, useLastBodyWeight } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
+import { createClient } from "@/lib/supabase/client";
 import { formatClock } from "@/lib/format";
+import type { SessionPr } from "@/lib/types";
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -23,10 +27,13 @@ export default function WorkoutPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const router = useRouter();
   const { data, isLoading } = useWorkoutSession(sessionId);
+  const { data: lastBw } = useLastBodyWeight();
   const exMap = useExerciseMap();
   const m = useSessionMutations(sessionId);
+  const qc = useQueryClient();
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(0);
+  const [prModal, setPrModal] = useState<SessionPr | null>(null);
 
   const ended = !!data?.session.ended_at;
 
@@ -95,6 +102,25 @@ export default function WorkoutPage() {
     // Recién ahora cambió el volumen: avisamos si superaste a algún amigo en el
     // ranking. Fire-and-forget: no bloquea la navegación ni importa si falla.
     fetch("/api/rank/notify", { method: "POST" }).catch(() => {});
+
+    // Logros: registra PRs/hitos de la sesión. Si hubo PR de e1RM, muestra el
+    // modal de celebración antes de volver (la navegación ocurre al cerrarlo).
+    try {
+      const supabase = createClient();
+      const { data: prs } = await supabase.rpc("record_session_achievements", {
+        p_session_id: sessionId,
+      });
+      qc.invalidateQueries({ queryKey: ["achievements"] });
+      const best = (prs ?? [])
+        .slice()
+        .sort((a, b) => b.orm - a.orm)[0];
+      if (best) {
+        setPrModal(best);
+        return;
+      }
+    } catch {
+      // no bloquear el cierre de la sesión por un fallo de logros
+    }
     router.push("/registro");
   }
 
@@ -148,6 +174,23 @@ export default function WorkoutPage() {
             />
           </label>
         </div>
+        <label className="text-xs text-muted block mt-2">
+          Peso corporal (kg)
+          <input
+            type="number"
+            inputMode="decimal"
+            step={0.1}
+            key={session.body_weight_kg ?? lastBw ?? "bw"}
+            defaultValue={session.body_weight_kg ?? lastBw ?? ""}
+            placeholder="opcional"
+            onBlur={(e) => {
+              const v = e.target.value === "" ? null : Number(e.target.value);
+              if (v !== session.body_weight_kg)
+                m.updateSession.mutate({ body_weight_kg: v });
+            }}
+            className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+          />
+        </label>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -219,6 +262,18 @@ export default function WorkoutPage() {
             position: exercises.length,
           })
         }
+      />
+
+      <PrCelebrationModal
+        pr={prModal}
+        exerciseName={
+          prModal ? exMap.get(prModal.exercise_id)?.name ?? "Ejercicio" : ""
+        }
+        bodyWeightKg={session.body_weight_kg}
+        onClose={() => {
+          setPrModal(null);
+          router.push("/registro");
+        }}
       />
     </div>
   );

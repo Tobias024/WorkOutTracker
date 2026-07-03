@@ -19,9 +19,7 @@ import type { Exercise, Sex } from "@/lib/types";
 const METRICS: { key: Metric; label: string }[] = [
   { key: "volume", label: "Volumen" },
   { key: "frequency", label: "Frecuencia" },
-  { key: "weight", label: "Peso" },
   { key: "strength", label: "Fuerza" },
-  { key: "reps", label: "Reps" },
 ];
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },

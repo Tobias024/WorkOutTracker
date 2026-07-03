@@ -11,6 +11,7 @@ import {
   Zap,
   Info,
   Download,
+  Trophy,
 } from "lucide-react";
 import {
   PageHeader,
@@ -29,6 +30,7 @@ import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatm
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
+import { useAchievements } from "@/hooks/useAchievements";
 import { useToday } from "@/hooks/useToday";
 import {
   useWeeklyPlan,
@@ -59,8 +61,27 @@ import { buildSessionsCsv, downloadCsv } from "@/lib/export-csv";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
+import type { Achievement } from "@/lib/types";
 
 const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
+
+function achievementText(
+  a: Achievement,
+  nameOf: (exerciseId: string) => string | undefined,
+): string {
+  const p = a.payload;
+  if (a.kind === "e1rm_pr") {
+    const name = nameOf(String(p.exercise_id)) ?? "un ejercicio";
+    return `Récord de fuerza en ${name}: ${Math.round(Number(p.orm))} kg (1RM est.)`;
+  }
+  if (a.kind === "streak_milestone") {
+    return `¡Racha de ${p.days} días consecutivos!`;
+  }
+  if (a.kind === "volume_pr_week") {
+    return `Récord de volumen semanal: ${formatVolume(Number(p.volume))}`;
+  }
+  return "Logro";
+}
 
 interface PlanDay {
   day: number;
@@ -93,6 +114,7 @@ export default function RegistroPage() {
   const startEmpty = useStartEmptyWorkout();
   const { data: plan } = useWeeklyPlan();
   const setPlan = useSetWeeklyPlan();
+  const { data: achievements } = useAchievements();
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
   const setOverride = useSetWeeklyPlanOverride();
@@ -508,6 +530,24 @@ export default function RegistroPage() {
             onToggleExpanded={() => setPlanExpanded((v) => !v)}
             onDayClick={handleDayClick}
           />
+
+          {!!achievements?.length && (
+            <SectionCard title="Logros" subtitle="Récords e hitos recientes">
+              <ul className="flex flex-col gap-2.5">
+                {achievements.map((a) => (
+                  <li key={a.id} className="flex items-center gap-2.5 text-sm">
+                    <Trophy className="size-4 text-primary shrink-0" />
+                    <span className="flex-1">
+                      {achievementText(a, (id) => exMap.get(id)?.name)}
+                    </span>
+                    <span className="text-xs text-muted shrink-0">
+                      {formatDate(a.created_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
+          )}
 
           <div className="card p-4">
             <div className="flex items-center gap-1.5 mb-2">
