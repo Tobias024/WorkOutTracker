@@ -12,6 +12,7 @@ import {
   Info,
   Download,
   Trophy,
+  Flame,
 } from "lucide-react";
 import {
   PageHeader,
@@ -371,6 +372,7 @@ export default function RegistroPage() {
   const [volumeInfo, setVolumeInfo] = useState(false);
   const [planExpanded, setPlanExpanded] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [monthOpen, setMonthOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<{
     wkMs: number;
     weekday: number;
@@ -477,20 +479,42 @@ export default function RegistroPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-2.5">
-            <Stat label="Entrenos" value={metrics.count} />
-            <Stat label="Volumen total" value={formatVolume(metrics.totalVol)} />
+            <button
+              onClick={() => setMonthOpen(true)}
+              className="card p-3.5 rounded-lg text-left hover:ring-1 hover:ring-primary transition"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted">Entrenos</p>
+                <ChevronRight className="size-3.5 text-muted" />
+              </div>
+              <p className="text-xl font-bold mt-1.5 tracking-tight">
+                {metrics.count}
+              </p>
+            </button>
             <Stat label="Esta semana" value={metrics.freq} />
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5">
             <Stat
               label="Racha"
               value={
-                plannedWeekdays.length === 0
-                  ? "—"
-                  : `${planStats.streakWeeks} sem`
+                plannedWeekdays.length === 0 ? (
+                  "—"
+                ) : (
+                  <span
+                    className={clsx(
+                      "inline-flex items-center gap-1",
+                      planStats.streakWeeks > 0 && "text-warning",
+                    )}
+                  >
+                    {planStats.streakWeeks} sem
+                    {planStats.streakWeeks > 0 && (
+                      <Flame className="size-4" fill="currentColor" />
+                    )}
+                  </span>
+                )
               }
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
             <Stat
               label="Duración promedio"
               value={
@@ -613,33 +637,6 @@ export default function RegistroPage() {
             </div>
           )}
 
-          {metrics.byMonth.length > 1 && (
-            <div className="card p-4">
-              <p className="text-sm font-medium mb-3">Mes a mes</p>
-              <ul className="flex flex-col gap-2">
-                {metrics.byMonth.map(([key, m]) => {
-                  const [y, mo] = key.split("-").map(Number);
-                  const label = new Date(y, mo - 1, 1).toLocaleDateString("es-AR", {
-                    month: "long",
-                    year: "numeric",
-                  });
-                  return (
-                    <li
-                      key={key}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="capitalize">{label}</span>
-                      <span className="text-muted">
-                        {m.workouts} {m.workouts === 1 ? "entreno" : "entrenos"} ·{" "}
-                        {formatVolume(m.volume)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
           {metrics.prs.length > 0 && (
             <div className="card p-4">
               <p className="text-sm font-medium mb-3">Récords (1RM estimado)</p>
@@ -703,6 +700,38 @@ export default function RegistroPage() {
         onExport={exportPeriod}
         daysAgo={daysAgo}
       />
+
+      <Modal
+        open={monthOpen}
+        onClose={() => setMonthOpen(false)}
+        title="Mes a mes"
+      >
+        {metrics.byMonth.length === 0 ? (
+          <p className="text-sm text-muted">Todavía no hay datos.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {metrics.byMonth.map(([key, mo]) => {
+              const [y, month] = key.split("-").map(Number);
+              const label = new Date(y, month - 1, 1).toLocaleDateString(
+                "es-AR",
+                { month: "long", year: "numeric" },
+              );
+              return (
+                <li
+                  key={key}
+                  className="flex items-center justify-between text-sm border-b border-border pb-2 last:border-0"
+                >
+                  <span className="capitalize">{label}</span>
+                  <span className="text-muted">
+                    {mo.workouts} {mo.workouts === 1 ? "entreno" : "entrenos"} ·{" "}
+                    {formatVolume(mo.volume)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Modal>
 
       <Modal
         open={volumeInfo}

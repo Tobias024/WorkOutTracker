@@ -6,9 +6,16 @@ import { sinceFor, type Period } from "@/lib/period";
 import type { ScoreboardRow, Sex } from "@/lib/types";
 
 export type { Period };
-export type Metric = "frequency" | "volume" | "weight" | "strength" | "reps";
+export type Metric =
+  | "frequency"
+  | "volume"
+  | "weight"
+  | "strength"
+  | "strength_bw"
+  | "hard_sets"
+  | "reps";
 
-const NEEDS_EXERCISE: Metric[] = ["weight", "strength"];
+const NEEDS_EXERCISE: Metric[] = ["weight", "strength", "strength_bw"];
 
 export function useScoreboard(
   metric: Metric,

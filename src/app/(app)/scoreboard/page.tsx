@@ -16,10 +16,32 @@ import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Exercise, Sex } from "@/lib/types";
 
-const METRICS: { key: Metric; label: string }[] = [
-  { key: "volume", label: "Volumen" },
-  { key: "frequency", label: "Frecuencia" },
-  { key: "strength", label: "Fuerza" },
+const METRICS: { key: Metric; label: string; caption: string }[] = [
+  {
+    key: "hard_sets",
+    label: "Series",
+    caption: "Series efectivas (≥5 reps, cerca del fallo). El driver de hipertrofia.",
+  },
+  {
+    key: "volume",
+    label: "Volumen",
+    caption: "Tonelaje total: reps × peso de las series de trabajo.",
+  },
+  {
+    key: "strength",
+    label: "Fuerza",
+    caption: "1RM estimado (Epley) del ejercicio elegido.",
+  },
+  {
+    key: "strength_bw",
+    label: "Fuerza/peso",
+    caption: "1RM estimado dividido tu peso corporal. Más justo entre distintos pesos.",
+  },
+  {
+    key: "frequency",
+    label: "Frecuencia",
+    caption: "Días distintos con entrenamiento en el período.",
+  },
 ];
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },
@@ -31,10 +53,10 @@ const SEXES: { key: Sex | ""; label: string }[] = [
   { key: "male", label: "Varones" },
   { key: "female", label: "Mujeres" },
 ];
-const NEEDS_EXERCISE: Metric[] = ["weight", "strength"];
+const NEEDS_EXERCISE: Metric[] = ["weight", "strength", "strength_bw"];
 
 export default function ScoreboardPage() {
-  const [metric, setMetric] = useState<Metric>("volume");
+  const [metric, setMetric] = useState<Metric>("hard_sets");
   const [period, setPeriod] = useState<Period>("week");
   const [sex, setSex] = useState<Sex | "">("");
   const [exercise, setExercise] = useState<Exercise | null>(null);
@@ -49,10 +71,14 @@ export default function ScoreboardPage() {
     sex || null,
   );
 
+  const caption = METRICS.find((m) => m.key === metric)?.caption ?? "";
+
   function fmt(v: number) {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
+    if (metric === "hard_sets") return `${v} ${v === 1 ? "set" : "sets"}`;
     if (metric === "reps") return `${v} reps`;
     if (metric === "volume") return formatVolume(v);
+    if (metric === "strength_bw") return `${Number(v).toFixed(2)}×`;
     return formatWeight(v);
   }
 
@@ -66,6 +92,7 @@ export default function ScoreboardPage() {
 
       <div className="mb-2">
         <Tabs
+          scroll
           value={metric}
           onChange={setMetric}
           options={METRICS.map((mt) => ({ value: mt.key, label: mt.label }))}
@@ -78,13 +105,15 @@ export default function ScoreboardPage() {
           options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
         />
       </div>
-      <div className="mb-4">
+      <div className="mb-2">
         <Tabs
           value={sex}
           onChange={setSex}
           options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
         />
       </div>
+
+      <p className="text-xs text-muted mb-4 px-1">{caption}</p>
 
       {NEEDS_EXERCISE.includes(metric) && (
         <Button
