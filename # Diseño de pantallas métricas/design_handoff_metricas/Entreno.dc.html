@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#050505;font-family:'Archivo',ui-sans-serif,system-ui,sans-serif;display:flex;justify-content:center;padding:28px 0}
+  .scr::-webkit-scrollbar{width:0}
+  @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes popIn{0%{transform:scale(.85);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+  @keyframes riseGlow{0%{background:rgba(52,211,153,.22)}100%{background:#131312}}
+  @keyframes confFall{0%{transform:translateY(-40px) rotate(0);opacity:1}100%{transform:translateY(320px) rotate(320deg);opacity:0}}
+  @keyframes ringPulse{0%{box-shadow:0 0 0 0 rgba(205,165,72,.35)}100%{box-shadow:0 0 0 14px rgba(205,165,72,0)}}
+</style>
+</helmet>
+<div style="width:394px;height:852px;border-radius:46px;background:#0b0b0b;border:1px solid #232320;box-shadow:0 30px 90px rgba(0,0,0,.6);padding:9px;position:relative;flex:none">
+  <div style="width:100%;height:100%;border-radius:38px;overflow:hidden;background:#09090a;position:relative;display:flex;flex-direction:column">
+
+    <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font-size:14px;font-weight:600;color:#f2f1ed">
+      <span>9:41</span>
+      <div style="width:110px;height:26px;background:#050505;border-radius:0 0 16px 16px;position:absolute;left:50%;transform:translateX(-50%);top:0"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <svg width="17" height="11" viewBox="0 0 17 11" fill="#f2f1ed"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+        <svg width="16" height="11" viewBox="0 0 16 11" fill="#f2f1ed"><path d="M8 2.2c2 0 3.9.8 5.3 2.1l1.2-1.3A9.3 9.3 0 0 0 8 .2 9.3 9.3 0 0 0 1.5 3l1.2 1.3A7.4 7.4 0 0 1 8 2.2Zm0 3.3c1.1 0 2.1.4 2.9 1.2l1.2-1.3A6 6 0 0 0 8 3.6 6 6 0 0 0 3.9 5.4l1.2 1.3A4 4 0 0 1 8 5.5Zm0 3.2 1.7-1.8a2.4 2.4 0 0 0-3.4 0L8 8.7Z"/></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#f2f1ed" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="#f2f1ed"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="#f2f1ed" opacity=".5"/></svg>
+      </div>
+    </div>
+
+    <div class="scr" style="flex:1;overflow-y:auto;overflow-x:hidden">
+
+      <!-- ============ INICIO / DASHBOARD ============ -->
+      <sc-if value="{{ isInicio }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:8px 16px 108px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 2px 16px">
+          <div>
+            <p style="margin:0;font-size:12px;color:#9c9a92">Miércoles 2 jul</p>
+            <h1 style="margin:2px 0 0;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#f2f1ed">Hola, Tobi</h1>
+          </div>
+          <div style="width:38px;height:38px;border-radius:50%;background:#1c1c1a;border:1px solid #2e2c27;display:grid;place-items:center;font-weight:700;color:#cda548">T</div>
+        </div>
+
+        <!-- streak + CTA -->
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:12px">
+          <div style="width:56px;height:56px;border-radius:14px;background:rgba(205,165,72,.12);display:grid;place-items:center;flex:none">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s5 4 5 9a5 5 0 0 1-10 0c0-1 .3-2 .8-2.8C8 9.5 9 11 10 11c0-2-1-4 2-9Z"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;line-height:1;white-space:nowrap"><span style="font-size:30px;font-weight:800;color:#f2f1ed">7</span> <span style="font-size:15px;font-weight:600;color:#f2f1ed">semanas</span></p>
+            <p style="margin:5px 0 0;font-size:12px;color:#9c9a92">de racha · cumpliste el plan</p>
+          </div>
+          <button onClick="{{ startSession }}" style="flex:none;background:#cda548;color:#14120c;border:none;border-radius:11px;padding:12px 15px;font-weight:700;font-size:13.5px;font-family:inherit;display:flex;align-items:center;gap:6px;cursor:pointer;animation:ringPulse 2.4s infinite">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#14120c"><path d="M8 5v14l11-7z"/></svg>Empezar
+          </button>
+        </div>
+
+        <!-- 2 stat cards con delta -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11.5px;color:#9c9a92">Volumen semanal</p>
+            <p style="margin:6px 0 0;font-size:20px;font-weight:700;color:#f2f1ed;letter-spacing:-.02em">24.850 <span style="font-size:12px;color:#9c9a92;font-weight:500">kg</span></p>
+            <div style="display:inline-flex;align-items:center;gap:3px;margin-top:8px;background:rgba(52,211,153,.13);color:#34d399;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>8% vs sem previa
+            </div>
+          </div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11.5px;color:#9c9a92">Series efectivas</p>
+            <p style="margin:6px 0 0;font-size:20px;font-weight:700;color:#f2f1ed;letter-spacing:-.02em">78 <span style="font-size:12px;color:#9c9a92;font-weight:500">sets</span></p>
+            <div style="display:inline-flex;align-items:center;gap:3px;margin-top:8px;background:rgba(52,211,153,.13);color:#34d399;border-radius:6px;padding:2px 6px;font-size:11px;font-weight:600">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>5% vs sem previa
+            </div>
+          </div>
+        </div>
+
+        <!-- e1RM chart -->
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px 15px 12px;margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+            <div>
+              <p style="margin:0;font-size:13px;font-weight:600;color:#f2f1ed">1RM estimado · press banca</p>
+              <p style="margin:2px 0 0;font-size:11px;color:#9c9a92">Últimos 90 días</p>
+            </div>
+            <div style="text-align:right">
+              <p style="margin:0;font-size:19px;font-weight:800;color:#cda548;letter-spacing:-.02em">112 kg</p>
+              <div style="display:inline-flex;align-items:center;gap:2px;color:#34d399;font-size:11px;font-weight:600"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round"><path d="M6 15l6-6 6 6"/></svg>4%</div>
+            </div>
+          </div>
+          <div>{{ e1rmChart }}</div>
+        </div>
+
+        <!-- hard sets por músculo -->
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px 15px 13px;margin-bottom:12px">
+          <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:#f2f1ed">Series efectivas por grupo</p>
+          <p style="margin:0 0 12px;font-size:11px;color:#9c9a92">Esta semana · marcas MEV / MAV / MRV</p>
+          <div>{{ muscleBarsEl }}</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid #2e2c27">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:#9c9a92"><span style="width:9px;height:9px;border-radius:2px;background:#e0913a"></span>Bajo MEV</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:#9c9a92"><span style="width:9px;height:9px;border-radius:2px;background:#34d399"></span>Óptimo</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:#9c9a92"><span style="width:9px;height:9px;border-radius:2px;background:#f87171"></span>Sobre MRV</span>
+          </div>
+        </div>
+
+        <!-- heatmap -->
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px;margin-bottom:12px">
+          <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:#f2f1ed">Constancia</p>
+          <p style="margin:0 0 13px;font-size:11px;color:#9c9a92">Últimas 12 semanas</p>
+          <div>{{ heatmapEl }}</div>
+        </div>
+
+        <!-- ranking preview -->
+        <button onClick="{{ goRanking }}" style="width:100%;text-align:left;background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:14px 15px;display:flex;align-items:center;gap:13px;cursor:pointer;font-family:inherit">
+          <div style="width:42px;height:42px;border-radius:11px;background:rgba(205,165,72,.12);display:grid;place-items:center;flex:none">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4a2 2 0 0 1-2-2V5h4M18 9h2a2 2 0 0 0 2-2V5h-4M6 3h12v6a6 6 0 0 1-12 0V3ZM8 21h8M12 15v6"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:13.5px;font-weight:600;color:#f2f1ed">Ranking semanal</p>
+            <p style="margin:2px 0 0;font-size:11.5px;color:#9c9a92">Vas 2° de 6 · <span style="color:#34d399;font-weight:600">subiste 1</span></p>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      </sc-if>
+
+      <!-- ============ RUTINAS ============ -->
+      <sc-if value="{{ isRutinas }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:8px 16px 108px">
+        <h1 style="margin:14px 2px 4px;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#f2f1ed">Rutinas</h1>
+        <p style="margin:0 2px 16px;font-size:12.5px;color:#9c9a92">Elegí una y arrancá</p>
+
+        <div style="background:#131312;border:1px solid #cda548;border-radius:14px;padding:15px;margin-bottom:12px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;right:0;background:#cda548;color:#14120c;font-size:10px;font-weight:700;padding:3px 10px;border-radius:0 0 0 10px">HOY</div>
+          <p style="margin:0;font-size:16px;font-weight:700;color:#f2f1ed">Día C · Empuje</p>
+          <p style="margin:4px 0 12px;font-size:11.5px;color:#9c9a92">Pecho · hombros · tríceps</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+            <span style="font-size:11px;color:#9c9a92;background:#1c1c1a;border:1px solid #2e2c27;border-radius:7px;padding:4px 9px">Press banca</span>
+            <span style="font-size:11px;color:#9c9a92;background:#1c1c1a;border:1px solid #2e2c27;border-radius:7px;padding:4px 9px">Press militar</span>
+            <span style="font-size:11px;color:#9c9a92;background:#1c1c1a;border:1px solid #2e2c27;border-radius:7px;padding:4px 9px">+4 más</span>
+          </div>
+          <button onClick="{{ startSession }}" style="width:100%;background:#cda548;color:#14120c;border:none;border-radius:11px;padding:13px;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer">Empezar sesión</button>
+        </div>
+
+        <sc-for list="{{ routines }}" as="r" hint-placeholder-count="3">
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px;margin-bottom:10px;display:flex;align-items:center;gap:13px">
+            <div style="width:44px;height:44px;border-radius:11px;background:#1c1c1a;display:grid;place-items:center;flex:none;font-weight:700;color:#cda548;font-size:15px">{{ r.tag }}</div>
+            <div style="flex:1;min-width:0">
+              <p style="margin:0;font-size:14.5px;font-weight:600;color:#f2f1ed">{{ r.name }}</p>
+              <p style="margin:3px 0 0;font-size:11.5px;color:#9c9a92">{{ r.sub }}</p>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <!-- ============ SESIÓN ACTIVA ============ -->
+      <sc-if value="{{ isSesion }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:0 0 120px">
+        <div style="position:sticky;top:0;z-index:5;background:#09090acc;backdrop-filter:blur(10px);border-bottom:1px solid #2e2c27;padding:12px 16px;display:flex;align-items:center;gap:12px">
+          <button onClick="{{ goInicio }}" style="width:34px;height:34px;border-radius:9px;background:#1c1c1a;border:1px solid #2e2c27;display:grid;place-items:center;cursor:pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f2f1ed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:14.5px;font-weight:700;color:#f2f1ed">Día C · Empuje</p>
+            <p style="margin:1px 0 0;font-size:11.5px;color:#9c9a92">{{ sessionElapsed }} · 2 ejercicios</p>
+          </div>
+          <button onClick="{{ finishSession }}" style="background:#34d399;color:#04120c;border:none;border-radius:9px;padding:9px 14px;font-weight:700;font-size:13px;font-family:inherit;cursor:pointer">Terminar</button>
+        </div>
+
+        <!-- rest timer -->
+        <sc-if value="{{ restActive }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:12px 16px 0;background:#131312;border:1px solid #cda548;border-radius:13px;padding:12px 14px;display:flex;align-items:center;gap:13px;animation:popIn .25s ease">
+          <div style="position:relative;width:44px;height:44px;flex:none">{{ restRing }}</div>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;font-size:11px;color:#9c9a92">Descanso · {{ restHint }}</p>
+            <p style="margin:2px 0 0;font-size:20px;font-weight:800;color:#cda548;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ restLabel }}</p>
+          </div>
+          <button onClick="{{ addRest }}" style="background:#1c1c1a;border:1px solid #2e2c27;color:#9c9a92;border-radius:8px;padding:8px 11px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">+30s</button>
+          <button onClick="{{ skipRest }}" style="background:#1c1c1a;border:1px solid #2e2c27;color:#f2f1ed;border-radius:8px;padding:8px 11px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">Saltar</button>
+        </div>
+        </sc-if>
+
+        <sc-for list="{{ sessionExercises }}" as="ex" hint-placeholder-count="2">
+          <div style="margin:12px 16px 0;background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px">
+            <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
+              <div style="width:44px;height:44px;border-radius:10px;background:#1c1c1a;display:grid;place-items:center;flex:none">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M4 9l-2 2 3 3M15 4l2-2 3 3-2 2M9 20l-2 2-3-3 2-2M20 15l2-2-3-3-2 2"/></svg>
+              </div>
+              <div style="flex:1;min-width:0">
+                <p style="margin:0;font-size:14.5px;font-weight:600;color:#f2f1ed">{{ ex.name }}</p>
+                <div style="display:flex;gap:6px;margin-top:3px">
+                  <span style="font-size:10.5px;color:#9c9a92;background:#1c1c1a;border:1px solid #2e2c27;border-radius:6px;padding:2px 7px">{{ ex.muscle }}</span>
+                  <span style="font-size:10.5px;color:#9c9a92;background:#1c1c1a;border:1px solid #2e2c27;border-radius:6px;padding:2px 7px">{{ ex.restHint }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:10.5px;color:#9c9a92;font-weight:600">
+              <span style="width:22px;text-align:center">#</span>
+              <span style="flex:1;text-align:center">Kg</span>
+              <span style="flex:1;text-align:center">Reps</span>
+              <span style="flex:1.6;text-align:center">RIR</span>
+              <span style="width:32px;text-align:center">W</span>
+              <span style="width:32px"></span>
+            </div>
+
+            <sc-for list="{{ ex.sets }}" as="st" hint-placeholder-count="4">
+            <div style="{{ st.rowStyle }}">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="width:22px;text-align:center;font-size:13px;font-weight:600;color:{{ st.numColor }}">{{ st.label }}</span>
+                <div style="flex:1;text-align:center;font-size:14px;font-weight:600;color:#f2f1ed;background:#131312;border:1px solid #2e2c27;border-radius:7px;padding:7px 0">{{ st.weight }}</div>
+                <div style="flex:1;text-align:center;font-size:14px;font-weight:600;color:#f2f1ed;background:#131312;border:1px solid #2e2c27;border-radius:7px;padding:7px 0">{{ st.reps }}</div>
+                <div style="flex:1.6;display:flex;align-items:center;justify-content:center;gap:2px">
+                  <sc-if value="{{ st.showRpe }}" hint-placeholder-val="{{ true }}">
+                    <sc-for list="{{ st.rirOpts }}" as="o" hint-placeholder-count="6">
+                      <button onClick="{{ o.click }}" style="width:15px;height:22px;border-radius:4px;border:1px solid {{ o.border }};padding:0;cursor:pointer;font-size:10px;font-weight:700;font-family:inherit;background:{{ o.bg }};color:{{ o.color }}">{{ o.n }}</button>
+                    </sc-for>
+                  </sc-if>
+                  <sc-if value="{{ st.isWarm }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11px;color:#9c9a92">—</span>
+                  </sc-if>
+                </div>
+                <button onClick="{{ st.toggleWarm }}" style="width:32px;height:30px;border-radius:7px;border:1px solid #2e2c27;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;background:{{ st.warmBg }};color:{{ st.warmColor }}">W</button>
+                <button onClick="{{ st.toggle }}" style="width:32px;height:30px;border-radius:7px;border:none;display:grid;place-items:center;cursor:pointer;background:{{ st.checkBg }}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{ st.checkStroke }}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                </button>
+              </div>
+              <sc-if value="{{ st.hasDrop }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:8px;margin-top:7px;padding-left:30px">
+                  <span style="font-size:10.5px;color:#e8c468;font-weight:600">+ bajada</span>
+                  <div style="width:56px;text-align:center;font-size:12.5px;color:#f2f1ed;background:#131312;border:1px solid #2e2c27;border-radius:6px;padding:5px 0">{{ st.dropWeight }}</div>
+                  <span style="font-size:11px;color:#9c9a92">×</span>
+                  <div style="width:56px;text-align:center;font-size:12.5px;color:#f2f1ed;background:#131312;border:1px solid #2e2c27;border-radius:6px;padding:5px 0">{{ st.dropReps }}</div>
+                </div>
+              </sc-if>
+            </div>
+            </sc-for>
+
+            <div style="display:flex;gap:8px;margin-top:9px">
+              <button onClick="{{ ex.addSet }}" style="flex:1;background:#1c1c1a;border:1px solid #2e2c27;color:#9c9a92;border-radius:9px;padding:9px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer">+ Serie</button>
+              <button onClick="{{ ex.addDrop }}" style="flex:1;background:#1c1c1a;border:1px solid #2e2c27;color:#9c9a92;border-radius:9px;padding:9px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer">+ Dropset</button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <!-- ============ PROGRESO ============ -->
+      <sc-if value="{{ isProgreso }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:8px 16px 108px">
+        <h1 style="margin:14px 2px 4px;font-size:23px;font-weight:700;letter-spacing:-.02em;color:#f2f1ed">Progreso</h1>
+        <p style="margin:0 2px 15px;font-size:12.5px;color:#9c9a92">Seguí un ejercicio en el tiempo</p>
+
+        <div style="display:flex;gap:7px;overflow-x:auto;margin-bottom:13px;padding-bottom:2px" class="scr">
+          <sc-for list="{{ exChips }}" as="c" hint-placeholder-count="4">
+            <button onClick="{{ c.click }}" style="flex:none;padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.color }}">{{ c.name }}</button>
+          </sc-for>
+        </div>
+
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px 15px 12px;margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+            <div>
+              <p style="margin:0;font-size:14px;font-weight:600;color:#f2f1ed">{{ progName }}</p>
+              <p style="margin:2px 0 0;font-size:11px;color:#9c9a92">1RM estimado · media móvil</p>
+            </div>
+            <div style="text-align:right">
+              <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(205,165,72,.14);color:#cda548;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4V5h4M18 9h2V5h-4M6 3h12v6a6 6 0 0 1-12 0V3Z"/></svg>PR {{ progPr }}
+              </div>
+            </div>
+          </div>
+          <div>{{ progressChart }}</div>
+          <div style="display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid #2e2c27">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:#9c9a92"><span style="width:14px;height:2px;background:#cda548;border-radius:2px"></span>e1RM por sesión</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:#9c9a92"><span style="width:14px;height:0;border-top:2px dashed #9c9a92"></span>Media móvil 4</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11px;color:#9c9a92">Descanso promedio</p>
+            <p style="margin:6px 0 0;font-size:19px;font-weight:700;color:#f2f1ed">2:48 <span style="font-size:11px;color:#9c9a92;font-weight:500">min</span></p>
+            <p style="margin:5px 0 0;font-size:10.5px;color:#9c9a92">entre series</p>
+          </div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11px;color:#9c9a92">RIR promedio</p>
+            <p style="margin:6px 0 0;font-size:19px;font-weight:700;color:#f2f1ed">1,9</p>
+            <p style="margin:5px 0 0;font-size:10.5px;color:#34d399">zona productiva · últimas 4 sem</p>
+          </div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11px;color:#9c9a92">Ratio peso corporal</p>
+            <p style="margin:6px 0 0;font-size:19px;font-weight:700;color:#cda548">1,35×</p>
+            <p style="margin:5px 0 0;font-size:10.5px;color:#9c9a92">e1RM / 83 kg</p>
+          </div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:13px 14px">
+            <p style="margin:0;font-size:11px;color:#9c9a92">Frecuencia</p>
+            <p style="margin:6px 0 0;font-size:19px;font-weight:700;color:#f2f1ed">2,3<span style="font-size:11px;color:#9c9a92;font-weight:500">/sem</span></p>
+            <p style="margin:5px 0 0;font-size:10.5px;color:#34d399">por encima del mínimo 2×</p>
+          </div>
+        </div>
+
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:14px;padding:15px">
+          <p style="margin:0 0 3px;font-size:13px;font-weight:600;color:#f2f1ed">Balance de patrones</p>
+          <p style="margin:0 0 14px;font-size:11px;color:#9c9a92">Volumen de las últimas 4 semanas</p>
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:6px"><span style="color:#e8c468;font-weight:600">Empuje 52%</span><span style="color:#9c9a92">Ratio 1,08 · equilibrado</span><span style="color:#cda548;font-weight:600">Tirón 48%</span></div>
+            <div style="display:flex;height:9px;border-radius:5px;overflow:hidden"><div style="width:52%;background:#e8c468"></div><div style="width:48%;background:#cda548"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:6px"><span style="color:#e8c468;font-weight:600">Compuesto 63%</span><span style="color:#9c9a92">saludable</span><span style="color:#9c9a92;font-weight:600">Aislamiento 37%</span></div>
+            <div style="display:flex;height:9px;border-radius:5px;overflow:hidden"><div style="width:63%;background:#e8c468"></div><div style="width:37%;background:#3a3833"></div></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ RANKING ============ -->
+      <sc-if value="{{ isRanking }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:0 0 108px">
+        <div style="position:sticky;top:0;z-index:5;background:#09090acc;backdrop-filter:blur(10px);border-bottom:1px solid #2e2c27;padding:12px 16px;display:flex;align-items:center;gap:12px">
+          <button onClick="{{ goInicio }}" style="width:34px;height:34px;border-radius:9px;background:#1c1c1a;border:1px solid #2e2c27;display:grid;place-items:center;cursor:pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f2f1ed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div style="flex:1"><p style="margin:0;font-size:15px;font-weight:700;color:#f2f1ed">Ranking</p><p style="margin:1px 0 0;font-size:11px;color:#9c9a92">Competí con tus amigos</p></div>
+          <div style="width:34px;height:34px;border-radius:9px;background:rgba(205,165,72,.12);display:grid;place-items:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </div>
+        </div>
+
+        <div style="padding:14px 16px 0">
+          <!-- push notification -->
+          <div style="background:#131312;border:1px solid #34d399;border-radius:12px;padding:12px 13px;display:flex;align-items:center;gap:11px;margin-bottom:14px;animation:popIn .3s ease">
+            <div style="width:34px;height:34px;border-radius:9px;background:rgba(52,211,153,.15);display:grid;place-items:center;flex:none">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M8 7l4-4 4 4"/><rect x="4" y="9" width="16" height="12" rx="2"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <p style="margin:0;font-size:12.5px;font-weight:600;color:#f2f1ed">Pasaste a Meli</p>
+              <p style="margin:2px 0 0;font-size:11px;color:#9c9a92">Ahora vas 2° en series efectivas</p>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:4px;background:#1c1c1a;border-radius:10px;padding:4px;margin-bottom:9px">
+            <sc-for list="{{ metricTabs }}" as="m" hint-placeholder-count="3">
+              <button onClick="{{ m.click }}" style="flex:1;border:none;border-radius:7px;padding:8px 4px;font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;line-height:1.2;background:{{ m.bg }};color:{{ m.color }}">{{ m.label }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:4px;background:#1c1c1a;border-radius:10px;padding:4px;margin-bottom:14px">
+            <sc-for list="{{ periodTabs }}" as="p" hint-placeholder-count="3">
+              <button onClick="{{ p.click }}" style="flex:1;border:none;border-radius:7px;padding:7px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;background:{{ p.bg }};color:{{ p.color }}">{{ p.label }}</button>
+            </sc-for>
+          </div>
+
+          <p style="margin:0 4px 8px;font-size:11px;color:#9c9a92">{{ metricCaption }}</p>
+
+          <sc-for list="{{ scoreRows }}" as="row" hint-placeholder-count="6">
+            <div style="{{ row.rowStyle }}">
+              <div style="width:26px;display:flex;justify-content:center;flex:none">{{ row.rankEl }}</div>
+              <div style="width:22px;display:flex;justify-content:center;flex:none">{{ row.deltaEl }}</div>
+              <div style="width:34px;height:34px;border-radius:50%;background:{{ row.avBg }};display:grid;place-items:center;flex:none;font-size:13px;font-weight:700;color:{{ row.avColor }}">{{ row.initial }}</div>
+              <p style="flex:1;min-width:0;margin:0;font-size:14px;font-weight:600;color:{{ row.nameColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ row.name }}</p>
+              <span style="font-size:14px;font-weight:700;color:{{ row.valColor }};font-variant-numeric:tabular-nums">{{ row.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ PERFIL ============ -->
+      <sc-if value="{{ isPerfil }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:8px 16px 108px">
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px 0 18px">
+          <div style="width:76px;height:76px;border-radius:50%;background:#1c1c1a;border:1px solid #2e2c27;display:grid;place-items:center;font-size:28px;font-weight:800;color:#cda548;margin-bottom:12px">T</div>
+          <p style="margin:0;font-size:19px;font-weight:700;color:#f2f1ed">Tobías</p>
+          <p style="margin:3px 0 0;font-size:12px;color:#9c9a92">@tobi · 83 kg · desde mar 2025</p>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:12px;padding:13px 6px;text-align:center"><p style="margin:0;font-size:19px;font-weight:700;color:#f2f1ed">142</p><p style="margin:3px 0 0;font-size:10.5px;color:#9c9a92">entrenos</p></div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:12px;padding:13px 6px;text-align:center"><p style="margin:0;font-size:19px;font-weight:700;color:#cda548">7</p><p style="margin:3px 0 0;font-size:10.5px;color:#9c9a92">racha</p></div>
+          <div style="background:#131312;border:1px solid #2e2c27;border-radius:12px;padding:13px 6px;text-align:center"><p style="margin:0;font-size:19px;font-weight:700;color:#f2f1ed">2°</p><p style="margin:3px 0 0;font-size:10.5px;color:#9c9a92">ranking</p></div>
+        </div>
+        <button onClick="{{ goRanking }}" style="width:100%;text-align:left;background:#131312;border:1px solid #2e2c27;border-radius:12px;padding:14px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;font-family:inherit;margin-bottom:9px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4V5h4M18 9h2V5h-4M6 3h12v6a6 6 0 0 1-12 0V3ZM8 21h8M12 15v6"/></svg>
+          <span style="flex:1;font-size:13.5px;font-weight:600;color:#f2f1ed">Ranking y amigos</span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <div style="background:#131312;border:1px solid #2e2c27;border-radius:12px;padding:5px 4px">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 12px;border-bottom:1px solid #2e2c27"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a7 7 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5a7 7 0 0 0 .1-1Z"/></svg><span style="flex:1;font-size:13.5px;color:#f2f1ed">Objetivos y plan</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9c9a92" stroke-width="2" stroke-linecap="round"><path d="M12 3v6M8 7l4-4 4 4"/><rect x="4" y="9" width="16" height="12" rx="2"/></svg><span style="flex:1;font-size:13.5px;color:#f2f1ed">Notificaciones</span><span style="font-size:11px;color:#34d399;font-weight:600">Activas</span></div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:none;border-top:1px solid #2e2c27;background:#0d0d0ccc;backdrop-filter:blur(12px);display:flex;padding-bottom:14px">
+      <button onClick="{{ goInicio }}" style="flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0 6px;cursor:pointer;color:{{ navInicio }};font-family:inherit">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5M5 9v11h5v-6h4v6h5V9"/></svg>
+        <span style="font-size:10px;font-weight:600">Inicio</span>
+      </button>
+      <button onClick="{{ goRutinas }}" style="flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0 6px;cursor:pointer;color:{{ navRutinas }};font-family:inherit">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M4 9l-2 2 3 3M15 4l2-2 3 3-2 2M9 20l-2 2-3-3 2-2M20 15l2-2-3-3-2 2"/></svg>
+        <span style="font-size:10px;font-weight:600">Rutinas</span>
+      </button>
+      <button onClick="{{ goProgreso }}" style="flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0 6px;cursor:pointer;color:{{ navProgreso }};font-family:inherit">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>
+        <span style="font-size:10px;font-weight:600">Progreso</span>
+      </button>
+      <button onClick="{{ goPerfil }}" style="flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0 6px;cursor:pointer;color:{{ navPerfil }};font-family:inherit">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+        <span style="font-size:10px;font-weight:600">Perfil</span>
+      </button>
+    </div>
+    </sc-if>
+
+    <!-- PR CELEBRATION MODAL -->
+    <sc-if value="{{ prModal }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePr }}" style="position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center">
+      <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">{{ confetti }}</div>
+      <div onClick="{{ stop }}" style="width:100%;background:#131312;border:1px solid #2e2c27;border-radius:22px 22px 0 0;padding:26px 20px 30px;text-align:center;animation:popIn .35s ease;position:relative">
+        <div style="width:74px;height:74px;border-radius:50%;background:rgba(205,165,72,.14);display:grid;place-items:center;margin:0 auto 16px;animation:ringPulse 1.8s infinite">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#cda548" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4a2 2 0 0 1-2-2V5h4M18 9h2a2 2 0 0 0 2-2V5h-4M6 3h12v6a6 6 0 0 1-12 0V3ZM8 21h8M12 15v6"/></svg>
+        </div>
+        <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;color:#cda548">NUEVO RÉCORD</p>
+        <h2 style="margin:8px 0 4px;font-size:24px;font-weight:800;color:#f2f1ed;letter-spacing:-.02em">Press banca · 115 kg</h2>
+        <p style="margin:0 0 18px;font-size:13px;color:#9c9a92">Tu 1RM estimado subió a <span style="color:#34d399;font-weight:600">128 kg (+4)</span></p>
+        <div style="display:flex;gap:16px;justify-content:center;margin-bottom:22px">
+          <div><p style="margin:0;font-size:20px;font-weight:800;color:#f2f1ed">115</p><p style="margin:2px 0 0;font-size:10.5px;color:#9c9a92">kg × 4 reps</p></div>
+          <div style="width:1px;background:#2e2c27"></div>
+          <div><p style="margin:0;font-size:20px;font-weight:800;color:#cda548">+7</p><p style="margin:2px 0 0;font-size:10.5px;color:#9c9a92">kg vs PR previo</p></div>
+          <div style="width:1px;background:#2e2c27"></div>
+          <div><p style="margin:0;font-size:20px;font-weight:800;color:#f2f1ed">1,39×</p><p style="margin:2px 0 0;font-size:10.5px;color:#9c9a92">peso corporal</p></div>
+        </div>
+        <button style="width:100%;background:#cda548;color:#14120c;border:none;border-radius:12px;padding:14px;font-weight:700;font-size:14.5px;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:9px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#14120c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+          Compartir con amigos
+        </button>
+        <button onClick="{{ closePr }}" style="width:100%;background:none;border:none;color:#9c9a92;padding:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">Seguir</button>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:900},&quot;startTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;inicio&quot;,&quot;rutinas&quot;,&quot;sesion&quot;,&quot;progreso&quot;,&quot;perfil&quot;,&quot;ranking&quot;],&quot;default&quot;:&quot;inicio&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo&quot;},&quot;demoPr&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo&quot;,&quot;label&quot;:&quot;Abrir modal de PR&quot;},&quot;restCompound&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:180,&quot;min&quot;:60,&quot;max&quot;:300,&quot;step&quot;:15,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Demo&quot;,&quot;label&quot;:&quot;Descanso compuestos&quot;}}">
+class Component extends DCLogic {
+  state = {
+    tab: null,
+    prModal: false,
+    restActive: false,
+    restSeconds: 0,
+    restTarget: 180,
+    restHint: "compuesto · 2–3 min",
+    elapsed: 1832,
+    prog: 0,
+    metric: 0,
+    period: 0,
+    session: [
+      { name: "Press banca", muscle: "Pecho", type: "comp", restHint: "2–3 min",
+        sets: [
+          { kind: "warm", weight: "40", reps: "12", rir: null, done: true },
+          { kind: "work", weight: "80", reps: "8", rir: 3, done: true },
+          { kind: "work", weight: "85", reps: "7", rir: 2, done: true, drop: { weight: "70", reps: "5" } },
+          { kind: "work", weight: "87.5", reps: "6", rir: 1, done: false }
+        ] },
+      { name: "Remo con barra", muscle: "Espalda", type: "comp", restHint: "2–3 min",
+        sets: [
+          { kind: "warm", weight: "40", reps: "10", rir: null, done: true },
+          { kind: "work", weight: "70", reps: "9", rir: 3, done: false },
+          { kind: "work", weight: "70", reps: "8", rir: null, done: false }
+        ] }
+    ]
+  };
+
+  componentDidMount() {
+    if (this.props.demoPr) this.setState({ prModal: true });
+    this._iv = setInterval(() => {
+      this.setState((s) => {
+        let elapsed = s.elapsed;
+        if (s.tab === "sesion") elapsed += 1;
+        if (s.restActive && s.restSeconds > 0) {
+          const rs = s.restSeconds - 1;
+          return { elapsed, restSeconds: rs, restActive: rs > 0 };
+        }
+        return { elapsed };
+      });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this._iv); }
+
+  get tab() { return this.state.tab || this.props.startTab || "inicio"; }
+  go(t) { return () => this.setState({ tab: t }); }
+
+  fmtClock(s) {
+    const m = Math.floor(s / 60), ss = s % 60;
+    return `${m}:${String(ss).padStart(2, "0")}`;
+  }
+
+  // ---- charts ----
+  line(vals, o) {
+    const R = React.createElement;
+    const { w = 322, h = 128, pad = 10, color = "#cda548", area = true, ma = false, prIdx = -1 } = o || {};
+    const min = Math.min(...vals), max = Math.max(...vals), rng = (max - min) || 1;
+    const lo = min - rng * 0.14, hi = max + rng * 0.14, r = hi - lo, n = vals.length;
+    const x = (i) => pad + (i / (n - 1)) * (w - 2 * pad);
+    const y = (v) => pad + (1 - (v - lo) / r) * (h - 2 * pad);
+    const pts = vals.map((v, i) => [x(i), y(v)]);
+    const d = "M" + pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" L");
+    const gid = "g" + (o.id || "");
+    const kids = [
+      R("defs", { key: "d" }, R("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 },
+        R("stop", { offset: "0%", stopColor: color, stopOpacity: 0.4 }),
+        R("stop", { offset: "100%", stopColor: color, stopOpacity: 0 })))
+    ];
+    // gridlines
+    for (let g = 0; g < 3; g++) {
+      const yy = pad + (g / 2) * (h - 2 * pad);
+      kids.push(R("line", { key: "gl" + g, x1: pad, y1: yy, x2: w - pad, y2: yy, stroke: "#2e2c27", strokeWidth: 1 }));
+    }
+    if (area) kids.push(R("path", { key: "a", d: d + ` L${x(n - 1)},${h - pad} L${x(0)},${h - pad} Z`, fill: `url(#${gid})` }));
+    if (ma) {
+      const mv = vals.map((_, i) => {
+        const st = Math.max(0, i - 3); const sl = vals.slice(st, i + 1);
+        return sl.reduce((a, b) => a + b, 0) / sl.length;
+      });
+      const md = "M" + mv.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" L");
+      kids.push(R("path", { key: "ma", d: md, fill: "none", stroke: "#9c9a92", strokeWidth: 1.6, strokeDasharray: "4 4", vectorEffect: "non-scaling-stroke" }));
+    }
+    kids.push(R("path", { key: "l", d, fill: "none", stroke: color, strokeWidth: 2.4, strokeLinejoin: "round", strokeLinecap: "round", vectorEffect: "non-scaling-stroke" }));
+    kids.push(R("circle", { key: "e", cx: x(n - 1), cy: y(vals[n - 1]), r: 3.6, fill: color, stroke: "#131312", strokeWidth: 2 }));
+    if (prIdx >= 0) {
+      kids.push(R("circle", { key: "pr", cx: x(prIdx), cy: y(vals[prIdx]), r: 5, fill: "none", stroke: "#e8c468", strokeWidth: 2 }));
+      kids.push(R("circle", { key: "prc", cx: x(prIdx), cy: y(vals[prIdx]), r: 2.5, fill: "#e8c468" }));
+    }
+    return R("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h, preserveAspectRatio: "none", style: { display: "block", overflow: "visible" } }, kids);
+  }
+
+  muscleBars() {
+    const R = React.createElement;
+    const rows = [
+      { n: "Pecho", v: 14, mev: 10, mav: 20, mrv: 22 },
+      { n: "Espalda", v: 18, mev: 10, mav: 20, mrv: 25 },
+      { n: "Cuádriceps", v: 8, mev: 12, mav: 20, mrv: 24 },
+      { n: "Hombros", v: 24, mev: 8, mav: 18, mrv: 22 },
+      { n: "Bíceps", v: 12, mev: 8, mav: 16, mrv: 20 },
+      { n: "Isquios", v: 6, mev: 8, mav: 16, mrv: 20 }
+    ];
+    const SC = 26;
+    const clr = (r) => r.v < r.mev ? "#e0913a" : r.v > r.mrv ? "#f87171" : "#34d399";
+    return R("div", { style: { display: "flex", flexDirection: "column", gap: "11px" } }, rows.map((r, i) => {
+      const pct = Math.min(100, (r.v / SC) * 100);
+      const tick = (val, color, dash) => R("div", { style: { position: "absolute", left: `${(val / SC) * 100}%`, top: "-3px", bottom: "-3px", width: 0, borderLeft: `1.5px ${dash ? "dashed" : "solid"} ${color}` } });
+      return R("div", { key: i },
+        R("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: "4px" } },
+          R("span", { style: { fontSize: "11.5px", color: "#f2f1ed", fontWeight: 500 } }, r.n),
+          R("span", { style: { fontSize: "11px", color: clr(r), fontWeight: 700 } }, r.v + " sets")),
+        R("div", { style: { position: "relative", height: "9px", background: "#1c1c1a", borderRadius: "5px" } },
+          R("div", { style: { position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: clr(r), borderRadius: "5px" } }),
+          tick(r.mev, "#9c9a92", true),
+          tick(r.mav, "#cda548", false),
+          tick(r.mrv, "#f87171", false)));
+    }));
+  }
+
+  heatmap() {
+    const R = React.createElement;
+    const seed = [2,0,3,1,4,0,2, 1,3,0,2,4,0,3, 0,2,3,1,0,4,2, 3,1,2,0,3,1,0, 2,4,0,3,1,2,4, 1,0,3,2,0,4,1, 3,2,0,4,1,3,0, 0,3,2,1,4,0,3, 2,1,4,0,3,2,1, 3,0,2,4,1,0,3, 1,4,2,0,3,1,4, 2,3,0,4,2,3,0];
+    const cols = ["#1c1c1a", "rgba(205,165,72,.28)", "rgba(205,165,72,.5)", "rgba(205,165,72,.75)", "#cda548"];
+    const days = ["L","M","M","J","V","S","D"];
+    const grid = R("div", { style: { display: "flex", gap: "4px", flex: 1 } },
+      Array.from({ length: 12 }).map((_, w) => R("div", { key: w, style: { display: "flex", flexDirection: "column", gap: "4px", flex: 1 } },
+        Array.from({ length: 7 }).map((__, d) => {
+          const v = seed[w * 7 + d] || 0;
+          return R("div", { key: d, style: { aspectRatio: "1", borderRadius: "3px", background: cols[v] } });
+        }))));
+    const labelCol = R("div", { style: { display: "flex", flexDirection: "column", gap: "4px", marginRight: "5px" } },
+      days.map((d, i) => R("div", { key: i, style: { flex: 1, fontSize: "8.5px", color: "#6b6a63", display: "grid", placeItems: "center", minHeight: "13px" } }, d)));
+    const legend = R("div", { style: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px", marginTop: "9px", fontSize: "10px", color: "#9c9a92" } },
+      "Menos", cols.map((c, i) => R("div", { key: i, style: { width: "11px", height: "11px", borderRadius: "3px", background: c } })), "Más");
+    return R("div", null, R("div", { style: { display: "flex" } }, labelCol, grid), legend);
+  }
+
+  confetti() {
+    const R = React.createElement;
+    const cs = ["#cda548", "#e8c468", "#34d399", "#f2f1ed"];
+    return R("div", null, Array.from({ length: 26 }).map((_, i) =>
+      R("div", { key: i, style: {
+        position: "absolute", top: "-20px", left: `${(i * 37) % 100}%`,
+        width: i % 3 ? "7px" : "9px", height: i % 2 ? "7px" : "12px",
+        background: cs[i % 4], borderRadius: i % 2 ? "2px" : "50%",
+        animation: `confFall ${1.4 + (i % 5) * 0.25}s ${(i % 7) * 0.12}s ease-in forwards` } })));
+  }
+
+  restRing() {
+    const R = React.createElement;
+    const pct = this.state.restTarget ? this.state.restSeconds / this.state.restTarget : 0;
+    const rad = 19, c = 2 * Math.PI * rad;
+    return R("svg", { width: 44, height: 44, viewBox: "0 0 44 44" },
+      R("circle", { cx: 22, cy: 22, r: rad, fill: "none", stroke: "#2e2c27", strokeWidth: 4 }),
+      R("circle", { cx: 22, cy: 22, r: rad, fill: "none", stroke: "#cda548", strokeWidth: 4, strokeLinecap: "round",
+        strokeDasharray: c, strokeDashoffset: c * (1 - pct), transform: "rotate(-90 22 22)", style: { transition: "stroke-dashoffset 1s linear" } }));
+  }
+
+  // ---- session helpers ----
+  toggleSet(ei, si) {
+    return () => this.setState((s) => {
+      const ss = JSON.parse(JSON.stringify(s.session));
+      const set = ss[ei].sets[si];
+      set.done = !set.done;
+      let rest = {};
+      if (set.done && set.kind !== "warm") {
+        const comp = ss[ei].type === "comp";
+        rest = { restActive: true, restSeconds: comp ? (this.props.restCompound || 180) : 90, restTarget: comp ? (this.props.restCompound || 180) : 90, restHint: comp ? "compuesto · 2–3 min" : "aislamiento · 1–2 min" };
+      }
+      return Object.assign({ session: ss }, rest);
+    });
+  }
+  setRir(ei, si, v) { return () => this.setState((s) => { const ss = JSON.parse(JSON.stringify(s.session)); ss[ei].sets[si].rir = v; return { session: ss }; }); }
+  toggleWarm(ei, si) { return () => this.setState((s) => { const ss = JSON.parse(JSON.stringify(s.session)); const st = ss[ei].sets[si]; st.kind = st.kind === "warm" ? "work" : "warm"; return { session: ss }; }); }
+  addSet(ei) { return () => this.setState((s) => { const ss = JSON.parse(JSON.stringify(s.session)); ss[ei].sets.push({ kind: "work", weight: "", reps: "", rpe: 0, done: false }); return { session: ss }; }); }
+  addDrop(ei) { return () => this.setState((s) => { const ss = JSON.parse(JSON.stringify(s.session)); const last = ss[ei].sets[ss[ei].sets.length - 1]; if (last) last.drop = { weight: "", reps: "" }; return { session: ss }; }); }
+
+  renderVals() {
+    const t = this.tab;
+    const gold = "#cda548", muted = "#9c9a92";
+    let wn = 0;
+
+    const sessionExercises = this.state.session.map((ex, ei) => ({
+      name: ex.name, muscle: ex.muscle, restHint: ex.restHint,
+      addSet: this.addSet(ei), addDrop: this.addDrop(ei),
+      sets: ex.sets.map((st, si) => {
+        const warm = st.kind === "warm";
+        if (!warm) wn++;
+        return {
+          label: warm ? "W" : String(ex.sets.slice(0, si + 1).filter((x) => x.kind !== "warm").length),
+          numColor: warm ? "#e8c468" : muted,
+          weight: st.weight || "–", reps: st.reps || "–",
+          isWarm: warm, showRpe: !warm,
+          rowStyle: `border-radius:10px;padding:8px 9px;margin-bottom:7px;transition:background .2s;background:${st.done ? "rgba(52,211,153,.09)" : "#1c1c1a"}`,
+          warmBg: warm ? "rgba(232,196,104,.15)" : "transparent", warmColor: warm ? "#e8c468" : "#4d4b45",
+          checkBg: st.done ? "#34d399" : "#131312", checkStroke: st.done ? "#04120c" : "#4d4b45",
+          toggle: this.toggleSet(ei, si), toggleWarm: this.toggleWarm(ei, si),
+          hasDrop: !!st.drop, dropWeight: st.drop ? (st.drop.weight || "–") : "", dropReps: st.drop ? (st.drop.reps || "–") : "",
+          rirOpts: [0, 1, 2, 3, 4, 5].map((n) => {
+            const active = st.rir === n;
+            const zone = n <= 1 ? "#f87171" : n <= 3 ? "#34d399" : "#9c9a92";
+            return {
+              n: n === 5 ? "5+" : String(n),
+              bg: active ? zone : "#131312",
+              color: active ? "#0b0b0a" : "#5a5852",
+              border: active ? zone : "#2e2c27",
+              click: this.setRir(ei, si, n)
+            };
+          })
+        };
+      })
+    }));
+
+    // ranking
+    const metricDefs = [
+      { label: "Series/sem", cap: "Series efectivas por semana — el driver de hipertrofia (Schoenfeld).", unit: "" },
+      { label: "e1RM rel.", cap: "1RM estimado relativo al peso corporal — justo entre distintos pesos.", unit: "×" },
+      { label: "Constancia", cap: "% de días planificados efectivamente entrenados.", unit: "%" }
+    ];
+    const rankData = [
+      [ { n: "Nico", v: "84", i: "N", d: 0 }, { n: "Vos", v: "78", i: "T", d: 1, me: true }, { n: "Meli", v: "72", i: "M", d: -1 }, { n: "Facu", v: "65", i: "F", d: 0 }, { n: "Juli", v: "58", i: "J", d: 1 }, { n: "Santi", v: "51", i: "S", d: -1 } ],
+      [ { n: "Vos", v: "1,39", i: "T", d: 1, me: true }, { n: "Meli", v: "1,34", i: "M", d: -1 }, { n: "Nico", v: "1,28", i: "N", d: 0 }, { n: "Juli", v: "1,21", i: "J", d: 0 }, { n: "Facu", v: "1,12", i: "F", d: 1 }, { n: "Santi", v: "1,04", i: "S", d: -1 } ],
+      [ { n: "Meli", v: "96", i: "M", d: 0 }, { n: "Nico", v: "92", i: "N", d: 1 }, { n: "Vos", v: "88", i: "T", d: 0, me: true }, { n: "Facu", v: "80", i: "F", d: -1 }, { n: "Santi", v: "74", i: "S", d: 1 }, { n: "Juli", v: "61", i: "J", d: -1 } ]
+    ];
+    const R = React.createElement;
+    const medal = ["#e8c468", "#c4c2ba", "#b07a42"];
+    const scoreRows = rankData[this.state.metric].map((row, i) => {
+      const top = i < 3;
+      const rankEl = top
+        ? R("svg", { width: 17, height: 17, viewBox: "0 0 24 24", fill: "none", stroke: medal[i], strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, R("path", { d: "M6 9H4V5h4M18 9h2V5h-4M6 3h12v6a6 6 0 0 1-12 0V3ZM8 21h8M12 15v6" }))
+        : R("span", { style: { fontSize: "13px", color: muted, fontWeight: 600 } }, i + 1);
+      const deltaEl = row.d === 0
+        ? R("span", { style: { fontSize: "10px", color: "#4d4b45" } }, "–")
+        : R("span", { style: { display: "inline-flex", alignItems: "center", color: row.d > 0 ? "#34d399" : "#f87171", fontSize: "9px", fontWeight: 700 } },
+            R("svg", { width: 9, height: 9, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 3, strokeLinecap: "round", strokeLinejoin: "round", style: { transform: row.d > 0 ? "none" : "rotate(180deg)" } }, R("path", { d: "M6 15l6-6 6 6" })));
+      return {
+        rankEl, deltaEl, initial: row.i, name: row.me ? "Vos" : row.n, value: row.v + metricDefs[this.state.metric].unit,
+        avBg: row.me ? "rgba(205,165,72,.16)" : "#1c1c1a", avColor: row.me ? gold : "#c9c7bf",
+        nameColor: row.me ? gold : "#f2f1ed", valColor: row.me ? gold : "#f2f1ed",
+        rowStyle: `display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:12px;margin-bottom:8px;border:1px solid ${row.me ? "rgba(205,165,72,.4)" : "#2e2c27"};background:${row.d > 0 ? "#131312;animation:riseGlow 1.4s ease" : "#131312"}${row.me ? "" : ""}`
+      };
+    });
+
+    const exList = ["Press banca", "Sentadilla", "Peso muerto", "Dominadas", "Press militar"];
+    const progData = { "Press banca": [92,94,93,96,98,97,100,102,101,104,106,105,108,107,110,112], "Sentadilla": [120,124,122,128,130,133,131,136,138,140,139,144,146,148,150,154], "Peso muerto": [140,145,143,150,155,153,160,164,162,168,172,170,176,180,178,185], "Dominadas": [8,9,9,10,11,11,12,13,12,14,14,15,15,16,16,17], "Press militar": [50,52,51,54,55,54,57,58,57,60,61,60,63,64,63,66] };
+    const progName = exList[this.state.prog];
+    const progVals = progData[progName];
+
+    return {
+      isInicio: t === "inicio", isRutinas: t === "rutinas", isSesion: t === "sesion",
+      isProgreso: t === "progreso", isPerfil: t === "perfil", isRanking: t === "ranking",
+      showNav: t === "inicio" || t === "rutinas" || t === "progreso" || t === "perfil",
+      goInicio: this.go("inicio"), goRutinas: this.go("rutinas"), goProgreso: this.go("progreso"),
+      goPerfil: this.go("perfil"), goRanking: this.go("ranking"),
+      startSession: () => this.setState({ tab: "sesion" }),
+      finishSession: () => this.setState({ prModal: true }),
+      closePr: () => this.setState({ prModal: false, tab: "inicio" }),
+      stop: (e) => e.stopPropagation(),
+      prModal: this.state.prModal,
+      navInicio: t === "inicio" ? gold : muted, navRutinas: t === "rutinas" ? gold : muted,
+      navProgreso: t === "progreso" ? gold : muted, navPerfil: t === "perfil" ? gold : muted,
+
+      e1rmChart: this.line([92,95,94,98,97,101,100,103,105,104,108,107,110,112], { id: "e", h: 118, ma: false }),
+      muscleBarsEl: this.muscleBars(),
+      heatmapEl: this.heatmap(),
+      progressChart: this.line(progVals, { id: "p", h: 150, ma: true, prIdx: progVals.indexOf(Math.max(...progVals)) }),
+      confetti: this.confetti(),
+      restRing: this.restRing(),
+
+      routines: [
+        { tag: "A", name: "Día A · Piernas", sub: "Cuádriceps · glúteos · isquios · 6 ejercicios" },
+        { tag: "B", name: "Día B · Tirón", sub: "Espalda · bíceps · 6 ejercicios" },
+        { tag: "D", name: "Día D · Full body", sub: "Cuerpo completo · 7 ejercicios" }
+      ],
+
+      sessionElapsed: this.fmtClock(this.state.elapsed),
+      restActive: this.state.restActive, restLabel: this.fmtClock(this.state.restSeconds), restHint: this.state.restHint,
+      skipRest: () => this.setState({ restActive: false, restSeconds: 0 }),
+      addRest: () => this.setState((s) => ({ restSeconds: s.restSeconds + 30, restTarget: Math.max(s.restTarget, s.restSeconds + 30) })),
+      sessionExercises,
+
+      exChips: exList.map((n, i) => ({ name: n, click: () => this.setState({ prog: i }),
+        bg: i === this.state.prog ? gold : "#131312", color: i === this.state.prog ? "#14120c" : muted, border: i === this.state.prog ? gold : "#2e2c27" })),
+      progName, progPr: Math.max(...progVals) + " kg",
+
+      metricTabs: metricDefs.map((m, i) => ({ label: m.label, click: () => this.setState({ metric: i }),
+        bg: i === this.state.metric ? gold : "transparent", color: i === this.state.metric ? "#14120c" : muted })),
+      periodTabs: [ "Semana", "Mes", "Todo" ].map((p, i) => ({ label: p, click: () => this.setState({ period: i }),
+        bg: i === this.state.period ? "#2e2c27" : "transparent", color: i === this.state.period ? "#f2f1ed" : muted })),
+      metricCaption: metricDefs[this.state.metric].cap,
+      scoreRows
+    };
+  }
+}
+</script>
+</body>
+</html>
