@@ -138,19 +138,21 @@ export default function RegistroPage() {
     const sessions = data ?? [];
     const totalVol = sessions.reduce((a, s) => a + sessionVolume(s), 0);
 
-    // Volumen por semana (últimas 8).
-    const weekMap = new Map<number, number>();
-    for (const s of sessions) {
-      const wk = weekStart(new Date(sessionDate(s))).getTime();
-      weekMap.set(wk, (weekMap.get(wk) ?? 0) + sessionVolume(s));
-    }
     const now = new Date();
+
+    // Volumen diario de los últimos 7 días.
+    const dayVolMap = new Map<string, number>();
+    for (const s of sessions) {
+      const k = dateKey(sessionDate(s));
+      dayVolMap.set(k, (dayVolMap.get(k) ?? 0) + sessionVolume(s));
+    }
     const chart: ChartPoint[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const wk = weekStart(new Date(now.getTime() - i * 7 * 86400000));
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now);
+      day.setDate(day.getDate() - i);
       chart.push({
-        label: wk.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
-        value: Math.round(weekMap.get(wk.getTime()) ?? 0),
+        label: day.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+        value: Math.round(dayVolMap.get(dateKey(day.toISOString())) ?? 0),
       });
     }
 
@@ -551,7 +553,7 @@ export default function RegistroPage() {
 
           <div className="card p-4">
             <div className="flex items-center gap-1.5 mb-2">
-              <p className="text-sm font-medium">Volumen semanal</p>
+              <p className="text-sm font-medium">Volumen · últimos 7 días</p>
               <button
                 onClick={() => setVolumeInfo(true)}
                 className="text-muted hover:text-fg"
