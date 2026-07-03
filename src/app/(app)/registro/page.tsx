@@ -10,6 +10,7 @@ import {
   Dumbbell,
   Zap,
   Info,
+  Download,
 } from "lucide-react";
 import {
   PageHeader,
@@ -20,9 +21,11 @@ import {
   Modal,
 } from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
+import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
+import { useToday } from "@/hooks/useToday";
 import {
   useWeeklyPlan,
   useSetWeeklyPlan,
@@ -37,11 +40,13 @@ import {
   weeklyStreak,
   avgDuration,
   avgWeeklyWorkouts,
-  monthlyCompliance,
+  rollingCompliance,
+  sessionDate,
   dateKey,
   localMidnight,
   type PlanResolver,
 } from "@/lib/metrics";
+import { buildSessionsCsv, downloadCsv } from "@/lib/export-csv";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
@@ -82,6 +87,7 @@ export default function RegistroPage() {
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
   const setOverride = useSetWeeklyPlanOverride();
+  const todayKey = useToday();
 
   // Plan efectivo por semana: la excepción de esa semana si existe, si no la
   // plantilla global. Ver "plantilla + excepciones" en useWeeklyPlan.ts.
@@ -104,7 +110,7 @@ export default function RegistroPage() {
     // Volumen por semana (últimas 8).
     const weekMap = new Map<number, number>();
     for (const s of sessions) {
-      const wk = weekStart(new Date(s.created_at)).getTime();
+      const wk = weekStart(new Date(sessionDate(s))).getTime();
       weekMap.set(wk, (weekMap.get(wk) ?? 0) + sessionVolume(s));
     }
     const now = new Date();
@@ -120,24 +126,49 @@ export default function RegistroPage() {
     // Frecuencia esta semana.
     const thisWeek = weekStart(now).getTime();
     const freq = sessions.filter(
-      (s) => weekStart(new Date(s.created_at)).getTime() === thisWeek,
+      (s) => weekStart(new Date(sessionDate(s))).getTime() === thisWeek,
     ).length;
 
-    // Volumen por músculo (atribuido al primer músculo principal).
+    // Volumen por músculo (histórico, atribuido al primer músculo principal).
     const muscleVol = new Map<string, number>();
+    // Sets por músculo de los últimos 30 días (para el donut).
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 30);
+    const muscleSets30 = new Map<string, number>();
     for (const s of sessions) {
+      const within30 = new Date(sessionDate(s)) >= cutoff;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         const m = ex?.primary_muscles[0];
         if (!m) continue;
-        const v = totalVolume(we.workout_sets.filter((x) => x.completed));
-        muscleVol.set(m, (muscleVol.get(m) ?? 0) + v);
+        const done = we.workout_sets.filter((x) => x.completed);
+        muscleVol.set(m, (muscleVol.get(m) ?? 0) + totalVolume(done));
+        if (within30) {
+          muscleSets30.set(m, (muscleSets30.get(m) ?? 0) + done.length);
+        }
       }
     }
     const byMuscle = [...muscleVol.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
     const maxMuscle = byMuscle[0]?.[1] ?? 1;
+    const muscleDonut: MusclePoint[] = [...muscleSets30.entries()].map(
+      ([m, v]) => ({ label: muscleEs(m), value: v }),
+    );
+
+    // Métricas mes a mes (últimos 6 meses con datos).
+    const monthMap = new Map<string, { workouts: number; volume: number }>();
+    for (const s of sessions) {
+      const d = new Date(sessionDate(s));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = monthMap.get(key) ?? { workouts: 0, volume: 0 };
+      cur.workouts += 1;
+      cur.volume += sessionVolume(s);
+      monthMap.set(key, cur);
+    }
+    const byMonth = [...monthMap.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .slice(0, 6);
 
     // Récords por ejercicio (mejor 1RM estimado).
     const prMap = new Map<string, { weight: number; orm: number; date: string }>();
@@ -166,13 +197,17 @@ export default function RegistroPage() {
       freq,
       byMuscle,
       maxMuscle,
+      muscleDonut,
+      byMonth,
       prs,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
       avgWeekly: avgWeeklyWorkouts(sessions),
       favoriteMuscle: byMuscle[0]?.[0] ?? null,
     };
-  }, [data, exMap]);
+    // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, exMap, todayKey]);
 
   // Racha semanal + calendario de cumplimiento (dependen del plan, resuelto
   // por semana: excepción puntual si existe, si no la plantilla global).
@@ -180,10 +215,10 @@ export default function RegistroPage() {
     const sessions = data ?? [];
     const now = new Date();
     const streakWeeks = weeklyStreak(sessions, resolvePlanned);
-    const compliance = monthlyCompliance(sessions, resolvePlanned, now);
+    const compliance = rollingCompliance(sessions, resolvePlanned, now, 30);
 
-    const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
-    const todayKey = dateKey(now.toISOString());
+    const sessionDays = new Set(sessions.map((s) => dateKey(sessionDate(s))));
+    const today = dateKey(now.toISOString());
     const thisWeekMs = weekStart(now).getTime();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -201,20 +236,41 @@ export default function RegistroPage() {
         wkMs,
         planned: planned.has(date.getDay()),
         completed: sessionDays.has(key),
-        isPast: key <= todayKey,
+        isPast: key <= today,
         isEditableWeek: wkMs >= thisWeekMs,
         isCurrentWeek: wkMs === thisWeekMs,
       });
     }
     return { streakWeeks, compliance, days, leadingBlanks };
-  }, [data, resolvePlanned]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, resolvePlanned, todayKey]);
 
   const [volumeInfo, setVolumeInfo] = useState(false);
   const [planExpanded, setPlanExpanded] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<{
     wkMs: number;
     weekday: number;
   } | null>(null);
+
+  function exportPeriod(from: Date | null, to: Date | null, tag: string) {
+    const sessions = (data ?? []).filter((s) => {
+      const d = new Date(sessionDate(s));
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+    const csv = buildSessionsCsv(sessions, exMap);
+    downloadCsv(`workouttracker-${tag}.csv`, csv);
+    setExportOpen(false);
+  }
+
+  function daysAgo(n: number) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - n);
+    return d;
+  }
 
   function toggleDayForWeek(wkMs: number, weekday: number) {
     const current = resolvePlanned(wkMs);
@@ -249,17 +305,29 @@ export default function RegistroPage() {
         title="Registro"
         subtitle="Tu progreso y métricas"
         action={
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={startEmpty.isPending}
-            onClick={async () => {
-              const id = await startEmpty.mutateAsync();
-              router.push(`/entrenar/${id}`);
-            }}
-          >
-            <Zap className="size-4" /> Libre
-          </Button>
+          <div className="flex items-center gap-1">
+            {!!data?.length && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setExportOpen(true)}
+                aria-label="Exportar CSV"
+              >
+                <Download className="size-4" />
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={startEmpty.isPending}
+              onClick={async () => {
+                const id = await startEmpty.mutateAsync();
+                router.push(`/entrenar/${id}`);
+              }}
+            >
+              <Zap className="size-4" /> Libre
+            </Button>
+          </div>
         }
       />
 
@@ -295,7 +363,7 @@ export default function RegistroPage() {
               }
             />
             <Stat
-              label="Músculo preferido"
+              label="Músculo estrella"
               value={
                 metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "—"
               }
@@ -304,7 +372,7 @@ export default function RegistroPage() {
 
           <div className="grid grid-cols-2 gap-2.5">
             <Stat
-              label="Cumplimiento"
+              label="Cumplimiento 30d"
               value={
                 plannedWeekdays.length === 0
                   ? "—"
@@ -342,6 +410,14 @@ export default function RegistroPage() {
             <VolumeChart data={metrics.chart} />
           </div>
 
+          {metrics.muscleDonut.length > 0 && (
+            <div className="card p-4">
+              <p className="text-sm font-medium mb-1">Músculos entrenados</p>
+              <p className="text-xs text-muted mb-3">Sets · últimos 30 días</p>
+              <MuscleDonut data={metrics.muscleDonut} />
+            </div>
+          )}
+
           {metrics.byMuscle.length > 0 && (
             <div className="card p-4">
               <p className="text-sm font-medium mb-3">Volumen por músculo</p>
@@ -361,6 +437,33 @@ export default function RegistroPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {metrics.byMonth.length > 1 && (
+            <div className="card p-4">
+              <p className="text-sm font-medium mb-3">Mes a mes</p>
+              <ul className="flex flex-col gap-2">
+                {metrics.byMonth.map(([key, m]) => {
+                  const [y, mo] = key.split("-").map(Number);
+                  const label = new Date(y, mo - 1, 1).toLocaleDateString("es-AR", {
+                    month: "long",
+                    year: "numeric",
+                  });
+                  return (
+                    <li
+                      key={key}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="capitalize">{label}</span>
+                      <span className="text-muted">
+                        {m.workouts} {m.workouts === 1 ? "entreno" : "entrenos"} ·{" "}
+                        {formatVolume(m.volume)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
 
@@ -405,7 +508,7 @@ export default function RegistroPage() {
                     <div className="min-w-0 flex-1">
                       <p className="font-medium truncate">{s.name}</p>
                       <p className="text-xs text-muted">
-                        {formatDate(s.created_at)} · {sessionSets(s)} series ·{" "}
+                        {formatDate(sessionDate(s))} · {sessionSets(s)} series ·{" "}
                         {formatVolume(sessionVolume(s))}
                         {s.duration_seconds
                           ? ` · ${formatDuration(s.duration_seconds)}`
@@ -420,6 +523,13 @@ export default function RegistroPage() {
           </div>
         </div>
       )}
+
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        onExport={exportPeriod}
+        daysAgo={daysAgo}
+      />
 
       <Modal
         open={volumeInfo}
@@ -460,6 +570,82 @@ export default function RegistroPage() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+function toDate(value: string): Date | null {
+  return value ? new Date(`${value}T00:00:00`) : null;
+}
+
+function ExportModal({
+  open,
+  onClose,
+  onExport,
+  daysAgo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onExport: (from: Date | null, to: Date | null, tag: string) => void;
+  daysAgo: (n: number) => Date;
+}) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  const presets: { label: string; run: () => void }[] = [
+    { label: "Últimos 7 días", run: () => onExport(daysAgo(7), null, "7d") },
+    { label: "Últimos 30 días", run: () => onExport(daysAgo(30), null, "30d") },
+    { label: "Últimos 90 días", run: () => onExport(daysAgo(90), null, "90d") },
+    { label: "Todo", run: () => onExport(null, null, "todo") },
+  ];
+
+  return (
+    <Modal open={open} onClose={onClose} title="Exportar CSV">
+      <p className="text-sm text-muted mb-3">
+        Elegí un período. Se descarga un CSV con una fila por serie.
+      </p>
+      <div className="flex flex-col gap-2">
+        {presets.map((p) => (
+          <button
+            key={p.label}
+            onClick={p.run}
+            className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2.5 text-sm hover:text-fg text-left"
+          >
+            {p.label}
+            <Download className="size-4 text-muted" />
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-border pt-4">
+        <p className="text-xs text-muted mb-2">Rango personalizado</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="h-9 flex-1 rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+          />
+          <span className="text-muted text-xs">a</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="h-9 flex-1 rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+          />
+        </div>
+        <Button
+          className="w-full mt-3"
+          disabled={!from && !to}
+          onClick={() => {
+            const toEnd = toDate(to);
+            if (toEnd) toEnd.setHours(23, 59, 59, 999);
+            onExport(toDate(from), toEnd, "rango");
+          }}
+        >
+          Exportar rango
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

@@ -38,6 +38,7 @@ export function ExerciseImage({
       src={src}
       alt={alt}
       loading="lazy"
+      decoding="async"
       onError={() => setError(true)}
       className={clsx("object-cover bg-white", className)}
     />

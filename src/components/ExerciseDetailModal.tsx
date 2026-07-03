@@ -2,6 +2,7 @@
 
 import { Modal, Badge } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
+import { useExerciseInstructions } from "@/hooks/useExercises";
 import {
   muscleEs,
   equipmentEs,
@@ -19,6 +20,7 @@ export function ExerciseDetailModal({
   exercise: Exercise | null;
   onClose: () => void;
 }) {
+  const { data: instructions } = useExerciseInstructions(exercise?.id);
   return (
     <Modal open={!!exercise} onClose={onClose} title={exercise?.name}>
       {exercise && (
@@ -60,11 +62,11 @@ export function ExerciseDetailModal({
             </div>
           )}
 
-          {exercise.instructions.length > 0 && (
+          {instructions && instructions.length > 0 && (
             <div>
               <p className="text-xs text-muted mb-1.5">Instrucciones</p>
               <ol className="list-decimal list-inside text-sm space-y-1.5 text-muted">
-                {exercise.instructions.map((step, i) => (
+                {instructions.map((step, i) => (
                   <li key={i}>{step}</li>
                 ))}
               </ol>

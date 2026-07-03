@@ -18,6 +18,7 @@ export function useScoreboard(
 ) {
   return useQuery({
     queryKey: ["scoreboard", metric, period, exerciseId ?? null, sex ?? null],
+    staleTime: 2 * 60_000,
     enabled: !NEEDS_EXERCISE.includes(metric) || !!exerciseId,
     queryFn: async (): Promise<ScoreboardRow[]> => {
       const supabase = createClient();

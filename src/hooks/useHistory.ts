@@ -29,6 +29,7 @@ export interface HistorySession {
 export function useHistory() {
   return useQuery({
     queryKey: ["history"],
+    staleTime: 5 * 60_000,
     queryFn: async (): Promise<HistorySession[]> => {
       const supabase = createClient();
       const { data, error } = await supabase

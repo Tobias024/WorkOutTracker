@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Trophy, Medal, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { Trophy, Medal, ChevronDown, ChevronRight } from "lucide-react";
 import { PageHeader, Spinner, EmptyState, Button, Tabs } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { NotificationToggle } from "@/components/NotificationToggle";
@@ -10,6 +11,7 @@ import {
   type Metric,
   type Period,
 } from "@/hooks/useScoreboard";
+import { useCurrentUserId } from "@/hooks/useFriendProfile";
 import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Exercise, Sex } from "@/lib/types";
@@ -39,6 +41,8 @@ export default function ScoreboardPage() {
   const [sex, setSex] = useState<Sex | "">("");
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [picker, setPicker] = useState(false);
+
+  const { data: meId } = useCurrentUserId();
 
   const { data, isLoading, isError } = useScoreboard(
     metric,
@@ -117,40 +121,46 @@ export default function ScoreboardPage() {
         />
       ) : (
         <ul className="flex flex-col gap-2">
-          {data.map((row, i) => (
-            <li
-              key={row.user_id}
-              className={clsx(
-                "card flex items-center gap-3 p-3.5",
-                i === 0 && Number(row.value) > 0 && "ring-1 ring-accent/40",
-              )}
-            >
-              <div className="w-7 text-center shrink-0">
-                {i < 3 && Number(row.value) > 0 ? (
-                  <Medal
-                    className={clsx(
-                      "size-5 mx-auto",
-                      i === 0
-                        ? "text-accent"
-                        : i === 1
-                          ? "text-muted"
-                          : "text-amber-700",
+          {data.map((row, i) => {
+            const isMe = row.user_id === meId;
+            return (
+              <li key={row.user_id}>
+                <Link
+                  href={isMe ? "/perfil" : `/amigos/${row.user_id}`}
+                  className={clsx(
+                    "card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition",
+                    i === 0 && Number(row.value) > 0 && "ring-1 ring-accent/40",
+                  )}
+                >
+                  <div className="w-7 text-center shrink-0">
+                    {i < 3 && Number(row.value) > 0 ? (
+                      <Medal
+                        className={clsx(
+                          "size-5 mx-auto",
+                          i === 0
+                            ? "text-accent"
+                            : i === 1
+                              ? "text-muted"
+                              : "text-amber-700",
+                        )}
+                      />
+                    ) : (
+                      <span className="text-muted text-sm">{i + 1}</span>
                     )}
-                  />
-                ) : (
-                  <span className="text-muted text-sm">{i + 1}</span>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium truncate">
-                  {row.display_name ?? row.username}
-                </p>
-              </div>
-              <span className="font-semibold tabular-nums">
-                {fmt(Number(row.value))}
-              </span>
-            </li>
-          ))}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {isMe ? "Vos" : row.display_name ?? row.username}
+                    </p>
+                  </div>
+                  <span className="font-semibold tabular-nums">
+                    {fmt(Number(row.value))}
+                  </span>
+                  <ChevronRight className="size-4 text-muted shrink-0" />
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
 

@@ -9,8 +9,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
-            refetchOnWindowFocus: false,
+            staleTime: 60_000,
+            // Al volver a la app tras días, refetchea (y re-renderiza) para que
+            // el gráfico/semana/cumplimiento avancen de día. Con los staleTime
+            // por query (history 5min, exercises 1h) no dispara refetch masivo.
+            refetchOnWindowFocus: true,
             retry: 1,
           },
         },

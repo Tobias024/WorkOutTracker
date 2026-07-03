@@ -87,13 +87,24 @@ export function bmiCategory(value: number): BmiCategory {
   return "obesidad";
 }
 
+/** Datos mínimos para ubicar una sesión en el tiempo. */
+export type SessionDateLike = { created_at: string; started_at?: string | null };
+
+/** Fecha efectiva de una sesión: la de inicio si está (editable a mano), si no
+ *  la de creación. Todas las métricas de fecha usan esto, así editar el inicio
+ *  de una sesión pasada la reubica en el gráfico/calendario. */
+export function sessionDate(s: SessionDateLike): string {
+  return s.started_at ?? s.created_at;
+}
+
 /** Cantidad de días distintos con sesión, agrupados por semana (timestamp del lunes). */
-function visitsByWeek(sessions: { created_at: string }[]): Map<number, Set<string>> {
+function visitsByWeek(sessions: SessionDateLike[]): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>();
   for (const s of sessions) {
-    const wk = weekStart(new Date(s.created_at)).getTime();
+    const iso = sessionDate(s);
+    const wk = weekStart(new Date(iso)).getTime();
     const set = map.get(wk) ?? new Set<string>();
-    set.add(dateKey(s.created_at));
+    set.add(dateKey(iso));
     map.set(wk, set);
   }
   return map;
@@ -111,7 +122,7 @@ export type PlanResolver = (weekStartMs: number) => number[];
  * en curso sin cumplir todavía NO rompe la racha (recuperable).
  */
 export function weeklyStreak(
-  sessions: { created_at: string }[],
+  sessions: SessionDateLike[],
   resolvePlanned: PlanResolver,
 ): number {
   const byWeek = visitsByWeek(sessions);
@@ -140,31 +151,29 @@ export interface Compliance {
 }
 
 /**
- * Cumplimiento del mes de `ref`: cuenta los días planificados (según el plan
- * vigente de cada semana, plantilla u override) desde el 1° hasta hoy, y
- * cuántos de esos tienen sesión. Los días futuros no entran en el denominador.
+ * Cumplimiento rolling de los últimos `days` días (incluye hoy): cuenta los
+ * días planificados en esa ventana (según el plan vigente de cada semana,
+ * plantilla u override) y cuántos tienen sesión.
  */
-export function monthlyCompliance(
-  sessions: { created_at: string }[],
+export function rollingCompliance(
+  sessions: SessionDateLike[],
   resolvePlanned: PlanResolver,
   ref: Date,
+  days = 30,
 ): Compliance {
-  const sessionDays = new Set(sessions.map((s) => dateKey(s.created_at)));
-  const todayKey = dateKey(ref.toISOString());
-  const year = ref.getFullYear();
-  const month = ref.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const sessionDays = new Set(sessions.map((s) => dateKey(sessionDate(s))));
+  const today = new Date(ref);
+  today.setHours(0, 0, 0, 0);
 
   let plannedDays = 0;
   let completedDays = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d);
-    const key = dateKey(date.toISOString());
-    if (key > todayKey) break; // no contar el futuro
+  for (let i = 0; i < days; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
     const planned = new Set(resolvePlanned(weekStart(date).getTime()));
     if (!planned.has(date.getDay())) continue;
     plannedDays++;
-    if (sessionDays.has(key)) completedDays++;
+    if (sessionDays.has(dateKey(date.toISOString()))) completedDays++;
   }
   const pct =
     plannedDays === 0 ? 0 : Math.round((completedDays / plannedDays) * 1000) / 10;
@@ -181,10 +190,10 @@ export function avgDuration(sessions: { duration_seconds: number | null }[]): nu
 /** Promedio de entrenamientos por semana desde la primera sesión hasta hoy.
  *  weeksElapsed se acota a mínimo 1 para no inflar el promedio en usuarios
  *  nuevos (ej. 2 sesiones en 3 días no debería mostrar "4.7/sem"). */
-export function avgWeeklyWorkouts(sessions: { created_at: string }[]): number {
+export function avgWeeklyWorkouts(sessions: SessionDateLike[]): number {
   if (sessions.length === 0) return 0;
   const earliest = Math.min(
-    ...sessions.map((s) => new Date(s.created_at).getTime()),
+    ...sessions.map((s) => new Date(sessionDate(s)).getTime()),
   );
   const weeksElapsed = Math.max(1, (Date.now() - earliest) / (7 * 86400000));
   return sessions.length / weeksElapsed;

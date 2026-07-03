@@ -60,6 +60,25 @@ export default function WorkoutPage() {
         )
     : 0;
 
+  // Editar inicio/fin a mano: además de guardar la fecha, recalcula la duración
+  // si quedan ambos extremos (si no, finish() nunca corrió y la duración vieja
+  // quedaría desactualizada en Registro).
+  function editTime(field: "started_at" | "ended_at", value: string) {
+    const iso = value ? new Date(value).toISOString() : null;
+    const started = field === "started_at" ? iso : session.started_at;
+    const endedAt = field === "ended_at" ? iso : session.ended_at;
+    const duration =
+      started && endedAt
+        ? Math.max(
+            0,
+            Math.floor(
+              (new Date(endedAt).getTime() - new Date(started).getTime()) / 1000,
+            ),
+          )
+        : session.duration_seconds;
+    m.updateSession.mutate({ [field]: iso, duration_seconds: duration });
+  }
+
   async function finish() {
     const endIso = new Date().toISOString();
     const duration = session.started_at
@@ -115,13 +134,7 @@ export default function WorkoutPage() {
             <input
               type="datetime-local"
               defaultValue={toLocalInput(session.started_at)}
-              onBlur={(e) =>
-                m.updateSession.mutate({
-                  started_at: e.target.value
-                    ? new Date(e.target.value).toISOString()
-                    : null,
-                })
-              }
+              onBlur={(e) => editTime("started_at", e.target.value)}
               className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </label>
@@ -130,13 +143,7 @@ export default function WorkoutPage() {
             <input
               type="datetime-local"
               defaultValue={toLocalInput(session.ended_at)}
-              onBlur={(e) =>
-                m.updateSession.mutate({
-                  ended_at: e.target.value
-                    ? new Date(e.target.value).toISOString()
-                    : null,
-                })
-              }
+              onBlur={(e) => editTime("ended_at", e.target.value)}
               className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </label>

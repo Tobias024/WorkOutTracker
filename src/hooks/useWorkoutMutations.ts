@@ -7,8 +7,13 @@ import type { WorkoutSession, WorkoutSet } from "@/lib/types";
 /** Mutaciones sobre una sesión activa. Todas invalidan ["session", sessionId]. */
 export function useSessionMutations(sessionId: string) {
   const qc = useQueryClient();
-  const invalidate = () =>
+  // Editar sets/ejercicios/sesión cambia volumen, series, PRs, duración y el
+  // ranking: hay que refrescar la sesión activa + el historial + el scoreboard.
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["session", sessionId] });
+    qc.invalidateQueries({ queryKey: ["history"] });
+    qc.invalidateQueries({ queryKey: ["scoreboard"] });
+  };
 
   const updateSet = useMutation({
     mutationFn: async ({
@@ -156,12 +161,7 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", sessionId);
       if (error) throw error;
     },
-    // Además de la sesión activa, esto puede tocar ended_at/duration_seconds
-    // al terminar el entrenamiento — Registro necesita verlo de inmediato.
-    onSuccess: () => {
-      invalidate();
-      qc.invalidateQueries({ queryKey: ["history"] });
-    },
+    onSuccess: invalidate,
   });
 
   return {
