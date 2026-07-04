@@ -9,7 +9,6 @@ import {
   ChevronDown,
   Dumbbell,
   Zap,
-  Info,
   Download,
   Trophy,
   Flame,
@@ -22,6 +21,7 @@ import {
   Button,
   Modal,
   SectionCard,
+  DeltaChip,
 } from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
@@ -49,6 +49,7 @@ import {
   avgWeeklyWorkouts,
   rollingCompliance,
   sessionDate,
+  firstSessionDate,
   dateKey,
   localMidnight,
   isCountableSet,
@@ -141,21 +142,36 @@ export default function RegistroPage() {
 
     const now = new Date();
 
-    // Volumen diario de los últimos 7 días.
-    const dayVolMap = new Map<string, number>();
+    // Volumen por mes calendario, desde el mes de la primera sesión (tope 12).
+    const monthVolMap = new Map<string, number>();
     for (const s of sessions) {
-      const k = dateKey(sessionDate(s));
-      dayVolMap.set(k, (dayVolMap.get(k) ?? 0) + sessionVolume(s));
+      const d = new Date(sessionDate(s));
+      const k = `${d.getFullYear()}-${d.getMonth()}`;
+      monthVolMap.set(k, (monthVolMap.get(k) ?? 0) + sessionVolume(s));
     }
+    const first = firstSessionDate(sessions);
+    const monthsBack = first
+      ? Math.min(
+          11,
+          (now.getFullYear() - first.getFullYear()) * 12 +
+            (now.getMonth() - first.getMonth()),
+        )
+      : 0;
     const chart: ChartPoint[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const day = new Date(now);
-      day.setDate(day.getDate() - i);
+    for (let i = monthsBack; i >= 0; i--) {
+      const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
       chart.push({
-        label: day.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
-        value: Math.round(dayVolMap.get(dateKey(day.toISOString())) ?? 0),
+        label: m.toLocaleDateString("es-AR", { month: "short" }),
+        value: Math.round(monthVolMap.get(`${m.getFullYear()}-${m.getMonth()}`) ?? 0),
       });
     }
+
+    // Delta mes vs mes anterior (MoM) para el header del gráfico.
+    const volMonthDelta = periodDelta(
+      sessions,
+      (subset) => subset.reduce((a, s) => a + sessionVolume(s), 0),
+      "month",
+    );
 
     // Frecuencia esta semana.
     const thisWeek = weekStart(now).getTime();
@@ -322,6 +338,7 @@ export default function RegistroPage() {
       heatWeeks,
       heatMax,
       volDelta,
+      volMonthDelta,
       hardDelta,
       hardSetsThisWeek: hardDelta.current,
       count: sessions.length,
@@ -369,7 +386,6 @@ export default function RegistroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, resolvePlanned, todayKey]);
 
-  const [volumeInfo, setVolumeInfo] = useState(false);
   const [planExpanded, setPlanExpanded] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
@@ -558,7 +574,11 @@ export default function RegistroPage() {
           />
 
           {!!achievements?.length && (
-            <SectionCard title="Logros" subtitle="Récords e hitos recientes">
+            <SectionCard
+              title="Logros"
+              subtitle="Récords e hitos recientes"
+              info="Se registran al finalizar una sesión: récords de fuerza (1RM estimado), récord de volumen semanal e hitos de racha (7/30/100 días)."
+            >
               <ul className="flex flex-col gap-2.5">
                 {achievements.map((a) => (
                   <li key={a.id} className="flex items-center gap-2.5 text-sm">
@@ -575,23 +595,22 @@ export default function RegistroPage() {
             </SectionCard>
           )}
 
-          <div className="card p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <p className="text-sm font-medium">Volumen · últimos 7 días</p>
-              <button
-                onClick={() => setVolumeInfo(true)}
-                className="text-muted hover:text-fg"
-                aria-label="¿Cómo se calcula el volumen?"
-              >
-                <Info className="size-3.5" />
-              </button>
-            </div>
+          <SectionCard
+            title="Volumen mensual"
+            info="Volumen = reps × peso de cada serie de trabajo completada (no cuentan calentamientos). Si una serie tiene bajadas (drop set), se suman todas."
+            action={
+              metrics.volMonthDelta.deltaPct != null ? (
+                <DeltaChip pct={metrics.volMonthDelta.deltaPct} />
+              ) : undefined
+            }
+          >
             <VolumeChart data={metrics.chart} />
-          </div>
+          </SectionCard>
 
           <SectionCard
             title="Series efectivas por grupo"
             subtitle="Esta semana · marcas MEV / MAV / MRV"
+            info="Series de trabajo (≥5 reps y cerca del fallo) por músculo, esta semana. Las marcas son las series semanales de referencia: MEV (mínimo para crecer), MAV (rango óptimo) y MRV (máximo recuperable)."
           >
             <MuscleSetsBar data={metrics.hardSets} />
           </SectionCard>
@@ -599,25 +618,34 @@ export default function RegistroPage() {
           <SectionCard
             title="Balance de patrones"
             subtitle="Volumen de las últimas 4 semanas"
+            info="Reparto del volumen entre empuje/tirón (según el tipo de fuerza del ejercicio) y compuesto/aislamiento. Ayuda a detectar desbalances que el volumen total no muestra."
           >
             <PatternBalance data={metrics.balance} />
           </SectionCard>
 
-          <SectionCard title="Constancia" subtitle="Últimas 12 semanas">
+          <SectionCard
+            title="Constancia"
+            subtitle="Últimas 12 semanas"
+            info="Cada celda es un día; más dorado = más volumen ese día. Las columnas son semanas (izquierda = más antigua) y las filas los días (lunes arriba)."
+          >
             <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
           </SectionCard>
 
           {metrics.muscleDonut.length > 0 && (
-            <div className="card p-4">
-              <p className="text-sm font-medium mb-1">Músculos entrenados</p>
-              <p className="text-xs text-muted mb-3">Sets · últimos 30 días</p>
+            <SectionCard
+              title="Músculos entrenados"
+              subtitle="Sets · últimos 30 días"
+              info="Distribución de las series por grupo muscular en los últimos 30 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad)."
+            >
               <MuscleDonut data={metrics.muscleDonut} />
-            </div>
+            </SectionCard>
           )}
 
           {metrics.byMuscle.length > 0 && (
-            <div className="card p-4">
-              <p className="text-sm font-medium mb-3">Volumen por músculo</p>
+            <SectionCard
+              title="Volumen por músculo"
+              info="Volumen histórico acumulado por grupo muscular (reps × peso de las series de trabajo)."
+            >
               <div className="flex flex-col gap-2.5">
                 {metrics.byMuscle.map(([m, v]) => (
                   <div key={m}>
@@ -634,12 +662,14 @@ export default function RegistroPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </SectionCard>
           )}
 
           {metrics.prs.length > 0 && (
-            <div className="card p-4">
-              <p className="text-sm font-medium mb-3">Récords (1RM estimado)</p>
+            <SectionCard
+              title="Récords (1RM estimado)"
+              info="Mejor 1RM estimado por ejercicio, con la fórmula de Epley (peso × (1 + reps/30)). Es una señal de fuerza estable sesión a sesión."
+            >
               <ul className="flex flex-col gap-2">
                 {metrics.prs.map(([exId, pr]) => (
                   <li
@@ -660,7 +690,7 @@ export default function RegistroPage() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </SectionCard>
           )}
 
           <div>
@@ -731,17 +761,6 @@ export default function RegistroPage() {
             })}
           </ul>
         )}
-      </Modal>
-
-      <Modal
-        open={volumeInfo}
-        onClose={() => setVolumeInfo(false)}
-        title="¿Cómo se calcula el volumen?"
-      >
-        <p className="text-sm text-muted">
-          Volumen = reps × peso de cada serie completada. Si una serie tiene
-          bajadas (drop set), se suman todas las bajadas.
-        </p>
       </Modal>
 
       <Modal

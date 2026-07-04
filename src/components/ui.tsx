@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, X, ArrowUp, ArrowDown, Info } from "lucide-react";
 import { clsx } from "@/lib/clsx";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function Button({
   variant = "primary",
@@ -234,25 +234,45 @@ export function SectionCard({
   title,
   subtitle,
   action,
+  info,
   children,
   className,
 }: {
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
+  /** Si se pasa, muestra un botón "i" que abre un modal con esta explicación. */
+  info?: string;
   children: React.ReactNode;
   className?: string;
 }) {
+  const [showInfo, setShowInfo] = useState(false);
   return (
     <div className={clsx("card rounded-xl p-4", className)}>
       <div className="flex items-start justify-between gap-2 mb-3">
         <div>
-          <p className="text-sm font-semibold">{title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold">{title}</p>
+            {info && (
+              <button
+                onClick={() => setShowInfo(true)}
+                className="text-muted hover:text-fg"
+                aria-label="¿Qué significa?"
+              >
+                <Info className="size-3.5" />
+              </button>
+            )}
+          </div>
           {subtitle && <p className="text-xs text-muted mt-0.5">{subtitle}</p>}
         </div>
         {action}
       </div>
       {children}
+      {info && (
+        <Modal open={showInfo} onClose={() => setShowInfo(false)} title={title}>
+          <p className="text-sm text-muted">{info}</p>
+        </Modal>
+      )}
     </div>
   );
 }

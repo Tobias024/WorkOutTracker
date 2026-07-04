@@ -2,18 +2,32 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { FullSession } from "@/hooks/useWorkout";
 import type { WorkoutSession, WorkoutSet } from "@/lib/types";
 
-/** Mutaciones sobre una sesión activa. Todas invalidan ["session", sessionId]. */
+/** Mutaciones sobre una sesión activa. */
 export function useSessionMutations(sessionId: string) {
   const qc = useQueryClient();
-  // Editar sets/ejercicios/sesión cambia volumen, series, PRs, duración y el
-  // ranking: hay que refrescar la sesión activa + el historial + el scoreboard.
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["session", sessionId] });
-    qc.invalidateQueries({ queryKey: ["history"] });
-    qc.invalidateQueries({ queryKey: ["scoreboard"] });
+  const sessionKey = ["session", sessionId];
+
+  // Marca Registro/Ranking como stale SIN refetch inmediato: se refrescan la
+  // próxima vez que se abren, no en cada tap durante el entrenamiento.
+  const markStaleBackground = () => {
+    qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
+    qc.invalidateQueries({ queryKey: ["scoreboard"], refetchType: "none" });
   };
+  // Cambios estructurales (ids nuevos del server): además refetchea la sesión.
+  const refetchSession = () => qc.invalidateQueries({ queryKey: sessionKey });
+
+  /** Escribe optimísticamente en el cache de la sesión y devuelve el snapshot. */
+  function optimistic(mutate: (s: FullSession) => FullSession) {
+    const prev = qc.getQueryData<FullSession>(sessionKey);
+    if (prev) qc.setQueryData<FullSession>(sessionKey, mutate(prev));
+    return { prev };
+  }
+  function rollback(ctx: { prev?: FullSession } | undefined) {
+    if (ctx?.prev) qc.setQueryData(sessionKey, ctx.prev);
+  }
 
   const updateSet = useMutation({
     mutationFn: async ({
@@ -30,7 +44,21 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => ({
+        ...s,
+        exercises: s.exercises.map((ex) => ({
+          ...ex,
+          sets: ex.sets.map((set) =>
+            set.id === id ? { ...set, ...patch } : set,
+          ),
+        })),
+      }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    // Sin refetch de la sesión: el optimistic ya es correcto para un patch.
+    onSettled: markStaleBackground,
   });
 
   const addSet = useMutation({
@@ -54,7 +82,35 @@ export function useSessionMutations(sessionId: string) {
       });
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onMutate: async ({ workoutExerciseId, setNumber, reps, weight }) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      const tempSet: WorkoutSet = {
+        id: `temp-${setNumber}-${workoutExerciseId}`,
+        workout_exercise_id: workoutExerciseId,
+        set_number: setNumber,
+        reps: reps ?? null,
+        weight: weight ?? null,
+        rpe: null,
+        comment: null,
+        is_warmup: false,
+        completed: false,
+        drops: null,
+      };
+      return optimistic((s) => ({
+        ...s,
+        exercises: s.exercises.map((ex) =>
+          ex.id === workoutExerciseId
+            ? { ...ex, sets: [...ex.sets, tempSet] }
+            : ex,
+        ),
+      }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    // Refetchea para reemplazar el id temporal por el real.
+    onSettled: () => {
+      refetchSession();
+      markStaleBackground();
+    },
   });
 
   const deleteSet = useMutation({
@@ -63,7 +119,18 @@ export function useSessionMutations(sessionId: string) {
       const { error } = await supabase.from("workout_sets").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => ({
+        ...s,
+        exercises: s.exercises.map((ex) => ({
+          ...ex,
+          sets: ex.sets.filter((set) => set.id !== id),
+        })),
+      }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSettled: markStaleBackground,
   });
 
   const addExercise = useMutation({
@@ -91,7 +158,10 @@ export function useSessionMutations(sessionId: string) {
         { workout_exercise_id: we.id, set_number: 3 },
       ]);
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      refetchSession();
+      markStaleBackground();
+    },
   });
 
   const removeExercise = useMutation({
@@ -103,7 +173,15 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", workoutExerciseId);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onMutate: async (workoutExerciseId) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => ({
+        ...s,
+        exercises: s.exercises.filter((ex) => ex.id !== workoutExerciseId),
+      }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSettled: markStaleBackground,
   });
 
   /**
@@ -149,7 +227,10 @@ export function useSessionMutations(sessionId: string) {
         );
       }
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      refetchSession();
+      markStaleBackground();
+    },
   });
 
   const updateSession = useMutation({
@@ -161,7 +242,12 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", sessionId);
       if (error) throw error;
     },
-    onSuccess: invalidate,
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => ({ ...s, session: { ...s.session, ...patch } }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSettled: markStaleBackground,
   });
 
   return {

@@ -2,7 +2,6 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Dumbbell } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input } from "@/components/ui";
 
@@ -125,9 +124,14 @@ function LoginForm() {
     <main className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="size-14 rounded-lg bg-primary/15 grid place-items-center">
-            <Dumbbell className="size-7 text-primary" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="WorkOut Tracker"
+            width={64}
+            height={64}
+            className="size-16"
+          />
           <div className="text-center">
             <h1 className="text-2xl font-bold">WorkOut Tracker</h1>
             <p className="text-sm text-muted mt-1">

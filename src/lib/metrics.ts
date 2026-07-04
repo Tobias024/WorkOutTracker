@@ -200,6 +200,17 @@ export function sessionDate(s: SessionDateLike): string {
   return s.started_at ?? s.created_at;
 }
 
+/** Fecha (ms local, medianoche) de la primera sesión; null si no hay sesiones. */
+export function firstSessionDate(sessions: SessionDateLike[]): Date | null {
+  if (sessions.length === 0) return null;
+  const earliest = Math.min(
+    ...sessions.map((s) => new Date(sessionDate(s)).getTime()),
+  );
+  const d = new Date(earliest);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** Cantidad de días distintos con sesión, agrupados por semana (timestamp del lunes). */
 function visitsByWeek(sessions: SessionDateLike[]): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>();
@@ -267,12 +278,16 @@ export function rollingCompliance(
   const sessionDays = new Set(sessions.map((s) => dateKey(sessionDate(s))));
   const today = new Date(ref);
   today.setHours(0, 0, 0, 0);
+  // No contar días anteriores a la primera sesión: si el usuario tiene menos de
+  // `days` de historia, el denominador arranca en su primer día registrado.
+  const firstMs = firstSessionDate(sessions)?.getTime() ?? -Infinity;
 
   let plannedDays = 0;
   let completedDays = 0;
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
+    if (date.getTime() < firstMs) break; // ya pasamos el primer día con datos
     const planned = new Set(resolvePlanned(weekStart(date).getTime()));
     if (!planned.has(date.getDay())) continue;
     plannedDays++;

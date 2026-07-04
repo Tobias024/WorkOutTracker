@@ -17,12 +17,13 @@ export function ConsistencyHeatmap({
 }) {
   return (
     <div className="flex gap-[3px]">
-      {/* Columna de etiquetas de día */}
-      <div className="flex flex-col gap-[3px] pr-0.5">
+      {/* Columna de etiquetas de día — mismo dimensionado (flex-1 + aspect-square)
+          que las columnas de datos para que cada fila alinee en altura. */}
+      <div className="flex flex-col gap-[3px] flex-1 min-w-[8px]">
         {DAY_LABELS.map((d, i) => (
           <div
             key={i}
-            className="aspect-square grid place-items-center text-[9px] text-muted w-3.5"
+            className="aspect-square grid place-items-center text-[9px] text-muted"
           >
             {d}
           </div>
