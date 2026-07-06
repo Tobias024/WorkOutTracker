@@ -64,7 +64,7 @@ export function PatternBalance({ data }: { data: BalanceData }) {
   if (noData) {
     return (
       <p className="text-sm text-muted">
-        Sin datos de patrón en las últimas 4 semanas.
+        Sin datos de patrón en los últimos 30 días.
       </p>
     );
   }
