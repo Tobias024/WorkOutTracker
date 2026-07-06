@@ -251,8 +251,10 @@ export default function RegistroPage() {
 
     // Series efectivas (hard sets) por músculo, últimos 30 días, atribución
     // fraccional, normalizado a un promedio semanal (las marcas MEV/MAV/MRV
-    // son series/semana): usar solo la semana en curso subestima al principio
-    // de la semana y no compara contra el mismo denominador que los landmarks.
+    // son series/semana). Clave: el divisor son las semanas con datos, NO 30
+    // días fijos — si tenés 6 días de historia, dividir por 4.28 semanas
+    // subestima ~4x y muestra todo "Bajo MEV". Se acota a la primera sesión
+    // (mín. 1 semana), igual que avgWeeklyWorkouts/rollingCompliance.
     const cutoff30Hard = new Date(now);
     cutoff30Hard.setDate(cutoff30Hard.getDate() - 30);
     const hardByMuscle = new Map<string, number>();
@@ -270,8 +272,16 @@ export default function RegistroPage() {
         }
       }
     }
+    const hardWindowStart = Math.max(
+      cutoff30Hard.getTime(),
+      first?.getTime() ?? cutoff30Hard.getTime(),
+    );
+    const hardWeeks = Math.max(
+      1,
+      (now.getTime() - hardWindowStart) / (7 * 86400000),
+    );
     const hardSets: MuscleSetRow[] = [...hardByMuscle.entries()]
-      .map(([muscle, sets]) => ({ muscle, sets: (sets * 7) / 30, ...landmarkFor(muscle) }))
+      .map(([muscle, sets]) => ({ muscle, sets: sets / hardWeeks, ...landmarkFor(muscle) }))
       .sort((a, b) => b.sets - a.sets)
       .slice(0, 8);
 
@@ -707,7 +717,7 @@ export default function RegistroPage() {
             title="Series efectivas por grupo"
             subtitle="Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
             info={
-              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días (total ÷ 30 días × 7) para suavizar la variación entre entrenamientos y compararlas contra el mismo denominador que las marcas. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
+              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días (dividido por las semanas en las que entrenaste, no por 30 días fijos: así no subestima si recién empezás) para suavizar la variación entre entrenamientos y compararlas contra el mismo denominador que las marcas. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
               "Las marcas verticales son las series por semana de referencia (Schoenfeld / Renaissance Periodization):\n" +
               "• MEV (Mínimo Volumen Efectivo): el piso para que un músculo crezca.\n" +
               "• MAV (Máximo Volumen Adaptativo): el rango donde más rendís.\n" +
