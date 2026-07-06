@@ -135,6 +135,16 @@ export default function RegistroPage() {
     [overrideMap, plannedWeekdays],
   );
 
+  // Lunes de la semana en curso — recalculado al cambiar de día para que la
+  // fila corta de "Plan semanal" (que representa la semana actual) no quede
+  // pegada a la semana en la que se montó la app.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const thisWeekMs = useMemo(() => weekStart(new Date()).getTime(), [todayKey]);
+  const currentWeekPlanned = useMemo(
+    () => resolvePlanned(thisWeekMs),
+    [resolvePlanned, thisWeekMs],
+  );
+
   const metrics = useMemo(() => {
     const sessions = data ?? [];
     const totalVol = sessions.reduce((a, s) => a + sessionVolume(s), 0);
@@ -239,12 +249,15 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo, últimos 7 días (rolling), fraccional.
-    const cutoff7 = new Date(now);
-    cutoff7.setDate(cutoff7.getDate() - 7);
+    // Series efectivas (hard sets) por músculo, últimos 30 días, atribución
+    // fraccional, normalizado a un promedio semanal (las marcas MEV/MAV/MRV
+    // son series/semana): usar solo la semana en curso subestima al principio
+    // de la semana y no compara contra el mismo denominador que los landmarks.
+    const cutoff30Hard = new Date(now);
+    cutoff30Hard.setDate(cutoff30Hard.getDate() - 30);
     const hardByMuscle = new Map<string, number>();
     for (const s of sessions) {
-      if (new Date(sessionDate(s)) < cutoff7) continue;
+      if (new Date(sessionDate(s)) < cutoff30Hard) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
@@ -258,16 +271,16 @@ export default function RegistroPage() {
       }
     }
     const hardSets: MuscleSetRow[] = [...hardByMuscle.entries()]
-      .map(([muscle, sets]) => ({ muscle, sets, ...landmarkFor(muscle) }))
+      .map(([muscle, sets]) => ({ muscle, sets: (sets * 7) / 30, ...landmarkFor(muscle) }))
       .sort((a, b) => b.sets - a.sets)
       .slice(0, 8);
 
-    // Balance de patrones (últimas 4 semanas): push/pull de force, comp/aisl de mechanic.
-    const cutoff28 = new Date(now);
-    cutoff28.setDate(cutoff28.getDate() - 28);
+    // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
+    const cutoff30 = new Date(now);
+    cutoff30.setDate(cutoff30.getDate() - 30);
     const balance: BalanceData = { push: 0, pull: 0, compound: 0, isolation: 0 };
     for (const s of sessions) {
-      if (new Date(sessionDate(s)) < cutoff28) continue;
+      if (new Date(sessionDate(s)) < cutoff30) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
@@ -443,6 +456,15 @@ export default function RegistroPage() {
     const next = current.includes(weekday)
       ? current.filter((d) => d !== weekday)
       : [...current, weekday];
+    // La semana actual, mientras no tenga una excepción propia todavía: el
+    // toggle edita la plantilla, así el cambio queda como meta permanente
+    // (y no hay que repetirlo semana a semana). Si ya existe una excepción
+    // para esta semana, o es una semana futura, se ajusta la excepción
+    // puntual de esa semana sin tocar la plantilla.
+    if (wkMs === thisWeekMs && !overrideMap.has(wkMs)) {
+      setPlan.mutate(next);
+      return;
+    }
     const d = new Date(wkMs);
     const weekStartKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     setOverride.mutate({ weekStart: weekStartKey, weekdays: next });
@@ -624,12 +646,15 @@ export default function RegistroPage() {
           </div>
 
           <WeeklyPlanCard
-            plannedWeekdays={plannedWeekdays}
-            setPlan={setPlan}
+            currentWeekPlanned={currentWeekPlanned}
+            saveError={setPlan.isError || setOverride.isError}
             planStats={planStats}
             expanded={planExpanded}
             onToggleExpanded={() => setPlanExpanded((v) => !v)}
             onDayClick={handleDayClick}
+            onToggleToday={(weekday) =>
+              setPendingToggle({ wkMs: thisWeekMs, weekday })
+            }
           />
 
           {!!achievements?.length && (
@@ -680,9 +705,9 @@ export default function RegistroPage() {
 
           <SectionCard
             title="Series efectivas por grupo"
-            subtitle="Últimos 7 días · marcas MEV / MAV / MRV"
+            subtitle="Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
             info={
-              "Series de trabajo (≥5 reps y cerca del fallo) por músculo en los últimos 7 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
+              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días (total ÷ 30 días × 7) para suavizar la variación entre entrenamientos y compararlas contra el mismo denominador que las marcas. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
               "Las marcas verticales son las series por semana de referencia (Schoenfeld / Renaissance Periodization):\n" +
               "• MEV (Mínimo Volumen Efectivo): el piso para que un músculo crezca.\n" +
               "• MAV (Máximo Volumen Adaptativo): el rango donde más rendís.\n" +
@@ -695,8 +720,8 @@ export default function RegistroPage() {
 
           <SectionCard
             title="Balance de patrones"
-            subtitle="Volumen de las últimas 4 semanas"
-            info="Reparto del volumen entre empuje/tirón (según el tipo de fuerza del ejercicio) y compuesto/aislamiento. Ayuda a detectar desbalances que el volumen total no muestra."
+            subtitle="Volumen de los últimos 30 días"
+            info="Reparto del volumen de los últimos 30 días entre empuje/tirón (según el tipo de fuerza del ejercicio) y compuesto/aislamiento (según si el ejercicio mueve uno o varios músculos). Un reparto muy inclinado hacia un lado puede señalar un desbalance que el volumen total no deja ver, aunque estés entrenando mucho."
           >
             <PatternBalance data={metrics.balance} />
           </SectionCard>
@@ -941,15 +966,16 @@ function ExportModal({
 }
 
 function WeeklyPlanCard({
-  plannedWeekdays,
-  setPlan,
+  currentWeekPlanned,
+  saveError,
   planStats,
   expanded,
   onToggleExpanded,
   onDayClick,
+  onToggleToday,
 }: {
-  plannedWeekdays: number[];
-  setPlan: ReturnType<typeof useSetWeeklyPlan>;
+  currentWeekPlanned: number[];
+  saveError: boolean;
   planStats: {
     days: PlanDay[];
     leadingBlanks: number;
@@ -957,6 +983,7 @@ function WeeklyPlanCard({
   expanded: boolean;
   onToggleExpanded: () => void;
   onDayClick: (day: PlanDay) => void;
+  onToggleToday: (weekday: number) => void;
 }) {
   return (
     <div className="card p-4">
@@ -974,22 +1001,16 @@ function WeeklyPlanCard({
         />
       </button>
       <p className="text-xs text-muted mb-3">
-        Elegí los días que planeás entrenar. Tu meta es{" "}
-        {plannedWeekdays.length || "—"}{" "}
-        {plannedWeekdays.length === 1 ? "día" : "días"} por semana.
+        Elegí los días que planeás entrenar esta semana: {currentWeekPlanned.length || "—"}{" "}
+        {currentWeekPlanned.length === 1 ? "día" : "días"}.
       </p>
       <div className="flex gap-1.5 mb-1">
         {WEEKDAYS.map((label, weekday) => {
-          const active = plannedWeekdays.includes(weekday);
+          const active = currentWeekPlanned.includes(weekday);
           return (
             <button
               key={weekday}
-              onClick={() => {
-                const next = active
-                  ? plannedWeekdays.filter((d) => d !== weekday)
-                  : [...plannedWeekdays, weekday];
-                setPlan.mutate(next);
-              }}
+              onClick={() => onToggleToday(weekday)}
               className={clsx(
                 "size-9 rounded-md text-sm font-medium transition",
                 active
@@ -1002,7 +1023,7 @@ function WeeklyPlanCard({
           );
         })}
       </div>
-      {setPlan.isError && (
+      {saveError && (
         <p className="text-xs text-danger mt-2">
           No se pudo guardar. Probá de nuevo.
         </p>

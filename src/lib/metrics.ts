@@ -371,14 +371,25 @@ export function avgDuration(sessions: { duration_seconds: number | null }[]): nu
   return done.reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0) / done.length;
 }
 
-/** Promedio de entrenamientos por semana desde la primera sesión hasta hoy.
- *  weeksElapsed se acota a mínimo 1 para no inflar el promedio en usuarios
- *  nuevos (ej. 2 sesiones en 3 días no debería mostrar "4.7/sem"). */
-export function avgWeeklyWorkouts(sessions: SessionDateLike[]): number {
+/** Promedio de entrenamientos por semana en las últimas 8 semanas (ventana
+ *  móvil, no desde la primera sesión histórica): un promedio de toda la vida
+ *  se diluye con historial viejo y no refleja el ritmo actual. Si el usuario
+ *  tiene menos de 8 semanas de historia, promedia desde su primera sesión
+ *  (weeksElapsed se acota a mínimo 1 para no inflar el número en usuarios
+ *  nuevos, ej. 2 sesiones en 3 días no debería mostrar "4.7/sem"). */
+export function avgWeeklyWorkouts(
+  sessions: SessionDateLike[],
+  ref: Date = new Date(),
+): number {
   if (sessions.length === 0) return 0;
+  const WINDOW_DAYS = 8 * 7;
   const earliest = Math.min(
     ...sessions.map((s) => new Date(sessionDate(s)).getTime()),
   );
-  const weeksElapsed = Math.max(1, (Date.now() - earliest) / (7 * 86400000));
-  return sessions.length / weeksElapsed;
+  const windowStart = Math.max(earliest, ref.getTime() - WINDOW_DAYS * 86400000);
+  const weeksElapsed = Math.max(1, (ref.getTime() - windowStart) / (7 * 86400000));
+  const recent = sessions.filter(
+    (s) => new Date(sessionDate(s)).getTime() >= windowStart,
+  ).length;
+  return recent / weeksElapsed;
 }
