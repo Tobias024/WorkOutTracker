@@ -28,7 +28,7 @@ export function MuscleSetsBar({ data }: { data: MuscleSetRow[] }) {
   if (!data.length) {
     return (
       <p className="text-sm text-muted">
-        Todavía no hay series efectivas esta semana.
+        Todavía no hay series efectivas en los últimos 30 días.
       </p>
     );
   }

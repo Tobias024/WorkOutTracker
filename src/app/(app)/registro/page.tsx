@@ -251,11 +251,15 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo, semana actual, atribución fraccional.
-    const weekMs = weekStart(now).getTime();
+    // Series efectivas (hard sets) por músculo, últimos 30 días, atribución
+    // fraccional, normalizado a un promedio semanal (las marcas MEV/MAV/MRV
+    // son series/semana): usar solo la semana en curso subestima al principio
+    // de la semana y no compara contra el mismo denominador que los landmarks.
+    const cutoff30Hard = new Date(now);
+    cutoff30Hard.setDate(cutoff30Hard.getDate() - 30);
     const hardByMuscle = new Map<string, number>();
     for (const s of sessions) {
-      if (weekStart(new Date(sessionDate(s))).getTime() !== weekMs) continue;
+      if (new Date(sessionDate(s)) < cutoff30Hard) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
@@ -269,16 +273,16 @@ export default function RegistroPage() {
       }
     }
     const hardSets: MuscleSetRow[] = [...hardByMuscle.entries()]
-      .map(([muscle, sets]) => ({ muscle, sets, ...landmarkFor(muscle) }))
+      .map(([muscle, sets]) => ({ muscle, sets: (sets * 7) / 30, ...landmarkFor(muscle) }))
       .sort((a, b) => b.sets - a.sets)
       .slice(0, 8);
 
-    // Balance de patrones (últimas 4 semanas): push/pull de force, comp/aisl de mechanic.
-    const cutoff28 = new Date(now);
-    cutoff28.setDate(cutoff28.getDate() - 28);
+    // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
+    const cutoff30 = new Date(now);
+    cutoff30.setDate(cutoff30.getDate() - 30);
     const balance: BalanceData = { push: 0, pull: 0, compound: 0, isolation: 0 };
     for (const s of sessions) {
-      if (new Date(sessionDate(s)) < cutoff28) continue;
+      if (new Date(sessionDate(s)) < cutoff30) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
@@ -631,16 +635,16 @@ export default function RegistroPage() {
 
           <SectionCard
             title="Series efectivas por grupo"
-            subtitle="Esta semana · marcas MEV / MAV / MRV"
-            info="Series de trabajo (≥5 reps y cerca del fallo) por músculo, esta semana. Las marcas son las series semanales de referencia: MEV (mínimo para crecer), MAV (rango óptimo) y MRV (máximo recuperable)."
+            subtitle="Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
+            info="Series de trabajo (≥5 reps y cerca del fallo) por músculo de los últimos 30 días, promediadas por semana (total ÷ 30 días × 7) para suavizar la variación entre entrenamientos y compararlas contra las marcas de referencia. MEV es el mínimo semanal para crecer, MAV el rango óptimo y MRV el máximo recuperable antes de sobreentrenar."
           >
             <MuscleSetsBar data={metrics.hardSets} />
           </SectionCard>
 
           <SectionCard
             title="Balance de patrones"
-            subtitle="Volumen de las últimas 4 semanas"
-            info="Reparto del volumen entre empuje/tirón (según el tipo de fuerza del ejercicio) y compuesto/aislamiento. Ayuda a detectar desbalances que el volumen total no muestra."
+            subtitle="Volumen de los últimos 30 días"
+            info="Reparto del volumen de los últimos 30 días entre empuje/tirón (según el tipo de fuerza del ejercicio) y compuesto/aislamiento (según si el ejercicio mueve uno o varios músculos). Un reparto muy inclinado hacia un lado puede señalar un desbalance que el volumen total no deja ver, aunque estés entrenando mucho."
           >
             <PatternBalance data={metrics.balance} />
           </SectionCard>
