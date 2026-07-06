@@ -136,6 +136,16 @@ export default function RegistroPage() {
     [overrideMap, plannedWeekdays],
   );
 
+  // Lunes de la semana en curso — recalculado al cambiar de día para que la
+  // fila corta de "Plan semanal" (que representa la semana actual) no quede
+  // pegada a la semana en la que se montó la app.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const thisWeekMs = useMemo(() => weekStart(new Date()).getTime(), [todayKey]);
+  const currentWeekPlanned = useMemo(
+    () => resolvePlanned(thisWeekMs),
+    [resolvePlanned, thisWeekMs],
+  );
+
   const metrics = useMemo(() => {
     const sessions = data ?? [];
     const totalVol = sessions.reduce((a, s) => a + sessionVolume(s), 0);
@@ -418,6 +428,15 @@ export default function RegistroPage() {
     const next = current.includes(weekday)
       ? current.filter((d) => d !== weekday)
       : [...current, weekday];
+    // La semana actual, mientras no tenga una excepción propia todavía: el
+    // toggle edita la plantilla, así el cambio queda como meta permanente
+    // (y no hay que repetirlo semana a semana). Si ya existe una excepción
+    // para esta semana, o es una semana futura, se ajusta la excepción
+    // puntual de esa semana sin tocar la plantilla.
+    if (wkMs === thisWeekMs && !overrideMap.has(wkMs)) {
+      setPlan.mutate(next);
+      return;
+    }
     const d = new Date(wkMs);
     const weekStartKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     setOverride.mutate({ weekStart: weekStartKey, weekdays: next });
@@ -565,12 +584,15 @@ export default function RegistroPage() {
           </div>
 
           <WeeklyPlanCard
-            plannedWeekdays={plannedWeekdays}
-            setPlan={setPlan}
+            currentWeekPlanned={currentWeekPlanned}
+            saveError={setPlan.isError || setOverride.isError}
             planStats={planStats}
             expanded={planExpanded}
             onToggleExpanded={() => setPlanExpanded((v) => !v)}
             onDayClick={handleDayClick}
+            onToggleToday={(weekday) =>
+              setPendingToggle({ wkMs: thisWeekMs, weekday })
+            }
           />
 
           {!!achievements?.length && (
@@ -871,15 +893,16 @@ function ExportModal({
 }
 
 function WeeklyPlanCard({
-  plannedWeekdays,
-  setPlan,
+  currentWeekPlanned,
+  saveError,
   planStats,
   expanded,
   onToggleExpanded,
   onDayClick,
+  onToggleToday,
 }: {
-  plannedWeekdays: number[];
-  setPlan: ReturnType<typeof useSetWeeklyPlan>;
+  currentWeekPlanned: number[];
+  saveError: boolean;
   planStats: {
     days: PlanDay[];
     leadingBlanks: number;
@@ -887,6 +910,7 @@ function WeeklyPlanCard({
   expanded: boolean;
   onToggleExpanded: () => void;
   onDayClick: (day: PlanDay) => void;
+  onToggleToday: (weekday: number) => void;
 }) {
   return (
     <div className="card p-4">
@@ -904,22 +928,16 @@ function WeeklyPlanCard({
         />
       </button>
       <p className="text-xs text-muted mb-3">
-        Elegí los días que planeás entrenar. Tu meta es{" "}
-        {plannedWeekdays.length || "—"}{" "}
-        {plannedWeekdays.length === 1 ? "día" : "días"} por semana.
+        Elegí los días que planeás entrenar esta semana: {currentWeekPlanned.length || "—"}{" "}
+        {currentWeekPlanned.length === 1 ? "día" : "días"}.
       </p>
       <div className="flex gap-1.5 mb-1">
         {WEEKDAYS.map((label, weekday) => {
-          const active = plannedWeekdays.includes(weekday);
+          const active = currentWeekPlanned.includes(weekday);
           return (
             <button
               key={weekday}
-              onClick={() => {
-                const next = active
-                  ? plannedWeekdays.filter((d) => d !== weekday)
-                  : [...plannedWeekdays, weekday];
-                setPlan.mutate(next);
-              }}
+              onClick={() => onToggleToday(weekday)}
               className={clsx(
                 "size-9 rounded-md text-sm font-medium transition",
                 active
@@ -932,7 +950,7 @@ function WeeklyPlanCard({
           );
         })}
       </div>
-      {setPlan.isError && (
+      {saveError && (
         <p className="text-xs text-danger mt-2">
           No se pudo guardar. Probá de nuevo.
         </p>
