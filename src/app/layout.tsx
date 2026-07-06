@@ -9,13 +9,13 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "WorkOut Tracker",
+  title: "WOLF",
   description: "Creá rutinas, registrá tus entrenamientos y competí con amigos.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "WorkOut",
+    title: "WOLF",
   },
 };
 
