@@ -5,6 +5,11 @@ import type { Database } from "@/lib/types";
 // Rutas accesibles sin sesión.
 const PUBLIC_PATHS = ["/login", "/auth", "/invite", "/r"];
 
+// Archivos que el navegador pide sin sesión (manifest/SW) para validar la
+// instalación de la PWA: si se redirigen a /login, Brave/Chrome descartan
+// el manifest o el service worker y ya no ofrecen "Instalar app".
+const PUBLIC_FILES = ["/manifest.webmanifest", "/sw.js"];
+
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
@@ -26,7 +31,8 @@ export async function updateSession(request: NextRequest) {
   // (sin estos headers) sí hace el refresh normalmente.
   if (
     request.headers.get("next-router-prefetch") ||
-    request.headers.get("next-router-segment-prefetch")
+    request.headers.get("next-router-segment-prefetch") ||
+    PUBLIC_FILES.includes(request.nextUrl.pathname)
   ) {
     return NextResponse.next({ request });
   }
