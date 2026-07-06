@@ -353,7 +353,7 @@ export default function RegistroPage() {
       hardSetsThisWeek: hardDelta.current,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
-      avgWeekly: avgWeeklyWorkouts(sessions),
+      avgWeekly: avgWeeklyWorkouts(sessions, now),
       favoriteMuscle,
     };
     // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
