@@ -127,13 +127,13 @@ function LoginForm() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
-            alt="WorkOut Tracker"
-            width={64}
-            height={64}
-            className="size-16"
+            alt="WOLF"
+            width={72}
+            height={72}
+            className="size-20"
           />
           <div className="text-center">
-            <h1 className="text-2xl font-bold">WorkOut Tracker</h1>
+            <h1 className="text-2xl font-bold tracking-wide">WOLF</h1>
             <p className="text-sm text-muted mt-1">
               Rutinas, registro y ranking con amigos.
             </p>

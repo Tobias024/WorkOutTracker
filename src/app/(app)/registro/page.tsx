@@ -7,7 +7,6 @@ import {
   LineChart,
   ChevronRight,
   ChevronDown,
-  Dumbbell,
   Zap,
   Download,
   Trophy,
@@ -21,7 +20,7 @@ import {
   Button,
   Modal,
   SectionCard,
-  DeltaChip,
+  Tabs,
 } from "@/components/ui";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
@@ -46,7 +45,6 @@ import {
   effectiveDrops,
   weeklyStreak,
   avgDuration,
-  avgWeeklyWorkouts,
   rollingCompliance,
   sessionDate,
   firstSessionDate,
@@ -56,7 +54,7 @@ import {
   isHardSet,
   muscleContributions,
   landmarkFor,
-  periodDelta,
+  weeklyMetricStats,
   type PlanResolver,
 } from "@/lib/metrics";
 import { buildSessionsCsv, downloadCsv } from "@/lib/export-csv";
@@ -66,6 +64,7 @@ import { clsx } from "@/lib/clsx";
 import type { Achievement } from "@/lib/types";
 
 const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
+const HISTORY_PREVIEW = 8;
 
 function achievementText(
   a: Achievement,
@@ -142,7 +141,22 @@ export default function RegistroPage() {
 
     const now = new Date();
 
-    // Volumen por mes calendario, desde el mes de la primera sesión (tope 12).
+    // Volumen semana a semana (últimas 10) — vista por defecto del gráfico.
+    const weekVolMap = new Map<number, number>();
+    for (const s of sessions) {
+      const wk = weekStart(new Date(sessionDate(s))).getTime();
+      weekVolMap.set(wk, (weekVolMap.get(wk) ?? 0) + sessionVolume(s));
+    }
+    const weekChart: ChartPoint[] = [];
+    for (let i = 9; i >= 0; i--) {
+      const wk = weekStart(new Date(now.getTime() - i * 7 * 86400000));
+      weekChart.push({
+        label: wk.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+        value: Math.round(weekVolMap.get(wk.getTime()) ?? 0),
+      });
+    }
+
+    // Volumen mes a mes (vista "anual"): desde el mes de la primera sesión (tope 12).
     const monthVolMap = new Map<string, number>();
     for (const s of sessions) {
       const d = new Date(sessionDate(s));
@@ -157,21 +171,14 @@ export default function RegistroPage() {
             (now.getMonth() - first.getMonth()),
         )
       : 0;
-    const chart: ChartPoint[] = [];
+    const monthChart: ChartPoint[] = [];
     for (let i = monthsBack; i >= 0; i--) {
       const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      chart.push({
+      monthChart.push({
         label: m.toLocaleDateString("es-AR", { month: "short" }),
         value: Math.round(monthVolMap.get(`${m.getFullYear()}-${m.getMonth()}`) ?? 0),
       });
     }
-
-    // Delta mes vs mes anterior (MoM) para el header del gráfico.
-    const volMonthDelta = periodDelta(
-      sessions,
-      (subset) => subset.reduce((a, s) => a + sessionVolume(s), 0),
-      "month",
-    );
 
     // Frecuencia esta semana.
     const thisWeek = weekStart(now).getTime();
@@ -179,29 +186,20 @@ export default function RegistroPage() {
       (s) => weekStart(new Date(sessionDate(s))).getTime() === thisWeek,
     ).length;
 
-    // Volumen por músculo (histórico, atribuido al primer músculo principal).
-    const muscleVol = new Map<string, number>();
-    // Sets por músculo de los últimos 30 días (para el donut).
+    // Sets por músculo de los últimos 30 días (para el donut y el músculo estrella).
     const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - 30);
     const muscleSets30 = new Map<string, number>();
     for (const s of sessions) {
-      const within30 = new Date(sessionDate(s)) >= cutoff;
+      if (new Date(sessionDate(s)) < cutoff) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         const m = ex?.primary_muscles[0];
         if (!m) continue;
-        const done = we.workout_sets.filter(isCountableSet);
-        muscleVol.set(m, (muscleVol.get(m) ?? 0) + totalVolume(done));
-        if (within30) {
-          muscleSets30.set(m, (muscleSets30.get(m) ?? 0) + done.length);
-        }
+        const done = we.workout_sets.filter(isCountableSet).length;
+        muscleSets30.set(m, (muscleSets30.get(m) ?? 0) + done);
       }
     }
-    const byMuscle = [...muscleVol.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
-    const maxMuscle = byMuscle[0]?.[1] ?? 1;
     const muscleDonut: MusclePoint[] = [...muscleSets30.entries()].map(
       ([m, v]) => ({ label: muscleEs(m), value: v }),
     );
@@ -241,11 +239,12 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo, semana actual, atribución fraccional.
-    const weekMs = weekStart(now).getTime();
+    // Series efectivas (hard sets) por músculo, últimos 7 días (rolling), fraccional.
+    const cutoff7 = new Date(now);
+    cutoff7.setDate(cutoff7.getDate() - 7);
     const hardByMuscle = new Map<string, number>();
     for (const s of sessions) {
-      if (weekStart(new Date(sessionDate(s))).getTime() !== weekMs) continue;
+      if (new Date(sessionDate(s)) < cutoff7) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
@@ -302,34 +301,15 @@ export default function RegistroPage() {
       heatWeeks.push(col);
     }
 
-    // Deltas semana actual vs previa.
-    const volDelta = periodDelta(
-      sessions,
-      (subset) => subset.reduce((a, s) => a + sessionVolume(s), 0),
-      "week",
-    );
-    const hardDelta = periodDelta(
-      sessions,
-      (subset) => {
-        let n = 0;
-        for (const s of subset)
-          for (const we of s.workout_exercises)
-            for (const set of we.workout_sets) if (isHardSet(set)) n++;
-        return n;
-      },
-      "week",
-    );
-
-    // Músculo estrella: top de la ventana de 30 días (no histórico).
+    // Músculo estrella: top de la ventana de 30 días por sets (igual que el donut).
     const favoriteMuscle =
       [...muscleSets30.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
     return {
       totalVol,
-      chart,
+      weekChart,
+      monthChart,
       freq,
-      byMuscle,
-      maxMuscle,
       muscleDonut,
       byMonth,
       prs,
@@ -337,18 +317,33 @@ export default function RegistroPage() {
       balance,
       heatWeeks,
       heatMax,
-      volDelta,
-      volMonthDelta,
-      hardDelta,
-      hardSetsThisWeek: hardDelta.current,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
-      avgWeekly: avgWeeklyWorkouts(sessions),
       favoriteMuscle,
     };
     // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, exMap, todayKey]);
+
+  // Métricas por semana (distingue semana en curso de semanas cumplidas).
+  const weekMetrics = useMemo(() => {
+    const sessions = data ?? [];
+    const volStats = weeklyMetricStats(sessions, resolvePlanned, (ws) =>
+      ws.reduce((a, s) => a + sessionVolume(s), 0),
+    );
+    const hardStats = weeklyMetricStats(sessions, resolvePlanned, (ws) => {
+      let n = 0;
+      for (const s of ws)
+        for (const we of s.workout_exercises)
+          for (const set of we.workout_sets) if (isHardSet(set)) n++;
+      return n;
+    });
+    const workoutStats = weeklyMetricStats(sessions, resolvePlanned, (ws) =>
+      new Set(ws.map((s) => dateKey(sessionDate(s)))).size,
+    );
+    return { volStats, hardStats, workoutStats };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, resolvePlanned, todayKey]);
 
   // Racha semanal + calendario de cumplimiento (dependen del plan, resuelto
   // por semana: excepción puntual si existe, si no la plantilla global).
@@ -389,6 +384,36 @@ export default function RegistroPage() {
   const [planExpanded, setPlanExpanded] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
+  const [chartView, setChartView] = useState<"week" | "month">("week");
+  const [showAllHistory, setShowAllHistory] = useState(false);
+
+  // Historial agrupado por mes (orden desc de `data`), acotado a los últimos
+  // HISTORY_PREVIEW salvo que se expanda con "Ver todos".
+  const historyGroups = useMemo(() => {
+    const shown = showAllHistory
+      ? data ?? []
+      : (data ?? []).slice(0, HISTORY_PREVIEW);
+    const groups: { key: string; label: string; items: HistorySession[] }[] = [];
+    for (const s of shown) {
+      const d = new Date(sessionDate(s));
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      let g = groups.find((x) => x.key === key);
+      if (!g) {
+        g = {
+          key,
+          label: d.toLocaleDateString("es-AR", {
+            month: "long",
+            year: "numeric",
+          }),
+          items: [],
+        };
+        groups.push(g);
+      }
+      g.items.push(s);
+    }
+    return groups;
+  }, [data, showAllHistory]);
+
   const [pendingToggle, setPendingToggle] = useState<{
     wkMs: number;
     weekday: number;
@@ -483,14 +508,34 @@ export default function RegistroPage() {
           <div className="grid grid-cols-2 gap-2.5">
             <Stat
               label="Volumen semanal"
-              value={formatVolume(metrics.volDelta.current)}
-              delta={metrics.volDelta.deltaPct}
+              value={formatVolume(weekMetrics.volStats.current)}
+              sub="hasta ahora"
+              delta={weekMetrics.volStats.deltaPct}
+              secondary={
+                weekMetrics.volStats.lastCompleted != null
+                  ? `últ. cumplida: ${formatVolume(weekMetrics.volStats.lastCompleted)}`
+                  : undefined
+              }
+              info={
+                "El número grande es el volumen acumulado en la semana en curso (aún incompleta).\n\n" +
+                "El % en verde/rojo compara las dos últimas semanas en las que CUMPLISTE tu plan (no la semana actual, que todavía está a mitad). Verde = la última semana cumplida superó a la anterior."
+              }
             />
             <Stat
               label="Series efectivas"
-              value={metrics.hardSetsThisWeek}
+              value={weekMetrics.hardStats.current}
               unit="sets"
-              delta={metrics.hardDelta.deltaPct}
+              sub="hasta ahora"
+              delta={weekMetrics.hardStats.deltaPct}
+              secondary={
+                weekMetrics.hardStats.lastCompleted != null
+                  ? `últ. cumplida: ${weekMetrics.hardStats.lastCompleted} sets`
+                  : undefined
+              }
+              info={
+                "Series de trabajo (≥5 reps y cerca del fallo) acumuladas en la semana en curso. Es el mejor indicador de estímulo para hipertrofia.\n\n" +
+                "El % compara las dos últimas semanas cumplidas."
+              }
             />
           </div>
 
@@ -506,10 +551,13 @@ export default function RegistroPage() {
               <p className="text-xl font-bold mt-1.5 tracking-tight">
                 {metrics.count}
               </p>
+              <p className="text-[10px] text-muted mt-1">ver mes a mes</p>
             </button>
-            <Stat label="Esta semana" value={metrics.freq} />
             <Stat
               label="Racha"
+              info={
+                "Semanas consecutivas en las que cumpliste tu plan (los días que te propusiste entrenar). Se corta si una semana no llegás a la meta."
+              }
               value={
                 plannedWeekdays.length === 0 ? (
                   "—"
@@ -528,11 +576,38 @@ export default function RegistroPage() {
                 )
               }
             />
+            <Stat
+              label="Cumplimiento 30d"
+              info={
+                "Porcentaje de días planificados que efectivamente entrenaste en los últimos 30 días (o desde tu primer entreno si tenés menos historia)."
+              }
+              value={
+                plannedWeekdays.length === 0
+                  ? "—"
+                  : `${planStats.compliance.pct}%`
+              }
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-3 gap-2.5">
+            <Stat
+              label="Promedio semanal"
+              value={
+                weekMetrics.workoutStats.completedCount > 0
+                  ? weekMetrics.workoutStats.avgCompleted.toFixed(1)
+                  : "—"
+              }
+              unit="/sem"
+              delta={weekMetrics.workoutStats.deltaPct}
+              secondary={`${weekMetrics.workoutStats.completedCount} sem cumplidas`}
+              info={
+                "Promedio de entrenos por semana, contando solo las semanas en las que cumpliste el plan: Σ(entrenos por semana cumplida) / cantidad de semanas cumplidas.\n\n" +
+                "El % compara la última semana cumplida con la anterior."
+              }
+            />
             <Stat
               label="Duración promedio"
+              info="Promedio de duración de tus sesiones finalizadas."
               value={
                 metrics.avgDurationSec
                   ? formatDuration(metrics.avgDurationSec)
@@ -541,25 +616,9 @@ export default function RegistroPage() {
             />
             <Stat
               label="Músculo estrella"
+              info="El músculo que más entrenaste (por cantidad de series) en los últimos 30 días. Coincide con el más grande del gráfico 'Músculos entrenados'."
               value={
                 metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "—"
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <Stat
-              label="Cumplimiento 30d"
-              value={
-                plannedWeekdays.length === 0
-                  ? "—"
-                  : `${planStats.compliance.pct}%`
-              }
-            />
-            <Stat
-              label="Promedio semanal"
-              value={
-                metrics.avgWeekly ? `${metrics.avgWeekly.toFixed(1)}/sem` : "—"
               }
             />
           </div>
@@ -596,21 +655,40 @@ export default function RegistroPage() {
           )}
 
           <SectionCard
-            title="Volumen mensual"
-            info="Volumen = reps × peso de cada serie de trabajo completada (no cuentan calentamientos). Si una serie tiene bajadas (drop set), se suman todas."
+            title="Volumen"
+            info={
+              "Volumen = reps × peso de cada serie de trabajo completada (no cuentan calentamientos). Si una serie tiene bajadas (drop set), se suman todas.\n\n" +
+              "Semanal: volumen de cada semana (últimas 10). Anual: volumen de cada mes."
+            }
             action={
-              metrics.volMonthDelta.deltaPct != null ? (
-                <DeltaChip pct={metrics.volMonthDelta.deltaPct} />
-              ) : undefined
+              <div className="w-40">
+                <Tabs
+                  value={chartView}
+                  onChange={setChartView}
+                  options={[
+                    { value: "week", label: "Semanal" },
+                    { value: "month", label: "Anual" },
+                  ]}
+                />
+              </div>
             }
           >
-            <VolumeChart data={metrics.chart} />
+            <VolumeChart
+              data={chartView === "week" ? metrics.weekChart : metrics.monthChart}
+            />
           </SectionCard>
 
           <SectionCard
             title="Series efectivas por grupo"
-            subtitle="Esta semana · marcas MEV / MAV / MRV"
-            info="Series de trabajo (≥5 reps y cerca del fallo) por músculo, esta semana. Las marcas son las series semanales de referencia: MEV (mínimo para crecer), MAV (rango óptimo) y MRV (máximo recuperable)."
+            subtitle="Últimos 7 días · marcas MEV / MAV / MRV"
+            info={
+              "Series de trabajo (≥5 reps y cerca del fallo) por músculo en los últimos 7 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
+              "Las marcas verticales son las series por semana de referencia (Schoenfeld / Renaissance Periodization):\n" +
+              "• MEV (Mínimo Volumen Efectivo): el piso para que un músculo crezca.\n" +
+              "• MAV (Máximo Volumen Adaptativo): el rango donde más rendís.\n" +
+              "• MRV (Máximo Volumen Recuperable): el techo; pasarte acumula fatiga sin más ganancia.\n\n" +
+              "Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde (óptimo), sobre MRV = rojo (demasiado)."
+            }
           >
             <MuscleSetsBar data={metrics.hardSets} />
           </SectionCard>
@@ -638,30 +716,6 @@ export default function RegistroPage() {
               info="Distribución de las series por grupo muscular en los últimos 30 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad)."
             >
               <MuscleDonut data={metrics.muscleDonut} />
-            </SectionCard>
-          )}
-
-          {metrics.byMuscle.length > 0 && (
-            <SectionCard
-              title="Volumen por músculo"
-              info="Volumen histórico acumulado por grupo muscular (reps × peso de las series de trabajo)."
-            >
-              <div className="flex flex-col gap-2.5">
-                {metrics.byMuscle.map(([m, v]) => (
-                  <div key={m}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>{muscleEs(m)}</span>
-                      <span className="text-muted">{formatVolume(v)}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${(v / metrics.maxMuscle) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
             </SectionCard>
           )}
 
@@ -694,32 +748,48 @@ export default function RegistroPage() {
           )}
 
           <div>
-            <p className="text-sm font-medium mb-2">Historial</p>
-            <ul className="flex flex-col gap-2">
-              {data.map((s) => (
-                <li key={s.id}>
-                  <Link
-                    href={`/entrenar/${s.id}`}
-                    className="card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition"
-                  >
-                    <div className="size-10 rounded-md bg-surface-2 grid place-items-center">
-                      <Dumbbell className="size-5 text-muted" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium truncate">{s.name}</p>
-                      <p className="text-xs text-muted">
-                        {formatDate(sessionDate(s))} · {sessionSets(s)} series ·{" "}
-                        {formatVolume(sessionVolume(s))}
-                        {s.duration_seconds
-                          ? ` · ${formatDuration(s.duration_seconds)}`
-                          : ""}
-                      </p>
-                    </div>
-                    <ChevronRight className="size-5 text-muted" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium">Historial</p>
+              <span className="text-xs text-muted">{data.length} entrenos</span>
+            </div>
+            {historyGroups.map((g) => (
+              <div key={g.key}>
+                <p className="text-[11px] text-muted uppercase tracking-wide mt-3 mb-1.5 capitalize">
+                  {g.label} · {g.items.length}
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {g.items.map((s) => (
+                    <li key={s.id}>
+                      <Link
+                        href={`/entrenar/${s.id}`}
+                        className="card flex items-center gap-3 px-3 py-2.5 hover:ring-1 hover:ring-primary transition"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate">{s.name}</p>
+                          <p className="text-[11px] text-muted">
+                            {formatDate(sessionDate(s))} · {sessionSets(s)} series ·{" "}
+                            {formatVolume(sessionVolume(s))}
+                            {s.duration_seconds
+                              ? ` · ${formatDuration(s.duration_seconds)}`
+                              : ""}
+                          </p>
+                        </div>
+                        <ChevronRight className="size-4 text-muted shrink-0" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {!showAllHistory && data.length > HISTORY_PREVIEW && (
+              <Button
+                variant="ghost"
+                className="w-full mt-3"
+                onClick={() => setShowAllHistory(true)}
+              >
+                Ver todos ({data.length})
+              </Button>
+            )}
           </div>
         </div>
       )}

@@ -13,7 +13,7 @@ import {
   useCurrentUserId,
 } from "@/hooks/useFriendProfile";
 import { useExerciseMap } from "@/hooks/useExercises";
-import { formatVolume, formatWeight } from "@/lib/format";
+import { formatVolume, formatWeight, formatDuration } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Period } from "@/lib/period";
 
@@ -161,6 +161,30 @@ export default function FriendProfilePage() {
               mine={mine.frequency_days}
               theirs={theirs.frequency_days}
               format={(v) => `${v} d`}
+            />
+            <VsRow
+              label="Series"
+              mine={mine.hard_sets}
+              theirs={theirs.hard_sets}
+              format={(v) => `${v} sets`}
+            />
+            <VsRow
+              label="Reps"
+              mine={mine.total_reps}
+              theirs={theirs.total_reps}
+              format={(v) => String(v)}
+            />
+            <VsRow
+              label="Duración"
+              mine={mine.avg_duration}
+              theirs={theirs.avg_duration}
+              format={formatDuration}
+            />
+            <VsRow
+              label="Ejercicios"
+              mine={mine.distinct_exercises}
+              theirs={theirs.distinct_exercises}
+              format={(v) => String(v)}
             />
           </div>
 

@@ -211,6 +211,72 @@ export function firstSessionDate(sessions: SessionDateLike[]): Date | null {
   return d;
 }
 
+export interface WeeklyStats {
+  /** Valor de la semana en curso (parcial, "hasta ahora"). */
+  current: number;
+  /** Última y penúltima semana CUMPLIDA (pasadas), o null. */
+  lastCompleted: number | null;
+  prevCompleted: number | null;
+  /** % de la última semana cumplida vs la anterior (null si no hay base). */
+  deltaPct: number | null;
+  /** Promedio del valor sobre todas las semanas cumplidas pasadas. */
+  avgCompleted: number;
+  completedCount: number;
+}
+
+/**
+ * Estadísticas semanales de una métrica, distinguiendo la semana en curso de las
+ * "semanas cumplidas" (pasadas que alcanzaron el plan). `valueOf` calcula la
+ * métrica para las sesiones de una semana. Una semana pasada "cumple" si tuvo al
+ * menos tantos días distintos como días planificados (o ≥1 si no hay plan).
+ */
+export function weeklyMetricStats<T extends SessionDateLike>(
+  sessions: T[],
+  resolvePlanned: PlanResolver,
+  valueOf: (weekSessions: T[]) => number,
+): WeeklyStats {
+  const curMs = weekStart(new Date()).getTime();
+  const byWeek = new Map<number, T[]>();
+  for (const s of sessions) {
+    const wk = weekStart(new Date(sessionDate(s))).getTime();
+    const arr = byWeek.get(wk);
+    if (arr) arr.push(s);
+    else byWeek.set(wk, [s]);
+  }
+
+  const current = valueOf(byWeek.get(curMs) ?? []);
+
+  const completed: { wkMs: number; value: number }[] = [];
+  for (const [wkMs, ws] of byWeek) {
+    if (wkMs >= curMs) continue; // solo semanas pasadas
+    const plannedCount = resolvePlanned(wkMs).length;
+    const distinctDays = new Set(ws.map((s) => dateKey(sessionDate(s)))).size;
+    const met = plannedCount > 0 ? distinctDays >= plannedCount : distinctDays >= 1;
+    if (met) completed.push({ wkMs, value: valueOf(ws) });
+  }
+  completed.sort((a, b) => b.wkMs - a.wkMs);
+
+  const lastCompleted = completed[0]?.value ?? null;
+  const prevCompleted = completed[1]?.value ?? null;
+  const deltaPct =
+    lastCompleted != null && prevCompleted != null && prevCompleted > 0
+      ? ((lastCompleted - prevCompleted) / prevCompleted) * 100
+      : null;
+  const avgCompleted =
+    completed.length > 0
+      ? completed.reduce((a, c) => a + c.value, 0) / completed.length
+      : 0;
+
+  return {
+    current,
+    lastCompleted,
+    prevCompleted,
+    deltaPct,
+    avgCompleted,
+    completedCount: completed.length,
+  };
+}
+
 /** Cantidad de días distintos con sesión, agrupados por semana (timestamp del lunes). */
 function visitsByWeek(sessions: SessionDateLike[]): Map<number, Set<string>> {
   const map = new Map<number, Set<string>>();

@@ -18,6 +18,11 @@ import type { Exercise, Sex } from "@/lib/types";
 
 const METRICS: { key: Metric; label: string; caption: string }[] = [
   {
+    key: "frequency",
+    label: "Frecuencia",
+    caption: "Días distintos con entrenamiento en el período. La constancia es lo que más pesa.",
+  },
+  {
     key: "hard_sets",
     label: "Series",
     caption: "Series efectivas (≥5 reps, cerca del fallo). El driver de hipertrofia.",
@@ -29,18 +34,13 @@ const METRICS: { key: Metric; label: string; caption: string }[] = [
   },
   {
     key: "strength",
-    label: "Fuerza",
+    label: "1RM",
     caption: "1RM estimado (Epley) del ejercicio elegido.",
   },
   {
     key: "strength_bw",
-    label: "Fuerza/peso",
+    label: "1RM/peso",
     caption: "1RM estimado dividido tu peso corporal. Más justo entre distintos pesos.",
-  },
-  {
-    key: "frequency",
-    label: "Frecuencia",
-    caption: "Días distintos con entrenamiento en el período.",
   },
 ];
 const PERIODS: { key: Period; label: string }[] = [
@@ -56,7 +56,7 @@ const SEXES: { key: Sex | ""; label: string }[] = [
 const NEEDS_EXERCISE: Metric[] = ["weight", "strength", "strength_bw"];
 
 export default function ScoreboardPage() {
-  const [metric, setMetric] = useState<Metric>("hard_sets");
+  const [metric, setMetric] = useState<Metric>("frequency");
   const [period, setPeriod] = useState<Period>("week");
   const [sex, setSex] = useState<Sex | "">("");
   const [exercise, setExercise] = useState<Exercise | null>(null);

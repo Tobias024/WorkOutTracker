@@ -190,23 +190,52 @@ export function Stat({
   value,
   unit,
   delta,
+  deltaSuffix,
+  sub,
+  secondary,
+  info,
 }: {
   label: string;
   value: React.ReactNode;
   unit?: string;
   delta?: number | null;
+  deltaSuffix?: string;
+  /** Texto chico justo debajo del número (ej. "hasta ahora"). */
+  sub?: string;
+  /** Línea secundaria al pie (ej. "últ. sem: 1,2 t"). */
+  secondary?: string;
+  info?: string;
 }) {
+  const [showInfo, setShowInfo] = useState(false);
   return (
     <div className="card p-3.5 rounded-lg">
-      <p className="text-xs text-muted">{label}</p>
-      <p className="text-xl font-bold mt-1.5 tracking-tight">
+      <div className="flex items-center gap-1">
+        <p className="text-xs text-muted">{label}</p>
+        {info && (
+          <button
+            onClick={() => setShowInfo(true)}
+            className="text-muted hover:text-fg"
+            aria-label="¿Qué significa?"
+          >
+            <Info className="size-3" />
+          </button>
+        )}
+      </div>
+      <p className="text-xl font-bold mt-1.5 tracking-tight leading-none">
         {value}
         {unit && <span className="text-xs text-muted font-medium ml-1">{unit}</span>}
       </p>
+      {sub && <p className="text-[10px] text-muted mt-1">{sub}</p>}
       {delta != null && (
         <div className="mt-2">
-          <DeltaChip pct={delta} />
+          <DeltaChip pct={delta} suffix={deltaSuffix} />
         </div>
+      )}
+      {secondary && <p className="text-[10px] text-muted mt-1.5">{secondary}</p>}
+      {info && (
+        <Modal open={showInfo} onClose={() => setShowInfo(false)} title={label}>
+          <p className="text-sm text-muted whitespace-pre-line">{info}</p>
+        </Modal>
       )}
     </div>
   );
@@ -270,7 +299,7 @@ export function SectionCard({
       {children}
       {info && (
         <Modal open={showInfo} onClose={() => setShowInfo(false)} title={title}>
-          <p className="text-sm text-muted">{info}</p>
+          <p className="text-sm text-muted whitespace-pre-line">{info}</p>
         </Modal>
       )}
     </div>

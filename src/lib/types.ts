@@ -171,6 +171,10 @@ export type FriendMetrics = {
   total_volume: number;
   session_count: number;
   frequency_days: number;
+  hard_sets: number;
+  total_reps: number;
+  avg_duration: number;
+  distinct_exercises: number;
   weekly_volume: { week: string; volume: number }[];
   top_prs: { exercise_id: string; weight: number; orm: number }[];
 };
