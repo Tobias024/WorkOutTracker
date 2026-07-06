@@ -1,4 +1,4 @@
-// Service worker de WorkOut Tracker — recibe y muestra las notificaciones push.
+// Service worker de WOLF — recibe y muestra las notificaciones push.
 
 self.addEventListener("push", (event) => {
   let data = {};
@@ -7,7 +7,7 @@ self.addEventListener("push", (event) => {
   } catch (e) {
     data = {};
   }
-  const title = data.title || "WorkOut Tracker";
+  const title = data.title || "WOLF";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",
