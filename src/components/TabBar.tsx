@@ -16,7 +16,10 @@ export function TabBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-surface/95 backdrop-blur">
+    <nav
+      data-tabbar
+      className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-surface/95 backdrop-blur"
+    >
       <div className="mx-auto max-w-2xl flex">
         {TABS.map((tab) => {
           const active =

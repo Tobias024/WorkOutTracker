@@ -70,3 +70,9 @@ button {
     scrollbar-width: none;
   }
 }
+
+/* Durante un entrenamiento activo se oculta la barra inferior para ganar
+   pantalla (la página de entrenar setea data-hide-tabbar en el body). */
+body[data-hide-tabbar="1"] [data-tabbar] {
+  display: none;
+}

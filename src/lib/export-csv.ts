@@ -9,27 +9,31 @@ function csvCell(value: string | number | null): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+type Cell = string | number | null;
+
 /**
- * Arma un CSV con UNA FILA POR SERIE (los drop-sets se aplanan: cada bajada es
- * su propia fila). Reusa la fecha efectiva de la sesión y la traducción de músculo.
+ * Arma las filas de series (UNA FILA POR SERIE; los drop-sets se aplanan: cada
+ * bajada es su propia fila). La primera fila es el encabezado. Reusa la fecha
+ * efectiva de la sesión y la traducción de músculo.
  */
-export function buildSessionsCsv(
+export function buildSessionsRows(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
-): string {
-  const header = [
-    "fecha",
-    "sesion",
-    "ejercicio",
-    "musculo",
-    "serie",
-    "reps",
-    "peso_kg",
-    "volumen_kg",
-    "completado",
-    "duracion_min",
+): Cell[][] {
+  const rows: Cell[][] = [
+    [
+      "fecha",
+      "sesion",
+      "ejercicio",
+      "musculo",
+      "serie",
+      "reps",
+      "peso_kg",
+      "volumen_kg",
+      "completado",
+      "duracion_min",
+    ],
   ];
-  const rows: string[] = [header.map(csvCell).join(",")];
 
   for (const s of sessions) {
     const fecha = dateKey(sessionDate(s));
@@ -43,27 +47,33 @@ export function buildSessionsCsv(
         const drops = effectiveDrops(set);
         drops.forEach((d) => {
           const vol = d.reps && d.weight ? d.reps * d.weight : 0;
-          rows.push(
-            [
-              fecha,
-              s.name,
-              exName,
-              muscle,
-              si + 1,
-              d.reps ?? "",
-              d.weight ?? "",
-              vol,
-              set.completed ? "si" : "no",
-              durMin,
-            ]
-              .map(csvCell)
-              .join(","),
-          );
+          rows.push([
+            fecha,
+            s.name,
+            exName,
+            muscle,
+            si + 1,
+            d.reps ?? "",
+            d.weight ?? "",
+            vol,
+            set.completed ? "si" : "no",
+            durMin,
+          ]);
         });
       });
     }
   }
-  return rows.join("\r\n");
+  return rows;
+}
+
+/** Arma un CSV con una fila por serie (mismos datos que `buildSessionsRows`). */
+export function buildSessionsCsv(
+  sessions: HistorySession[],
+  exMap: Map<string, Exercise>,
+): string {
+  return buildSessionsRows(sessions, exMap)
+    .map((row) => row.map(csvCell).join(","))
+    .join("\r\n");
 }
 
 /** Descarga un string como archivo. UTF-8 con BOM para que Excel respete acentos. */

@@ -57,7 +57,8 @@ import {
   weeklyMetricStats,
   type PlanResolver,
 } from "@/lib/metrics";
-import { buildSessionsCsv, downloadCsv } from "@/lib/export-csv";
+import { buildSessionsRows } from "@/lib/export-csv";
+import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
@@ -348,25 +349,25 @@ export default function RegistroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, exMap, todayKey]);
 
-  // Métricas por semana (distingue semana en curso de semanas cumplidas).
+  // Métricas por semana (distingue semana en curso de semanas anteriores).
   const weekMetrics = useMemo(() => {
     const sessions = data ?? [];
-    const volStats = weeklyMetricStats(sessions, resolvePlanned, (ws) =>
+    const volStats = weeklyMetricStats(sessions, (ws) =>
       ws.reduce((a, s) => a + sessionVolume(s), 0),
     );
-    const hardStats = weeklyMetricStats(sessions, resolvePlanned, (ws) => {
+    const hardStats = weeklyMetricStats(sessions, (ws) => {
       let n = 0;
       for (const s of ws)
         for (const we of s.workout_exercises)
           for (const set of we.workout_sets) if (isHardSet(set)) n++;
       return n;
     });
-    const workoutStats = weeklyMetricStats(sessions, resolvePlanned, (ws) =>
+    const workoutStats = weeklyMetricStats(sessions, (ws) =>
       new Set(ws.map((s) => dateKey(sessionDate(s)))).size,
     );
     return { volStats, hardStats, workoutStats };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, resolvePlanned, todayKey]);
+  }, [data, todayKey]);
 
   // Racha semanal + calendario de cumplimiento (dependen del plan, resuelto
   // por semana: excepción puntual si existe, si no la plantilla global).
@@ -442,16 +443,92 @@ export default function RegistroPage() {
     weekday: number;
   } | null>(null);
 
-  function exportPeriod(from: Date | null, to: Date | null, tag: string) {
+  async function exportPeriod(from: Date | null, to: Date | null, tag: string) {
     const sessions = (data ?? []).filter((s) => {
       const d = new Date(sessionDate(s));
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
     });
-    const csv = buildSessionsCsv(sessions, exMap);
-    downloadCsv(`workouttracker-${tag}.csv`, csv);
+    // Hoja 1: series (según el período elegido). Hoja 2: tus métricas actuales.
+    const seriesRows = buildSessionsRows(sessions, exMap);
+    const metricRows = buildMetricsSheet();
     setExportOpen(false);
+    try {
+      await downloadWorkbook(`wolf-${tag}.xlsx`, [
+        { name: "Series", rows: seriesRows },
+        { name: "Métricas", rows: metricRows },
+      ]);
+    } catch (e) {
+      console.error("No se pudo generar el Excel:", e);
+    }
+  }
+
+  // Hoja de métricas: snapshot del estado actual (no depende del período de la
+  // otra hoja). Resume las tarjetas del dashboard más las tablas por músculo.
+  function buildMetricsSheet(): SheetCell[][] {
+    const w = weekMetrics;
+    const hasPlan = plannedWeekdays.length > 0;
+    const statusOf = (r: { sets: number; mev: number; mrv: number }) =>
+      r.sets < r.mev ? "Bajo MEV" : r.sets > r.mrv ? "Excede MRV" : "Óptimo";
+    const rows: SheetCell[][] = [
+      ["WOLF — Métricas (estado actual)"],
+      [],
+      ["Métrica", "Valor", "Detalle"],
+      ["Entrenos totales", metrics.count, ""],
+      ["Volumen total (kg)", Math.round(metrics.totalVol), ""],
+      [
+        "Volumen semana actual (kg)",
+        Math.round(w.volStats.current),
+        w.volStats.lastCompleted != null
+          ? `sem. anterior: ${Math.round(w.volStats.lastCompleted)}`
+          : "",
+      ],
+      [
+        "Series efectivas semana actual",
+        w.hardStats.current,
+        w.hardStats.lastCompleted != null
+          ? `sem. anterior: ${w.hardStats.lastCompleted}`
+          : "",
+      ],
+      [
+        "Promedio entrenos/semana",
+        w.workoutStats.completedCount > 0
+          ? Number(w.workoutStats.avgCompleted.toFixed(1))
+          : "",
+        `${w.workoutStats.completedCount} semanas anteriores`,
+      ],
+      ["Racha (semanas)", hasPlan ? planStats.streakWeeks : "", ""],
+      ["Cumplimiento 30d (%)", hasPlan ? planStats.compliance.pct : "", ""],
+      ["Duración promedio (min)", Math.round(metrics.avgDurationSec / 60), ""],
+      [
+        "Músculo estrella",
+        metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "",
+        "",
+      ],
+      [],
+      ["Series efectivas por músculo (prom. semanal · últ. 30 días)"],
+      ["Músculo", "Series/sem", "MEV", "MAV", "MRV", "Estado"],
+      ...metrics.hardSets.map((r) => [
+        muscleEs(r.muscle),
+        Number(r.sets.toFixed(1)),
+        r.mev,
+        r.mav,
+        r.mrv,
+        statusOf(r),
+      ]),
+      [],
+      ["Sets por músculo (últ. 30 días)"],
+      ["Músculo", "Sets"],
+      ...metrics.muscleDonut.map((m) => [m.label, m.value]),
+      [],
+      ["Balance de patrones (volumen · últ. 30 días)"],
+      ["Empuje", Math.round(metrics.balance.push)],
+      ["Tirón", Math.round(metrics.balance.pull)],
+      ["Compuesto", Math.round(metrics.balance.compound)],
+      ["Aislamiento", Math.round(metrics.balance.isolation)],
+    ];
+    return rows;
   }
 
   function daysAgo(n: number) {
@@ -509,7 +586,7 @@ export default function RegistroPage() {
                 size="sm"
                 variant="ghost"
                 onClick={() => setExportOpen(true)}
-                aria-label="Exportar CSV"
+                aria-label="Exportar Excel"
               >
                 <Download className="size-4" />
               </Button>
@@ -545,12 +622,12 @@ export default function RegistroPage() {
               delta={weekMetrics.volStats.deltaPct}
               secondary={
                 weekMetrics.volStats.lastCompleted != null
-                  ? `últ. cumplida: ${formatVolume(weekMetrics.volStats.lastCompleted)}`
+                  ? `sem. anterior: ${formatVolume(weekMetrics.volStats.lastCompleted)}`
                   : undefined
               }
               info={
-                "El número grande es el volumen acumulado en la semana en curso (aún incompleta).\n\n" +
-                "El % en verde/rojo compara las dos últimas semanas en las que CUMPLISTE tu plan (no la semana actual, que todavía está a mitad). Verde = la última semana cumplida superó a la anterior."
+                "El número grande es el volumen acumulado en la semana en curso (todavía incompleta).\n\n" +
+                "El % en verde/rojo compara las dos últimas semanas anteriores (ya terminadas), no la actual. Verde = la última superó a la previa."
               }
             />
             <Stat
@@ -561,12 +638,12 @@ export default function RegistroPage() {
               delta={weekMetrics.hardStats.deltaPct}
               secondary={
                 weekMetrics.hardStats.lastCompleted != null
-                  ? `últ. cumplida: ${weekMetrics.hardStats.lastCompleted} sets`
+                  ? `sem. anterior: ${weekMetrics.hardStats.lastCompleted} sets`
                   : undefined
               }
               info={
                 "Series de trabajo (≥5 reps y cerca del fallo) acumuladas en la semana en curso. Es el mejor indicador de estímulo para hipertrofia.\n\n" +
-                "El % compara las dos últimas semanas cumplidas."
+                "El % compara las dos últimas semanas anteriores."
               }
             />
           </div>
@@ -611,7 +688,7 @@ export default function RegistroPage() {
             <Stat
               label="Cumplimiento 30d"
               info={
-                "Porcentaje de días planificados que efectivamente entrenaste en los últimos 30 días (o desde tu primer entreno si tenés menos historia)."
+                "Porcentaje de días planificados que efectivamente entrenaste en los últimos 30 días."
               }
               value={
                 plannedWeekdays.length === 0
@@ -631,10 +708,10 @@ export default function RegistroPage() {
               }
               unit="/sem"
               delta={weekMetrics.workoutStats.deltaPct}
-              secondary={`${weekMetrics.workoutStats.completedCount} sem cumplidas`}
+              secondary={`${weekMetrics.workoutStats.completedCount} semanas anteriores`}
               info={
-                "Promedio de entrenos por semana, contando solo las semanas en las que cumpliste el plan: Σ(entrenos por semana cumplida) / cantidad de semanas cumplidas.\n\n" +
-                "El % compara la última semana cumplida con la anterior."
+                "Promedio de entrenos por semana sobre las semanas anteriores (ya terminadas): Σ(entrenos por semana) / cantidad de semanas anteriores.\n\n" +
+                "El % compara la última semana anterior con la previa."
               }
             />
             <Stat
@@ -717,7 +794,7 @@ export default function RegistroPage() {
             title="Series efectivas por grupo"
             subtitle="Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
             info={
-              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días (dividido por las semanas en las que entrenaste, no por 30 días fijos: así no subestima si recién empezás) para suavizar la variación entre entrenamientos y compararlas contra el mismo denominador que las marcas. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
+              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días para compararlas contra las marcas (que son semanales). Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
               "Las marcas verticales son las series por semana de referencia (Schoenfeld / Renaissance Periodization):\n" +
               "• MEV (Mínimo Volumen Efectivo): el piso para que un músculo crezca.\n" +
               "• MAV (Máximo Volumen Adaptativo): el rango donde más rendís.\n" +
@@ -925,9 +1002,10 @@ function ExportModal({
   ];
 
   return (
-    <Modal open={open} onClose={onClose} title="Exportar CSV">
+    <Modal open={open} onClose={onClose} title="Exportar Excel">
       <p className="text-sm text-muted mb-3">
-        Elegí un período. Se descarga un CSV con una fila por serie.
+        Elegí un período. Se descarga un Excel con dos pestañas: una con tus
+        series (una fila por serie, según el período) y otra con tus métricas.
       </p>
       <div className="flex flex-col gap-2">
         {presets.map((p) => (

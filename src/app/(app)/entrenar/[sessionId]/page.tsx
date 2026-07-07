@@ -45,6 +45,16 @@ export default function WorkoutPage() {
     return () => clearInterval(t);
   }, [ended]);
 
+  // En un entrenamiento activo (cargado y sin finalizar) ocultamos la TabBar
+  // inferior para aprovechar la pantalla. Al finalizar o salir, reaparece.
+  useEffect(() => {
+    if (!data || ended) return;
+    document.body.dataset.hideTabbar = "1";
+    return () => {
+      delete document.body.dataset.hideTabbar;
+    };
+  }, [data, ended]);
+
   if (isLoading || !data) {
     return (
       <div className="grid place-items-center py-16">
@@ -236,7 +246,7 @@ export default function WorkoutPage() {
         <Plus className="size-4" /> Agregar ejercicio
       </Button>
 
-      <div className="fixed bottom-20 inset-x-0 px-4">
+      <div className={`fixed inset-x-0 px-4 ${ended ? "bottom-20" : "bottom-4"}`}>
         <div className="mx-auto max-w-2xl">
           <Button
             size="lg"

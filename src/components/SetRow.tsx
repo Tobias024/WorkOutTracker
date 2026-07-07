@@ -132,11 +132,14 @@ export function SetRow({
                   key={v}
                   onClick={() => setRir(active ? null : v)}
                   className={clsx(
-                    "h-6 w-6 rounded text-[11px] font-bold ring-1 transition",
-                    active && zone === "danger" && "bg-danger/20 text-danger ring-danger/50",
-                    active && zone === "success" && "bg-success/20 text-success ring-success/50",
-                    active && zone === "muted" && "bg-surface-2 text-fg ring-border",
-                    !active && "bg-surface text-muted ring-border hover:text-fg",
+                    "h-6 w-6 rounded text-[11px] font-bold transition",
+                    active &&
+                      "text-bg ring-2 scale-110 shadow-sm",
+                    active && zone === "danger" && "bg-danger ring-danger",
+                    active && zone === "success" && "bg-success ring-success",
+                    active && zone === "muted" && "bg-muted ring-muted",
+                    !active &&
+                      "bg-surface text-muted ring-1 ring-border hover:text-fg",
                   )}
                 >
                   {v === 5 ? "5+" : v}

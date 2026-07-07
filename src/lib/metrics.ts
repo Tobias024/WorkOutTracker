@@ -214,25 +214,24 @@ export function firstSessionDate(sessions: SessionDateLike[]): Date | null {
 export interface WeeklyStats {
   /** Valor de la semana en curso (parcial, "hasta ahora"). */
   current: number;
-  /** Última y penúltima semana CUMPLIDA (pasadas), o null. */
+  /** Última y penúltima semana ANTERIOR (pasada, ya terminada), o null. */
   lastCompleted: number | null;
   prevCompleted: number | null;
-  /** % de la última semana cumplida vs la anterior (null si no hay base). */
+  /** % de la última semana anterior vs la previa (null si no hay base). */
   deltaPct: number | null;
-  /** Promedio del valor sobre todas las semanas cumplidas pasadas. */
+  /** Promedio del valor sobre todas las semanas anteriores con datos. */
   avgCompleted: number;
   completedCount: number;
 }
 
 /**
  * Estadísticas semanales de una métrica, distinguiendo la semana en curso de las
- * "semanas cumplidas" (pasadas que alcanzaron el plan). `valueOf` calcula la
- * métrica para las sesiones de una semana. Una semana pasada "cumple" si tuvo al
- * menos tantos días distintos como días planificados (o ≥1 si no hay plan).
+ * semanas anteriores (pasadas, ya terminadas). `valueOf` calcula la métrica para
+ * las sesiones de una semana. Se consideran todas las semanas pasadas con al
+ * menos una sesión, sin importar si se alcanzó el plan.
  */
 export function weeklyMetricStats<T extends SessionDateLike>(
   sessions: T[],
-  resolvePlanned: PlanResolver,
   valueOf: (weekSessions: T[]) => number,
 ): WeeklyStats {
   const curMs = weekStart(new Date()).getTime();
@@ -248,11 +247,8 @@ export function weeklyMetricStats<T extends SessionDateLike>(
 
   const completed: { wkMs: number; value: number }[] = [];
   for (const [wkMs, ws] of byWeek) {
-    if (wkMs >= curMs) continue; // solo semanas pasadas
-    const plannedCount = resolvePlanned(wkMs).length;
-    const distinctDays = new Set(ws.map((s) => dateKey(sessionDate(s)))).size;
-    const met = plannedCount > 0 ? distinctDays >= plannedCount : distinctDays >= 1;
-    if (met) completed.push({ wkMs, value: valueOf(ws) });
+    if (wkMs >= curMs) continue; // solo semanas anteriores (ya terminadas)
+    completed.push({ wkMs, value: valueOf(ws) });
   }
   completed.sort((a, b) => b.wkMs - a.wkMs);
 
