@@ -22,8 +22,12 @@ export function SetRow({
   onDelete,
 }: {
   set: WorkoutSet;
-  /** Peso/reps de la última vez (placeholder tenue si el campo está vacío). */
-  ghost?: { weight: number | null; reps: number | null } | null;
+  /** Peso/reps + bajadas de la última vez (placeholder tenue si el campo está vacío). */
+  ghost?: {
+    weight: number | null;
+    reps: number | null;
+    drops?: SetDrop[] | null;
+  } | null;
   onChange: (patch: Partial<WorkoutSet>) => void;
   onDelete: () => void;
 }) {
@@ -162,19 +166,21 @@ export function SetRow({
         </div>
       )}
 
-      {drops.slice(1).map((d, i) => (
+      {drops.slice(1).map((d, i) => {
+        const gd = ghost?.drops?.[i + 1];
+        return (
         <div key={i + 1} className="flex items-center gap-2 mt-1.5 pl-8">
           <span className="text-muted text-xs shrink-0">+ bajada</span>
           <NumberField
             value={d.weight}
-            placeholder="kg"
+            placeholder={gd?.weight != null ? String(gd.weight) : "kg"}
             step={2.5}
             onCommit={(v) => updateDrop(i + 1, { weight: v })}
           />
           <span className="text-muted text-xs">×</span>
           <NumberField
             value={d.reps}
-            placeholder="reps"
+            placeholder={gd?.reps != null ? String(gd.reps) : "reps"}
             step={1}
             onCommit={(v) => updateDrop(i + 1, { reps: v })}
           />
@@ -185,7 +191,8 @@ export function SetRow({
             <X className="size-3.5" />
           </button>
         </div>
-      ))}
+        );
+      })}
 
       <button
         onClick={addDrop}

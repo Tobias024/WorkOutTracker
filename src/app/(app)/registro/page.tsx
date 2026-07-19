@@ -2,12 +2,10 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   LineChart,
   ChevronRight,
   ChevronDown,
-  Zap,
   Download,
   Trophy,
   Flame,
@@ -29,12 +27,12 @@ import { PatternBalance, type BalanceData } from "@/components/PatternBalance";
 import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatmap";
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
-import { useStartEmptyWorkout } from "@/hooks/useWorkout";
 import { useAchievements } from "@/hooks/useAchievements";
 import { useToday } from "@/hooks/useToday";
 import {
   useWeeklyPlan,
   useSetWeeklyPlan,
+  usePlannedSince,
   useWeeklyPlanOverrides,
   useSetWeeklyPlanOverride,
 } from "@/hooks/useWeeklyPlan";
@@ -93,6 +91,8 @@ interface PlanDay {
   planned: boolean;
   completed: boolean;
   isPast: boolean;
+  /** El día está dentro de la vigencia del plan (se juzga como cumplido/fallado). */
+  judged: boolean;
   isEditableWeek: boolean;
   isCurrentWeek: boolean;
 }
@@ -173,10 +173,9 @@ function PaperLink({ label, url }: { label: string; url: string }) {
 export default function RegistroPage() {
   const { data, isLoading } = useHistory();
   const exMap = useExerciseMap();
-  const router = useRouter();
-  const startEmpty = useStartEmptyWorkout();
   const { data: plan } = useWeeklyPlan();
   const setPlan = useSetWeeklyPlan();
+  const { data: plannedSince } = usePlannedSince();
   const { data: achievements } = useAchievements();
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
@@ -407,11 +406,26 @@ export default function RegistroPage() {
   const planStats = useMemo(() => {
     const sessions = data ?? [];
     const now = new Date();
-    const streakWeeks = weeklyStreak(sessions, resolvePlanned);
-    const compliance = rollingCompliance(sessions, resolvePlanned, now, 30);
+    const planSince = plannedSince ? new Date(plannedSince) : null;
+    const streakWeeks = weeklyStreak(sessions, resolvePlanned, planSince);
+    const compliance = rollingCompliance(
+      sessions,
+      resolvePlanned,
+      now,
+      30,
+      planSince,
+    );
 
     const sessionDays = new Set(sessions.map((s) => dateKey(sessionDate(s))));
     const today = dateKey(now.toISOString());
+    // Se juzgan (rojo/verde) sólo los días desde que rige el plan; si nunca se
+    // fijó, se cae a la primera sesión.
+    const first = firstSessionDate(sessions);
+    const judgeKey = planSince
+      ? dateKey(planSince.toISOString())
+      : first
+        ? dateKey(first.toISOString())
+        : "";
     const thisWeekMs = weekStart(now).getTime();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -430,13 +444,14 @@ export default function RegistroPage() {
         planned: planned.has(date.getDay()),
         completed: sessionDays.has(key),
         isPast: key <= today,
+        judged: key >= judgeKey,
         isEditableWeek: wkMs >= thisWeekMs,
         isCurrentWeek: wkMs === thisWeekMs,
       });
     }
     return { streakWeeks, compliance, days, leadingBlanks };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, resolvePlanned, todayKey]);
+  }, [data, resolvePlanned, plannedSince, todayKey]);
 
   const [planExpanded, setPlanExpanded] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -620,29 +635,16 @@ export default function RegistroPage() {
         title="Registro"
         subtitle="Tu progreso y métricas"
         action={
-          <div className="flex items-center gap-1">
-            {!!data?.length && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setExportOpen(true)}
-                aria-label="Exportar Excel"
-              >
-                <Download className="size-4" />
-              </Button>
-            )}
+          !!data?.length && (
             <Button
               size="sm"
-              variant="secondary"
-              loading={startEmpty.isPending}
-              onClick={async () => {
-                const id = await startEmpty.mutateAsync();
-                router.push(`/entrenar/${id}`);
-              }}
+              variant="ghost"
+              onClick={() => setExportOpen(true)}
+              aria-label="Exportar Excel"
             >
-              <Zap className="size-4" /> Libre
+              <Download className="size-4" />
             </Button>
-          </div>
+          )
         }
       />
 
@@ -1217,12 +1219,19 @@ function WeeklyPlanCard({
                   pd.isEditableWeek && "cursor-pointer",
                   !pd.isEditableWeek && "cursor-default",
                   !pd.planned && "bg-surface-2 text-muted",
-                  pd.planned && pd.completed && "bg-success/20 text-success",
+                  // Antes de la vigencia del plan: neutro (nunca se prometió).
+                  pd.planned && !pd.judged && "bg-surface-2 text-muted",
                   pd.planned &&
+                    pd.judged &&
+                    pd.completed &&
+                    "bg-success/20 text-success",
+                  pd.planned &&
+                    pd.judged &&
                     !pd.completed &&
                     pd.isPast &&
                     "bg-danger/20 text-danger",
                   pd.planned &&
+                    pd.judged &&
                     !pd.completed &&
                     !pd.isPast &&
                     "ring-1 ring-primary/40 text-fg",

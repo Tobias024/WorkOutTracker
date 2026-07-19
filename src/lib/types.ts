@@ -16,6 +16,8 @@ export type Profile = {
   weight_kg: number | null;
   /** Días de la semana que el usuario planea entrenar (0=domingo … 6=sábado). */
   planned_weekdays: number[];
+  /** Desde cuándo rige la meta de días (para no juzgar días previos). */
+  planned_since: string | null;
   created_at: string;
 };
 

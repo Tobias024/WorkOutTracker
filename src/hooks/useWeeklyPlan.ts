@@ -24,6 +24,26 @@ export function useWeeklyPlan() {
   });
 }
 
+/** Fecha (ISO) desde la cual rige la meta de días prometidos (null si nunca se fijó). */
+export function usePlannedSince() {
+  return useQuery({
+    queryKey: ["planned-since"],
+    queryFn: async (): Promise<string | null> => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("planned_since")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data?.planned_since ?? null;
+    },
+  });
+}
+
 export function useSetWeeklyPlan() {
   const qc = useQueryClient();
   return useMutation({
@@ -33,13 +53,21 @@ export function useSetWeeklyPlan() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("No autenticado");
+      // Al cambiar la meta, la vigencia arranca ahora: los días previos no se
+      // juzgan como fallados (nunca se prometieron).
       const { error } = await supabase
         .from("profiles")
-        .update({ planned_weekdays: [...weekdays].sort((a, b) => a - b) })
+        .update({
+          planned_weekdays: [...weekdays].sort((a, b) => a - b),
+          planned_since: new Date().toISOString(),
+        })
         .eq("id", user.id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["weekly-plan"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["weekly-plan"] });
+      qc.invalidateQueries({ queryKey: ["planned-since"] });
+    },
   });
 }
 

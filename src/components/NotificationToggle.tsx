@@ -2,63 +2,175 @@
 
 import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
-import { enablePush, getPushState, type PushState } from "@/lib/push";
+import {
+  enablePush,
+  disablePush,
+  getPushState,
+  isSubscribed,
+  type PushState,
+} from "@/lib/push";
+import { Modal, Button } from "@/components/ui";
 import { clsx } from "@/lib/clsx";
 
-/** Botón para activar las notificaciones push del ranking. */
-export function NotificationToggle() {
-  const [state, setState] = useState<PushState | null>(null);
-  const [loading, setLoading] = useState(false);
+const REASONS: Record<string, string> = {
+  "missing-key": "No están configuradas en el servidor (falta la VAPID key).",
+  "save-failed": "No se pudo guardar la suscripción. Probá de nuevo.",
+  denied: "Bloqueaste las notificaciones en el navegador.",
+  unsupported: "Este navegador no soporta notificaciones.",
+};
 
-  // Se lee después de montar: Notification/PushManager no existen en SSR, y
-  // así evitamos un mismatch de hidratación.
+/** Botón + modal para activar/probar/desactivar las notificaciones del ranking. */
+export function NotificationToggle() {
+  const [perm, setPerm] = useState<PushState | null>(null);
+  const [subscribed, setSubscribed] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Se lee después de montar: Notification/PushManager no existen en SSR.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(getPushState());
+    setPerm(getPushState());
+    isSubscribed().then(setSubscribed);
   }, []);
 
-  if (state === null || state === "unsupported") return null;
+  if (perm === null || perm === "unsupported") return null;
+
+  const active = perm === "granted" && subscribed;
+  const denied = perm === "denied";
 
   async function activate() {
-    setLoading(true);
+    setBusy(true);
+    setMsg(null);
     const res = await enablePush();
-    setLoading(false);
+    setBusy(false);
     if (res.ok) {
-      setState("granted");
+      setPerm("granted");
+      setSubscribed(true);
+      setMsg("¡Notificaciones activadas!");
     } else if (res.reason === "denied") {
-      setState("denied");
-    } else if (res.reason === "missing-key") {
-      alert("Las notificaciones no están configuradas en el servidor todavía.");
+      setPerm("denied");
     } else {
-      alert("No se pudieron activar las notificaciones. Probá de nuevo.");
+      setMsg(REASONS[res.reason] ?? "No se pudieron activar. Probá de nuevo.");
     }
   }
 
-  const active = state === "granted";
-  const denied = state === "denied";
+  async function test() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/push/test", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        sent?: number;
+        error?: string;
+      };
+      setMsg(
+        res.ok
+          ? "Enviada ✓ Fijate que te haya llegado."
+          : `No se pudo enviar: ${data.error ?? res.statusText}`,
+      );
+    } catch {
+      setMsg("No se pudo enviar la prueba.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deactivate() {
+    setBusy(true);
+    setMsg(null);
+    await disablePush();
+    setSubscribed(false);
+    setBusy(false);
+    setMsg("Notificaciones desactivadas.");
+  }
 
   return (
-    <button
-      onClick={active ? undefined : denied ? undefined : activate}
-      disabled={loading || active || denied}
-      title={
-        active
-          ? "Notificaciones activadas"
-          : denied
-            ? "Bloqueaste las notificaciones en el navegador"
-            : "Activar notificaciones del ranking"
-      }
-      className={clsx(
-        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ring-1 transition",
-        active
-          ? "text-primary ring-primary/40 bg-primary/10"
-          : denied
-            ? "text-muted ring-border opacity-60"
-            : "text-muted ring-border hover:text-fg",
-      )}
-    >
-      {denied ? <BellOff className="size-4" /> : <Bell className="size-4" />}
-      <span>{active ? "Activadas" : denied ? "Bloqueadas" : "Notificar"}</span>
-    </button>
+    <>
+      <button
+        onClick={() => {
+          setMsg(null);
+          setOpen(true);
+        }}
+        title="Notificaciones del ranking"
+        className={clsx(
+          "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ring-1 transition",
+          active
+            ? "text-primary ring-primary/40 bg-primary/10"
+            : denied
+              ? "text-muted ring-border opacity-60"
+              : "text-muted ring-border hover:text-fg",
+        )}
+      >
+        {denied ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+        <span>{active ? "Activadas" : denied ? "Bloqueadas" : "Notificar"}</span>
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Notificaciones del ranking"
+      >
+        <div className="flex flex-col gap-3">
+          {denied ? (
+            <>
+              <p className="text-sm text-muted">
+                Bloqueaste las notificaciones para este sitio, así que no se
+                pueden reactivar desde acá. Para volver a permitirlas:
+              </p>
+              <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
+                <li>
+                  Tocá el candado / ícono a la izquierda de la dirección del
+                  sitio.
+                </li>
+                <li>
+                  Entrá a <span className="text-fg">Notificaciones</span> (o
+                  Permisos del sitio) y ponelo en{" "}
+                  <span className="text-fg">Permitir</span>.
+                </li>
+                <li>Recargá la página y activá de nuevo.</li>
+              </ol>
+            </>
+          ) : active ? (
+            <>
+              <p className="text-sm text-muted">
+                Están activadas. Te avisamos cuando un amigo te pasa en el
+                ranking.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  loading={busy}
+                  onClick={test}
+                >
+                  Enviar prueba
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="flex-1"
+                  loading={busy}
+                  onClick={deactivate}
+                >
+                  Desactivar
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">
+                Activá las notificaciones para enterarte cuando un amigo te pasa
+                en el ranking.
+              </p>
+              <Button loading={busy} onClick={activate}>
+                Activar notificaciones
+              </Button>
+            </>
+          )}
+
+          {msg && <p className="text-sm text-fg">{msg}</p>}
+        </div>
+      </Modal>
+    </>
   );
 }

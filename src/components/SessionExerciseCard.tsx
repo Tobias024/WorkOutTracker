@@ -57,16 +57,16 @@ export function SessionExerciseCard({
   const completedSets = we.sets.filter((s) => s.completed);
   const volume = totalVolume(completedSets);
 
-  /** Peso/reps de la última vez para esta serie (por número de serie). */
+  /** Peso/reps + bajadas de la última vez para esta serie (por número de serie). */
   function ghostFor(setNumber: number) {
     if (!lastLog || lastLog.sets.length === 0) return null;
     const s =
       lastLog.sets.find((x) => x.set_number === setNumber) ??
       lastLog.sets[lastLog.sets.length - 1];
-    return s ? { weight: s.weight, reps: s.reps } : null;
+    return s ? { weight: s.weight, reps: s.reps, drops: s.drops } : null;
   }
 
-  /** Al completar una serie vacía, adopta el ghost (repetir el peso = no tocar nada). */
+  /** Al completar una serie vacía, adopta el ghost (repetir = no tocar nada). */
   function adopt(
     set: WorkoutSet,
     patch: Partial<WorkoutSet>,
@@ -75,6 +75,21 @@ export function SessionExerciseCard({
     const g = ghostFor(set.set_number);
     if (!g) return patch;
     const next = { ...patch };
+    // Si la serie está vacía y la última vez tuvo bajadas, adoptar el array
+    // entero (incluye peso/reps de la primer bajada) → repetir sin tocar nada.
+    const empty =
+      set.weight == null &&
+      set.reps == null &&
+      (!set.drops || set.drops.length <= 1) &&
+      next.weight == null &&
+      next.reps == null &&
+      next.drops == null;
+    if (empty && g.drops && g.drops.length > 1) {
+      next.drops = g.drops;
+      next.weight = g.drops[0]?.weight ?? null;
+      next.reps = g.drops[0]?.reps ?? null;
+      return next;
+    }
     if (set.weight == null && next.weight == null && g.weight != null)
       next.weight = g.weight;
     if (set.reps == null && next.reps == null && g.reps != null)

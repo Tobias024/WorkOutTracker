@@ -6,6 +6,7 @@ import type {
   WorkoutSession,
   WorkoutExercise,
   WorkoutSet,
+  SetDrop,
 } from "@/lib/types";
 
 export interface SessionExercise extends WorkoutExercise {
@@ -154,9 +155,14 @@ export function useLastBodyWeight() {
   });
 }
 
-/** Registro por serie (peso/reps) de un ejercicio en una sesión previa. */
+/** Registro por serie (peso/reps + bajadas) de un ejercicio en una sesión previa. */
 export interface LastExerciseLog {
-  sets: { set_number: number; weight: number | null; reps: number | null }[];
+  sets: {
+    set_number: number;
+    weight: number | null;
+    reps: number | null;
+    drops: SetDrop[] | null;
+  }[];
 }
 
 /**
@@ -179,7 +185,7 @@ export function useLastExerciseLogs(
       const { data } = await supabase
         .from("workout_exercises")
         .select(
-          "exercise_id, session_id, workout_sessions!inner(started_at, ended_at), workout_sets(set_number, weight, reps, is_warmup)",
+          "exercise_id, session_id, workout_sessions!inner(started_at, ended_at), workout_sets(set_number, weight, reps, is_warmup, drops)",
         )
         .in("exercise_id", ids);
 
@@ -192,6 +198,7 @@ export function useLastExerciseLogs(
           weight: number | null;
           reps: number | null;
           is_warmup: boolean;
+          drops: SetDrop[] | null;
         }[];
       };
       const rows = (data ?? []) as unknown as Row[];
@@ -210,7 +217,12 @@ export function useLastExerciseLogs(
         const sets = (r.workout_sets ?? [])
           .filter((s) => !s.is_warmup && (s.weight != null || s.reps != null))
           .sort((a, b) => a.set_number - b.set_number)
-          .map((s) => ({ set_number: s.set_number, weight: s.weight, reps: s.reps }));
+          .map((s) => ({
+            set_number: s.set_number,
+            weight: s.weight,
+            reps: s.reps,
+            drops: s.drops,
+          }));
         if (sets.length === 0) continue;
         out.set(r.exercise_id, { sets });
       }

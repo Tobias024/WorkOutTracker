@@ -300,6 +300,7 @@ export type PlanResolver = (weekStartMs: number) => number[];
 export function weeklyStreak(
   sessions: SessionDateLike[],
   resolvePlanned: PlanResolver,
+  planSince?: Date | null,
 ): number {
   const byWeek = visitsByWeek(sessions);
   const met = (wkMs: number) => {
@@ -307,13 +308,15 @@ export function weeklyStreak(
     return plannedCount > 0 && (byWeek.get(wkMs)?.size ?? 0) >= plannedCount;
   };
 
+  // No contar semanas anteriores a la vigencia del plan (nunca se prometieron).
+  const sinceWeekMs = planSince ? weekStart(planSince).getTime() : -Infinity;
   const thisWeek = weekStart(new Date());
   let count = 0;
   if (met(thisWeek.getTime())) count++;
 
   const cursor = new Date(thisWeek);
   cursor.setDate(cursor.getDate() - 7);
-  while (met(cursor.getTime())) {
+  while (cursor.getTime() >= sinceWeekMs && met(cursor.getTime())) {
     count++;
     cursor.setDate(cursor.getDate() - 7);
   }
@@ -336,20 +339,28 @@ export function rollingCompliance(
   resolvePlanned: PlanResolver,
   ref: Date,
   days = 30,
+  planSince?: Date | null,
 ): Compliance {
   const sessionDays = new Set(sessions.map((s) => dateKey(sessionDate(s))));
   const today = new Date(ref);
   today.setHours(0, 0, 0, 0);
-  // No contar días anteriores a la primera sesión: si el usuario tiene menos de
-  // `days` de historia, el denominador arranca en su primer día registrado.
+  // No contar días anteriores a la primera sesión NI a la vigencia del plan
+  // (días previos a prometerlos no cuentan como fallados).
   const firstMs = firstSessionDate(sessions)?.getTime() ?? -Infinity;
+  let sinceMs = -Infinity;
+  if (planSince) {
+    const p = new Date(planSince);
+    p.setHours(0, 0, 0, 0);
+    sinceMs = p.getTime();
+  }
+  const startMs = Math.max(firstMs, sinceMs);
 
   let plannedDays = 0;
   let completedDays = 0;
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
-    if (date.getTime() < firstMs) break; // ya pasamos el primer día con datos
+    if (date.getTime() < startMs) break; // antes del inicio del juicio
     const planned = new Set(resolvePlanned(weekStart(date).getTime()));
     if (!planned.has(date.getDay())) continue;
     plannedDays++;

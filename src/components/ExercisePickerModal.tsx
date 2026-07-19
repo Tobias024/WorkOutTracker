@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Modal, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
+import { useHistory } from "@/hooks/useHistory";
+import { sessionDate } from "@/lib/metrics";
 import { MUSCLES_ES, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
 
@@ -20,13 +22,30 @@ export function ExercisePickerModal({
   title?: string;
 }) {
   const { data, isLoading } = useExercises();
+  const { data: history } = useHistory();
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<string>("");
 
-  const list = filterExercises(data ?? [], query, muscle || undefined).slice(
-    0,
-    80,
-  );
+  // Fecha del último uso por ejercicio, para sugerir primero los ya realizados.
+  const doneAt = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of history ?? []) {
+      const t = new Date(sessionDate(s)).getTime();
+      for (const we of s.workout_exercises) {
+        if (t > (m.get(we.exercise_id) ?? 0)) m.set(we.exercise_id, t);
+      }
+    }
+    return m;
+  }, [history]);
+
+  // Filtrado + orden: realizados primero (más reciente arriba), luego el resto
+  // en su orden alfabético original (Array.sort estable).
+  const list = useMemo(() => {
+    const filtered = filterExercises(data ?? [], query, muscle || undefined);
+    return [...filtered]
+      .sort((a, b) => (doneAt.get(b.id) ?? 0) - (doneAt.get(a.id) ?? 0))
+      .slice(0, 80);
+  }, [data, query, muscle, doneAt]);
 
   return (
     <Modal open={open} onClose={onClose} title={title}>
@@ -79,6 +98,11 @@ export function ExercisePickerModal({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{ex.name}</p>
                     <div className="flex gap-1.5 mt-0.5 flex-wrap">
+                      {doneAt.has(ex.id) && (
+                        <Badge className="bg-primary/15 text-primary ring-primary/30">
+                          Hecho
+                        </Badge>
+                      )}
                       {ex.primary_muscles[0] && (
                         <Badge>{muscleEs(ex.primary_muscles[0])}</Badge>
                       )}

@@ -23,6 +23,14 @@ export function getPushState(): PushState {
   return Notification.permission as PushState;
 }
 
+/** ¿Hay una suscripción push activa? (permiso concedido no implica suscripto). */
+export async function isSubscribed(): Promise<boolean> {
+  if (!isSupported() || Notification.permission !== "granted") return false;
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = await reg?.pushManager.getSubscription();
+  return !!sub;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");

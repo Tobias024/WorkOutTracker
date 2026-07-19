@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Dumbbell,
   Plus,
@@ -10,6 +11,7 @@ import {
   ListChecks,
   Check,
   Share2,
+  Zap,
 } from "lucide-react";
 import {
   PageHeader,
@@ -24,14 +26,17 @@ import {
   useCreateRoutine,
   useEnsureShareCodes,
 } from "@/hooks/useRoutines";
+import { useStartEmptyWorkout } from "@/hooks/useWorkout";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 
 export default function RoutinesPage() {
+  const router = useRouter();
   const { data, isLoading } = useRoutines();
   const create = useCreateRoutine();
   const ensureCodes = useEnsureShareCodes();
+  const startEmpty = useStartEmptyWorkout();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
 
@@ -113,18 +118,30 @@ export default function RoutinesPage() {
       />
 
       {!selecting && (
-        <Link
-          href="/ejercicios"
-          className="card flex items-center gap-3 p-3 mb-4 hover:ring-1 hover:ring-primary transition"
-        >
-          <div className="size-9 rounded bg-surface-2 grid place-items-center">
-            <Library className="size-5 text-muted" />
-          </div>
-          <span className="text-sm font-medium flex-1">
-            Explorar catálogo de ejercicios
-          </span>
-          <ChevronRight className="size-4 text-muted" />
-        </Link>
+        <div className="grid grid-cols-2 gap-2.5 mb-4">
+          <button
+            disabled={startEmpty.isPending}
+            onClick={async () => {
+              const id = await startEmpty.mutateAsync();
+              router.push(`/entrenar/${id}`);
+            }}
+            className="card flex items-center gap-2.5 p-3 text-left hover:ring-1 hover:ring-primary transition disabled:opacity-60"
+          >
+            <div className="size-9 rounded bg-primary/15 grid place-items-center shrink-0">
+              <Zap className="size-5 text-primary" />
+            </div>
+            <span className="text-sm font-medium">Entrenar libre</span>
+          </button>
+          <Link
+            href="/ejercicios"
+            className="card flex items-center gap-2.5 p-3 hover:ring-1 hover:ring-primary transition"
+          >
+            <div className="size-9 rounded bg-surface-2 grid place-items-center shrink-0">
+              <Library className="size-5 text-muted" />
+            </div>
+            <span className="text-sm font-medium">Catálogo</span>
+          </Link>
+        </div>
       )}
 
       {selecting && (
