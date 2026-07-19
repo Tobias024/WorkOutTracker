@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Trophy, Medal, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Trophy,
+  Medal,
+  ChevronDown,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 import { PageHeader, Spinner, EmptyState, Button, Tabs } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { NotificationToggle } from "@/components/NotificationToggle";
@@ -16,22 +23,30 @@ import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Exercise, Sex } from "@/lib/types";
 
-const METRICS: { key: Metric; label: string; caption: string }[] = [
+type MetricDef = { key: Metric; label: string; caption: string };
+
+// Métricas generales (sin elegir ejercicio): las más relevantes, al frente.
+const GENERAL: MetricDef[] = [
   {
     key: "frequency",
     label: "Frecuencia",
-    caption: "Días distintos con entrenamiento en el período. La constancia es lo que más pesa.",
+    caption:
+      "Días distintos con entrenamiento en el período. La constancia es lo que más pesa.",
   },
   {
     key: "hard_sets",
     label: "Series",
-    caption: "Series efectivas (≥5 reps, cerca del fallo). El driver de hipertrofia.",
+    caption:
+      "Series efectivas (≥5 reps, cerca del fallo). El driver de hipertrofia.",
   },
   {
     key: "volume",
     label: "Volumen",
     caption: "Tonelaje total: reps × peso de las series de trabajo.",
   },
+];
+// Fuerza por ejercicio (secundaria: requiere elegir un ejercicio).
+const STRENGTH: MetricDef[] = [
   {
     key: "strength",
     label: "1RM",
@@ -40,9 +55,14 @@ const METRICS: { key: Metric; label: string; caption: string }[] = [
   {
     key: "strength_bw",
     label: "1RM/peso",
-    caption: "1RM estimado dividido tu peso corporal. Más justo entre distintos pesos.",
+    caption:
+      "1RM estimado dividido tu peso corporal. Más justo entre distintos pesos.",
   },
 ];
+const CAPTIONS = new Map(
+  [...GENERAL, ...STRENGTH].map((m) => [m.key, m.caption]),
+);
+
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },
   { key: "month", label: "Mes" },
@@ -53,14 +73,18 @@ const SEXES: { key: Sex | ""; label: string }[] = [
   { key: "male", label: "Varones" },
   { key: "female", label: "Mujeres" },
 ];
-const NEEDS_EXERCISE: Metric[] = ["weight", "strength", "strength_bw"];
 
 export default function ScoreboardPage() {
-  const [metric, setMetric] = useState<Metric>("frequency");
+  const [view, setView] = useState<"general" | "strength">("general");
+  const [genMetric, setGenMetric] = useState<Metric>("frequency");
+  const [strMetric, setStrMetric] = useState<Metric>("strength");
   const [period, setPeriod] = useState<Period>("week");
   const [sex, setSex] = useState<Sex | "">("");
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [picker, setPicker] = useState(false);
+
+  const metric = view === "general" ? genMetric : strMetric;
+  const needsExercise = view === "strength";
 
   const { data: meId } = useCurrentUserId();
 
@@ -71,7 +95,7 @@ export default function ScoreboardPage() {
     sex || null,
   );
 
-  const caption = METRICS.find((m) => m.key === metric)?.caption ?? "";
+  const caption = CAPTIONS.get(metric) ?? "";
 
   function fmt(v: number) {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
@@ -86,17 +110,34 @@ export default function ScoreboardPage() {
     <div>
       <PageHeader
         title="Ranking"
-        subtitle="Competí con tus amigos"
+        subtitle="Competí con tus amigos · ▲▼ vs el período anterior"
         action={<NotificationToggle />}
       />
 
       <div className="mb-2">
         <Tabs
-          scroll
-          value={metric}
-          onChange={setMetric}
-          options={METRICS.map((mt) => ({ value: mt.key, label: mt.label }))}
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "general", label: "General" },
+            { value: "strength", label: "Fuerza" },
+          ]}
         />
+      </div>
+      <div className="mb-2">
+        {view === "general" ? (
+          <Tabs
+            value={genMetric}
+            onChange={setGenMetric}
+            options={GENERAL.map((mt) => ({ value: mt.key, label: mt.label }))}
+          />
+        ) : (
+          <Tabs
+            value={strMetric}
+            onChange={setStrMetric}
+            options={STRENGTH.map((mt) => ({ value: mt.key, label: mt.label }))}
+          />
+        )}
       </div>
       <div className="mb-2">
         <Tabs
@@ -115,7 +156,7 @@ export default function ScoreboardPage() {
 
       <p className="text-xs text-muted mb-4 px-1">{caption}</p>
 
-      {NEEDS_EXERCISE.includes(metric) && (
+      {needsExercise && (
         <Button
           variant="secondary"
           className="w-full mb-4 justify-between"
@@ -128,11 +169,11 @@ export default function ScoreboardPage() {
         </Button>
       )}
 
-      {NEEDS_EXERCISE.includes(metric) && !exercise ? (
+      {needsExercise && !exercise ? (
         <EmptyState
           icon={<Trophy className="size-8" />}
           title="Elegí un ejercicio"
-          description="Para comparar entre amigos."
+          description="Para comparar la fuerza entre amigos."
         />
       ) : isLoading ? (
         <div className="grid place-items-center py-16">
@@ -157,6 +198,7 @@ export default function ScoreboardPage() {
                   className={clsx(
                     "card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition",
                     i === 0 && Number(row.value) > 0 && "ring-1 ring-accent/40",
+                    isMe && "bg-primary/5",
                   )}
                 >
                   <div className="w-7 text-center shrink-0">
@@ -180,6 +222,7 @@ export default function ScoreboardPage() {
                       {isMe ? "Vos" : row.display_name ?? row.username}
                     </p>
                   </div>
+                  {row.move != null && <MoveChip move={row.move} />}
                   <span className="font-semibold tabular-nums">
                     {fmt(Number(row.value))}
                   </span>
@@ -198,5 +241,27 @@ export default function ScoreboardPage() {
         onSelect={(ex) => setExercise(ex)}
       />
     </div>
+  );
+}
+
+/** Movimiento de puesto vs el período anterior: ▲ subió, ▼ bajó, — se mantuvo. */
+function MoveChip({ move }: { move: number }) {
+  if (move === 0)
+    return (
+      <span className="text-muted text-xs w-7 text-right shrink-0">—</span>
+    );
+  const up = move > 0;
+  const Arrow = up ? ArrowUp : ArrowDown;
+  return (
+    <span
+      className={clsx(
+        "inline-flex items-center gap-0.5 text-xs font-semibold w-7 justify-end shrink-0",
+        up ? "text-success" : "text-danger",
+      )}
+      title={up ? `Subió ${move}` : `Bajó ${Math.abs(move)}`}
+    >
+      <Arrow className="size-3" strokeWidth={3} />
+      {Math.abs(move)}
+    </span>
   );
 }

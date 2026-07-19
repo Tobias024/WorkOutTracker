@@ -108,6 +108,14 @@ export type WorkoutSet = {
   drops: SetDrop[] | null;
 };
 
+/** Nota fija del usuario sobre un ejercicio, compartida entre todas sus rutinas. */
+export type UserExerciseNote = {
+  user_id: string;
+  exercise_id: string;
+  note: string;
+  updated_at: string;
+};
+
 export type ExerciseSubstitution = {
   id: string;
   user_id: string;
@@ -224,6 +232,7 @@ export type Database = {
       workout_exercises: Table<WorkoutExercise>;
       workout_sets: Table<WorkoutSet>;
       exercise_substitutions: Table<ExerciseSubstitution>;
+      user_exercise_notes: Table<UserExerciseNote>;
       friendships: Table<Friendship>;
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
@@ -254,6 +263,7 @@ export type Database = {
           p_since: string;
           p_exercise_id?: string;
           p_sex?: string | null;
+          p_until?: string | null;
         };
         Returns: ScoreboardRow[];
       };

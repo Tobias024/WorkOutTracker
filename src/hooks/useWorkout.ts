@@ -154,6 +154,71 @@ export function useLastBodyWeight() {
   });
 }
 
+/** Registro por serie (peso/reps) de un ejercicio en una sesión previa. */
+export interface LastExerciseLog {
+  sets: { set_number: number; weight: number | null; reps: number | null }[];
+}
+
+/**
+ * Último peso/reps registrado por serie para cada ejercicio, tomado de la
+ * sesión FINALIZADA más reciente en la que aparece (por `exercise_id`, así se
+ * comparte entre rutinas). Se usa como placeholder "ghost" al entrenar: si
+ * repetís el mismo peso, no tenés que cambiar nada. Nunca se comparte al
+ * compartir una rutina (son datos propios del historial).
+ */
+export function useLastExerciseLogs(
+  exerciseIds: string[],
+  excludeSessionId?: string,
+) {
+  const ids = [...new Set(exerciseIds)].sort();
+  return useQuery({
+    queryKey: ["last-exercise-logs", ids, excludeSessionId ?? null],
+    enabled: ids.length > 0,
+    queryFn: async (): Promise<Map<string, LastExerciseLog>> => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("workout_exercises")
+        .select(
+          "exercise_id, session_id, workout_sessions!inner(started_at, ended_at), workout_sets(set_number, weight, reps, is_warmup)",
+        )
+        .in("exercise_id", ids);
+
+      type Row = {
+        exercise_id: string;
+        session_id: string;
+        workout_sessions: { started_at: string | null; ended_at: string | null };
+        workout_sets: {
+          set_number: number;
+          weight: number | null;
+          reps: number | null;
+          is_warmup: boolean;
+        }[];
+      };
+      const rows = (data ?? []) as unknown as Row[];
+      // Más reciente primero (por inicio de la sesión).
+      rows.sort((a, b) =>
+        (b.workout_sessions?.started_at ?? "").localeCompare(
+          a.workout_sessions?.started_at ?? "",
+        ),
+      );
+
+      const out = new Map<string, LastExerciseLog>();
+      for (const r of rows) {
+        if (out.has(r.exercise_id)) continue; // ya tenemos el más reciente
+        if (!r.workout_sessions?.ended_at) continue; // sólo sesiones terminadas
+        if (excludeSessionId && r.session_id === excludeSessionId) continue;
+        const sets = (r.workout_sets ?? [])
+          .filter((s) => !s.is_warmup && (s.weight != null || s.reps != null))
+          .sort((a, b) => a.set_number - b.set_number)
+          .map((s) => ({ set_number: s.set_number, weight: s.weight, reps: s.reps }));
+        if (sets.length === 0) continue;
+        out.set(r.exercise_id, { sets });
+      }
+      return out;
+    },
+  });
+}
+
 export function useWorkoutSession(sessionId: string) {
   return useQuery({
     queryKey: ["session", sessionId],

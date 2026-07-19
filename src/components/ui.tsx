@@ -204,7 +204,7 @@ export function Stat({
   sub?: string;
   /** Línea secundaria al pie (ej. "últ. sem: 1,2 t"). */
   secondary?: string;
-  info?: string;
+  info?: React.ReactNode;
 }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
@@ -234,7 +234,7 @@ export function Stat({
       {secondary && <p className="text-[10px] text-muted mt-1.5">{secondary}</p>}
       {info && (
         <Modal open={showInfo} onClose={() => setShowInfo(false)} title={label}>
-          <p className="text-sm text-muted whitespace-pre-line">{info}</p>
+          <div className="text-sm text-muted whitespace-pre-line">{info}</div>
         </Modal>
       )}
     </div>
@@ -271,7 +271,7 @@ export function SectionCard({
   subtitle?: string;
   action?: React.ReactNode;
   /** Si se pasa, muestra un botón "i" que abre un modal con esta explicación. */
-  info?: string;
+  info?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -299,7 +299,7 @@ export function SectionCard({
       {children}
       {info && (
         <Modal open={showInfo} onClose={() => setShowInfo(false)} title={title}>
-          <p className="text-sm text-muted whitespace-pre-line">{info}</p>
+          <div className="text-sm text-muted whitespace-pre-line">{info}</div>
         </Modal>
       )}
     </div>

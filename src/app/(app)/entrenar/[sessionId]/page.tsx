@@ -9,7 +9,11 @@ import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
 import { StopwatchFab } from "@/components/Stopwatch";
 import { PrCelebrationModal } from "@/components/PrCelebrationModal";
-import { useWorkoutSession, useLastBodyWeight } from "@/hooks/useWorkout";
+import {
+  useWorkoutSession,
+  useLastBodyWeight,
+  useLastExerciseLogs,
+} from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { createClient } from "@/lib/supabase/client";
@@ -28,6 +32,10 @@ export default function WorkoutPage() {
   const router = useRouter();
   const { data, isLoading } = useWorkoutSession(sessionId);
   const { data: lastBw } = useLastBodyWeight();
+  const { data: lastLogs } = useLastExerciseLogs(
+    (data?.exercises ?? []).map((e) => e.exercise_id),
+    sessionId,
+  );
   const exMap = useExerciseMap();
   const m = useSessionMutations(sessionId);
   const qc = useQueryClient();
@@ -209,6 +217,7 @@ export default function WorkoutPage() {
             key={we.id}
             we={we}
             exercise={exMap.get(we.exercise_id)}
+            lastLog={lastLogs?.get(we.exercise_id)}
             originalExercise={
               we.replaced_from_exercise_id
                 ? exMap.get(we.replaced_from_exercise_id)

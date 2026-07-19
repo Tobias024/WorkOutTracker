@@ -61,8 +61,9 @@ import { buildSessionsRows } from "@/lib/export-csv";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { openExternal } from "@/lib/external";
 import { clsx } from "@/lib/clsx";
-import type { Achievement } from "@/lib/types";
+import type { Achievement, Exercise } from "@/lib/types";
 
 const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 const HISTORY_PREVIEW = 8;
@@ -106,6 +107,66 @@ function sessionSets(s: HistorySession): number {
   return s.workout_exercises.reduce(
     (acc, we) => acc + we.workout_sets.filter(isCountableSet).length,
     0,
+  );
+}
+
+/**
+ * Series efectivas por músculo expresadas como series/semana, para compararlas
+ * contra las marcas MEV/MAV/MRV (que son semanales: Schoenfeld / RP).
+ * - windowDays=7: conteo directo de la última semana (sin dilución) → es la
+ *   medida correcta contra marcas semanales, y el default.
+ * - windowDays=30: promedio semanal sobre las semanas con datos (mín. 1), que
+ *   suaviza pero puede subestimar cuando la frecuencia varía.
+ */
+function computeHardSets(
+  sessions: HistorySession[],
+  exMap: Map<string, Exercise>,
+  windowDays: number,
+  first: Date | null,
+  now: Date,
+): MuscleSetRow[] {
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - windowDays);
+  const byMuscle = new Map<string, number>();
+  for (const s of sessions) {
+    if (new Date(sessionDate(s)) < cutoff) continue;
+    for (const we of s.workout_exercises) {
+      const ex = exMap.get(we.exercise_id);
+      if (!ex) continue;
+      const contribs = muscleContributions(ex);
+      for (const set of we.workout_sets) {
+        if (!isHardSet(set)) continue;
+        for (const c of contribs) {
+          byMuscle.set(c.muscle, (byMuscle.get(c.muscle) ?? 0) + c.weight);
+        }
+      }
+    }
+  }
+  const windowStart = Math.max(
+    cutoff.getTime(),
+    first?.getTime() ?? cutoff.getTime(),
+  );
+  const weeks = Math.max(1, (now.getTime() - windowStart) / (7 * 86400000));
+  return [...byMuscle.entries()]
+    .map(([muscle, sets]) => ({
+      muscle,
+      sets: sets / weeks,
+      ...landmarkFor(muscle),
+    }))
+    .sort((a, b) => b.sets - a.sets)
+    .slice(0, 8);
+}
+
+/** Cita de paper clickeable: abre el link con confirmación previa. */
+function PaperLink({ label, url }: { label: string; url: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => openExternal(url)}
+      className="text-primary underline underline-offset-2"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -250,41 +311,12 @@ export default function RegistroPage() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo, últimos 30 días, atribución
-    // fraccional, normalizado a un promedio semanal (las marcas MEV/MAV/MRV
-    // son series/semana). Clave: el divisor son las semanas con datos, NO 30
-    // días fijos — si tenés 6 días de historia, dividir por 4.28 semanas
-    // subestima ~4x y muestra todo "Bajo MEV". Se acota a la primera sesión
-    // (mín. 1 semana), igual que avgWeeklyWorkouts/rollingCompliance.
-    const cutoff30Hard = new Date(now);
-    cutoff30Hard.setDate(cutoff30Hard.getDate() - 30);
-    const hardByMuscle = new Map<string, number>();
-    for (const s of sessions) {
-      if (new Date(sessionDate(s)) < cutoff30Hard) continue;
-      for (const we of s.workout_exercises) {
-        const ex = exMap.get(we.exercise_id);
-        if (!ex) continue;
-        const contribs = muscleContributions(ex);
-        for (const set of we.workout_sets) {
-          if (!isHardSet(set)) continue;
-          for (const c of contribs) {
-            hardByMuscle.set(c.muscle, (hardByMuscle.get(c.muscle) ?? 0) + c.weight);
-          }
-        }
-      }
-    }
-    const hardWindowStart = Math.max(
-      cutoff30Hard.getTime(),
-      first?.getTime() ?? cutoff30Hard.getTime(),
-    );
-    const hardWeeks = Math.max(
-      1,
-      (now.getTime() - hardWindowStart) / (7 * 86400000),
-    );
-    const hardSets: MuscleSetRow[] = [...hardByMuscle.entries()]
-      .map(([muscle, sets]) => ({ muscle, sets: sets / hardWeeks, ...landmarkFor(muscle) }))
-      .sort((a, b) => b.sets - a.sets)
-      .slice(0, 8);
+    // Series efectivas (hard sets) por músculo como series/semana, para comparar
+    // contra las marcas MEV/MAV/MRV (que son semanales). Se calculan dos ventanas:
+    // 7 días (conteo directo de la última semana, el default correcto) y 30 días
+    // (promedio semanal, más suave). Ver computeHardSets.
+    const hardSets7 = computeHardSets(sessions, exMap, 7, first ?? null, now);
+    const hardSets30 = computeHardSets(sessions, exMap, 30, first ?? null, now);
 
     // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
     const cutoff30 = new Date(now);
@@ -337,7 +369,8 @@ export default function RegistroPage() {
       muscleDonut,
       byMonth,
       prs,
-      hardSets,
+      hardSets7,
+      hardSets30,
       balance,
       heatWeeks,
       heatMax,
@@ -409,6 +442,9 @@ export default function RegistroPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   const [chartView, setChartView] = useState<"week" | "month">("week");
+  // Ventana de series efectivas: 7 días (default, medida directa vs marcas
+  // semanales) o 30 días (promedio, más suave).
+  const [hardWindow, setHardWindow] = useState<"7d" | "30d">("7d");
   const [showAllHistory, setShowAllHistory] = useState(false);
 
   // Historial agrupado por mes (orden desc de `data`), acotado a los últimos
@@ -507,9 +543,13 @@ export default function RegistroPage() {
         "",
       ],
       [],
-      ["Series efectivas por músculo (prom. semanal · últ. 30 días)"],
+      [
+        hardWindow === "7d"
+          ? "Series efectivas por músculo (por semana · últ. 7 días)"
+          : "Series efectivas por músculo (prom. semanal · últ. 30 días)",
+      ],
       ["Músculo", "Series/sem", "MEV", "MAV", "MRV", "Estado"],
-      ...metrics.hardSets.map((r) => [
+      ...(hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30).map((r) => [
         muscleEs(r.muscle),
         Number(r.sets.toFixed(1)),
         r.mev,
@@ -792,17 +832,55 @@ export default function RegistroPage() {
 
           <SectionCard
             title="Series efectivas por grupo"
-            subtitle="Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
+            subtitle={
+              hardWindow === "7d"
+                ? "Series por semana · últimos 7 días · marcas MEV / MAV / MRV"
+                : "Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
+            }
+            action={
+              <div className="w-28">
+                <Tabs
+                  value={hardWindow}
+                  onChange={setHardWindow}
+                  options={[
+                    { value: "7d", label: "7 días" },
+                    { value: "30d", label: "30 días" },
+                  ]}
+                />
+              </div>
+            }
             info={
-              "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días para compararlas contra las marcas (que son semanales). Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad).\n\n" +
-              "Las marcas verticales son las series por semana de referencia (Schoenfeld / Renaissance Periodization):\n" +
-              "• MEV (Mínimo Volumen Efectivo): el piso para que un músculo crezca.\n" +
-              "• MAV (Máximo Volumen Adaptativo): el rango donde más rendís.\n" +
-              "• MRV (Máximo Volumen Recuperable): el techo; pasarte acumula fatiga sin más ganancia.\n\n" +
-              "Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde (óptimo), sobre MRV = rojo (demasiado)."
+              <>
+                {hardWindow === "7d"
+                  ? "Series de trabajo (≥5 reps y cerca del fallo) por músculo, contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
+                  : "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días. "}
+                Cada ejercicio reparte sus series entre sus músculos (primarios
+                enteros, secundarios a la mitad).{"\n\n"}
+                Las marcas verticales son las series por semana de referencia (
+                <PaperLink
+                  label="Schoenfeld"
+                  url="https://pubmed.ncbi.nlm.nih.gov/27433992/"
+                />
+                {" / "}
+                <PaperLink
+                  label="Renaissance Periodization"
+                  url="https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth"
+                />
+                ):{"\n"}
+                • MEV (Mínimo Volumen Efectivo): el piso para que un músculo
+                crezca.{"\n"}
+                • MAV (Máximo Volumen Adaptativo): el rango donde más rendís.
+                {"\n"}
+                • MRV (Máximo Volumen Recuperable): el techo; pasarte acumula
+                fatiga sin más ganancia.{"\n\n"}
+                Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde
+                (óptimo), sobre MRV = rojo (demasiado).
+              </>
             }
           >
-            <MuscleSetsBar data={metrics.hardSets} />
+            <MuscleSetsBar
+              data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
+            />
           </SectionCard>
 
           <SectionCard

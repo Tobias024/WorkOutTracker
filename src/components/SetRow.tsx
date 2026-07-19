@@ -17,10 +17,13 @@ function rirZone(rir: number): "danger" | "success" | "muted" {
 
 export function SetRow({
   set,
+  ghost,
   onChange,
   onDelete,
 }: {
   set: WorkoutSet;
+  /** Peso/reps de la última vez (placeholder tenue si el campo está vacío). */
+  ghost?: { weight: number | null; reps: number | null } | null;
   onChange: (patch: Partial<WorkoutSet>) => void;
   onDelete: () => void;
 }) {
@@ -74,14 +77,14 @@ export function SetRow({
 
         <NumberField
           value={drops[0].weight}
-          placeholder="kg"
+          placeholder={ghost?.weight != null ? String(ghost.weight) : "kg"}
           step={2.5}
           onCommit={(v) => updateDrop(0, { weight: v })}
         />
         <span className="text-muted text-xs">×</span>
         <NumberField
           value={drops[0].reps}
-          placeholder="reps"
+          placeholder={ghost?.reps != null ? String(ghost.reps) : "reps"}
           step={1}
           onCommit={(v) => updateDrop(0, { reps: v })}
         />

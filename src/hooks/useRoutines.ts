@@ -253,6 +253,41 @@ export function useRoutineExerciseOps(routineId: string) {
   return { add, update, remove, swap, saveSets };
 }
 
+/**
+ * Asegura un share_code para cada rutina dada y devuelve los códigos en el
+ * mismo orden. Reutiliza la lógica de useShareRoutine para compartir en tanda.
+ */
+export function useEnsureShareCodes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (routines: Routine[]): Promise<string[]> => {
+      const supabase = createClient();
+      const codes: string[] = [];
+      const updates: Promise<void>[] = [];
+      for (const r of routines) {
+        if (r.share_code) {
+          codes.push(r.share_code);
+          continue;
+        }
+        const code = nanoid(10);
+        codes.push(code);
+        updates.push(
+          (async () => {
+            const { error } = await supabase
+              .from("routines")
+              .update({ share_code: code })
+              .eq("id", r.id);
+            if (error) throw error;
+          })(),
+        );
+      }
+      await Promise.all(updates);
+      return codes;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["routines"] }),
+  });
+}
+
 /** Genera (o devuelve) el share_code de una rutina. */
 export function useShareRoutine() {
   const qc = useQueryClient();
