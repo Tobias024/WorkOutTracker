@@ -9,6 +9,7 @@ import {
   Download,
   Trophy,
   Flame,
+  Trash2,
 } from "lucide-react";
 import {
   PageHeader,
@@ -28,6 +29,7 @@ import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatm
 import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useAchievements } from "@/hooks/useAchievements";
+import { useDeleteSession } from "@/hooks/useWorkout";
 import { useToday } from "@/hooks/useToday";
 import {
   useWeeklyPlan,
@@ -177,6 +179,8 @@ export default function RegistroPage() {
   const setPlan = useSetWeeklyPlan();
   const { data: plannedSince } = usePlannedSince();
   const { data: achievements } = useAchievements();
+  const deleteSession = useDeleteSession();
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
   const setOverride = useSetWeeklyPlanOverride();
@@ -966,6 +970,17 @@ export default function RegistroPage() {
                               : ""}
                           </p>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setPendingDelete(s.id);
+                          }}
+                          aria-label="Eliminar entrenamiento"
+                          className="size-8 grid place-items-center rounded text-muted hover:text-danger shrink-0"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
                         <ChevronRight className="size-4 text-muted shrink-0" />
                       </Link>
                     </li>
@@ -992,6 +1007,32 @@ export default function RegistroPage() {
         onExport={exportPeriod}
         daysAgo={daysAgo}
       />
+
+      <Modal
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Eliminar entrenamiento"
+      >
+        <p className="text-sm text-muted mb-4">
+          Se va a borrar esta sesión del historial, con sus series y su volumen.
+          No se puede deshacer.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            loading={deleteSession.isPending}
+            onClick={async () => {
+              if (pendingDelete) await deleteSession.mutateAsync(pendingDelete);
+              setPendingDelete(null);
+            }}
+          >
+            Eliminar
+          </Button>
+        </div>
+      </Modal>
 
       <Modal
         open={monthOpen}

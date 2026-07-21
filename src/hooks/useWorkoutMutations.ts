@@ -233,6 +233,50 @@ export function useSessionMutations(sessionId: string) {
     },
   });
 
+  /**
+   * Reordena dos ejercicios de la sesión intercambiando su `position`
+   * (dos updates, como el swap de rutinas) y el lugar en el cache de forma
+   * optimista. `position` es un entero arbitrario para ORDER BY, así que el
+   * swap por valor es robusto aunque no sea contiguo.
+   */
+  const reorder = useMutation({
+    mutationFn: async ({
+      a,
+      b,
+    }: {
+      a: { id: string; position: number };
+      b: { id: string; position: number };
+    }) => {
+      const supabase = createClient();
+      const { error: e1 } = await supabase
+        .from("workout_exercises")
+        .update({ position: b.position })
+        .eq("id", a.id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from("workout_exercises")
+        .update({ position: a.position })
+        .eq("id", b.id);
+      if (e2) throw e2;
+    },
+    onMutate: async ({ a, b }) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => {
+        const exs = [...s.exercises];
+        const ia = exs.findIndex((e) => e.id === a.id);
+        const ib = exs.findIndex((e) => e.id === b.id);
+        if (ia === -1 || ib === -1) return s;
+        const newA = { ...exs[ia], position: exs[ib].position };
+        const newB = { ...exs[ib], position: exs[ia].position };
+        exs[ia] = newB;
+        exs[ib] = newA;
+        return { ...s, exercises: exs };
+      });
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
+    onSettled: markStaleBackground,
+  });
+
   const updateSession = useMutation({
     mutationFn: async (patch: Partial<WorkoutSession>) => {
       const supabase = createClient();
@@ -257,6 +301,7 @@ export function useSessionMutations(sessionId: string) {
     addExercise,
     removeExercise,
     replaceExercise,
+    reorder,
     updateSession,
   };
 }

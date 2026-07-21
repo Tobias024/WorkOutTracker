@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Flag, Clock } from "lucide-react";
-import { Button, Input, Spinner } from "@/components/ui";
+import { Button, Input, Spinner, Modal } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
 import { StopwatchFab } from "@/components/Stopwatch";
@@ -13,6 +13,7 @@ import {
   useWorkoutSession,
   useLastBodyWeight,
   useLastExerciseLogs,
+  useDeleteSession,
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
@@ -38,10 +39,15 @@ export default function WorkoutPage() {
   );
   const exMap = useExerciseMap();
   const m = useSessionMutations(sessionId);
+  const deleteSession = useDeleteSession();
   const qc = useQueryClient();
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(0);
   const [prModal, setPrModal] = useState<SessionPr | null>(null);
+  // #2 reordenar: id del ejercicio seleccionado para mover (null = sin mover).
+  const [movingId, setMovingId] = useState<string | null>(null);
+  // #1 candado: modal de "Descartar entrenamiento".
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const ended = !!data?.session.ended_at;
 
@@ -117,6 +123,9 @@ export default function WorkoutPage() {
       ended_at: endIso,
       duration_seconds: duration,
     });
+    // Ya no es una sesión activa: soltamos el candado (ActiveSessionGuard) sin
+    // esperar un refetch, para no rebotar al navegar a /registro.
+    qc.setQueryData(["active-session"], null);
     // Recién ahora cambió el volumen: avisamos si superaste a algún amigo en el
     // ranking. Fire-and-forget: no bloquea la navegación ni importa si falla.
     fetch("/api/rank/notify", { method: "POST" }).catch(() => {});
@@ -142,12 +151,20 @@ export default function WorkoutPage() {
     router.push("/registro");
   }
 
+  // #1 candado: descartar borra la sesión (con reconfirmación) y libera el candado.
+  async function discard() {
+    await deleteSession.mutateAsync(sessionId);
+    setDiscardOpen(false);
+    router.replace("/rutinas");
+  }
+
   return (
     <div className="pb-24">
       <div className="flex items-center gap-2 mb-3">
         <button
-          onClick={() => router.push("/rutinas")}
+          onClick={() => (ended ? router.push("/rutinas") : setDiscardOpen(true))}
           className="text-muted hover:text-fg"
+          aria-label={ended ? "Volver" : "Descartar entrenamiento"}
         >
           <ArrowLeft className="size-5" />
         </button>
@@ -212,12 +229,23 @@ export default function WorkoutPage() {
       </div>
 
       <div className="flex flex-col gap-3">
-        {exercises.map((we) => (
+        {exercises.map((we, i) => (
           <SessionExerciseCard
             key={we.id}
             we={we}
             exercise={exMap.get(we.exercise_id)}
             lastLog={lastLogs?.get(we.exercise_id)}
+            moving={movingId === we.id}
+            moveMode={movingId !== null}
+            isFirst={i === 0}
+            isLast={i === exercises.length - 1}
+            onStartMove={() => setMovingId(we.id)}
+            onEndMove={() => setMovingId(null)}
+            onMove={(dir) => {
+              const j = dir === "up" ? i - 1 : i + 1;
+              if (j < 0 || j >= exercises.length) return;
+              m.reorder.mutate({ a: we, b: exercises[j] });
+            }}
             originalExercise={
               we.replaced_from_exercise_id
                 ? exMap.get(we.replaced_from_exercise_id)
@@ -294,6 +322,29 @@ export default function WorkoutPage() {
           router.push("/registro");
         }}
       />
+
+      <Modal
+        open={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        title="Descartar entrenamiento"
+      >
+        <p className="text-sm text-muted mb-4">
+          Se va a eliminar esta sesión y todo lo que cargaste. No se puede
+          deshacer. Si querés guardarlo, mejor tocá “Finalizar”.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={() => setDiscardOpen(false)}>
+            Seguir entrenando
+          </Button>
+          <Button
+            variant="danger"
+            loading={deleteSession.isPending}
+            onClick={discard}
+          >
+            Descartar
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

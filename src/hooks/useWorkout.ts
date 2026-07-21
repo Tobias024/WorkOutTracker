@@ -108,6 +108,7 @@ export function useStartWorkout() {
       }
 
       qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["active-session"] });
       return session.id;
     },
   });
@@ -115,6 +116,7 @@ export function useStartWorkout() {
 
 /** Crea una sesión vacía (entrenamiento libre). */
 export function useStartEmptyWorkout() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<string> => {
       const supabase = createClient();
@@ -133,6 +135,10 @@ export function useStartEmptyWorkout() {
         .single();
       if (error) throw error;
       return data.id;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["active-session"] });
     },
   });
 }
@@ -261,6 +267,56 @@ export function useWorkoutSession(sessionId: string) {
       }));
 
       return { session: session as WorkoutSession, exercises: mapped };
+    },
+  });
+}
+
+/** Id de la sesión en curso (sin finalizar), o null. Para el candado de sesión. */
+export function useActiveSession() {
+  return useQuery({
+    queryKey: ["active-session"],
+    staleTime: 30_000,
+    queryFn: async (): Promise<string | null> => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("workout_sessions")
+        .select("id")
+        .eq("user_id", user.id)
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.id ?? null;
+    },
+  });
+}
+
+/**
+ * Borra una sesión (y por cascade sus ejercicios/series). Lo usan el historial
+ * (#3) y el "Descartar" de una sesión activa (#1). Los logros huérfanos no se
+ * tocan (la RLS de achievements no permite delete desde el cliente).
+ */
+export function useDeleteSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("workout_sessions")
+        .delete()
+        .eq("id", sessionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["scoreboard"] });
+      qc.invalidateQueries({ queryKey: ["achievements"] });
+      // Se borró la sesión (activa al descartar): soltamos el candado ya.
+      qc.setQueryData(["active-session"], null);
     },
   });
 }

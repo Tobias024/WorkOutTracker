@@ -9,6 +9,9 @@ import {
   Info,
   ChevronDown,
   StickyNote,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Button, Badge, Textarea } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
@@ -28,22 +31,38 @@ export function SessionExerciseCard({
   exercise,
   originalExercise,
   lastLog,
+  moving,
+  moveMode,
+  isFirst,
+  isLast,
   onUpdateSet,
   onAddSet,
   onDeleteSet,
   onRemove,
   onReplace,
+  onStartMove,
+  onEndMove,
+  onMove,
 }: {
   we: SessionExercise;
   exercise?: Exercise;
   originalExercise?: Exercise;
   /** Última vez que se hizo este ejercicio (peso/reps por serie), para el ghost. */
   lastLog?: LastExerciseLog;
+  /** Esta card está seleccionada para mover. */
+  moving?: boolean;
+  /** Alguna card está en modo mover (bloquea el resto). */
+  moveMode?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
   onUpdateSet: (id: string, patch: Partial<WorkoutSet>) => void;
   onAddSet: () => void;
   onDeleteSet: (id: string) => void;
   onRemove: () => void;
   onReplace: (newExercise: Exercise, saveForFuture: boolean) => void;
+  onStartMove?: () => void;
+  onEndMove?: () => void;
+  onMove?: (dir: "up" | "down") => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [replace, setReplace] = useState(false);
@@ -111,8 +130,53 @@ export function SessionExerciseCard({
     }
   }
 
+  // Modo "mover": esta card seleccionada muestra flechas y bloquea lo demás.
+  if (moving) {
+    return (
+      <div className="card p-3 ring-1 ring-primary bg-primary/5">
+        <div className="flex items-center gap-3">
+          <ExerciseImage
+            src={exercise?.images[0]}
+            alt={exercise?.name ?? ""}
+            className="size-12 rounded shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
+            <p className="text-xs text-muted">Moviendo — usá las flechas</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              disabled={isFirst}
+              onClick={() => onMove?.("up")}
+              aria-label="Subir"
+              className="size-9 grid place-items-center rounded bg-surface ring-1 ring-border text-fg disabled:opacity-30"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+            <button
+              disabled={isLast}
+              onClick={() => onMove?.("down")}
+              aria-label="Bajar"
+              className="size-9 grid place-items-center rounded bg-surface ring-1 ring-border text-fg disabled:opacity-30"
+            >
+              <ArrowDown className="size-4" />
+            </button>
+            <Button size="sm" onClick={onEndMove}>
+              Listo
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="card p-3">
+    <div
+      className={clsx(
+        "card p-3",
+        moveMode && "opacity-50 pointer-events-none",
+      )}
+    >
       <div className="flex items-center gap-3">
         <button
           onClick={() => setDetail(true)}
@@ -176,6 +240,15 @@ export function SessionExerciseCard({
                 onClick={() => setMenu(false)}
               />
               <div className="absolute right-0 top-10 z-20 card p-1 w-48 shadow-xl">
+                <MenuItem
+                  icon={<ArrowUpDown className="size-4" />}
+                  onClick={() => {
+                    setMenu(false);
+                    onStartMove?.();
+                  }}
+                >
+                  Mover
+                </MenuItem>
                 <MenuItem
                   icon={<Repeat className="size-4" />}
                   onClick={() => {
