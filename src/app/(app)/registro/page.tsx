@@ -451,6 +451,8 @@ export default function RegistroPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   const [chartView, setChartView] = useState<"week" | "month">("week");
+  // Tonelaje (carga externa) fuera de portada: en "Más métricas" plegable.
+  const [moreOpen, setMoreOpen] = useState(false);
   // Ventana de series efectivas: 7 días (default, medida directa vs marcas
   // semanales) o 30 días (promedio, más suave).
   const [hardWindow, setHardWindow] = useState<"7d" | "30d">("7d");
@@ -652,18 +654,19 @@ export default function RegistroPage() {
         <div className="flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-2.5">
             <Stat
-              label="Volumen semanal"
-              value={formatVolume(weekMetrics.volStats.current)}
-              sub="hasta ahora"
-              delta={weekMetrics.volStats.deltaPct}
+              label="Días esta semana"
+              value={weekMetrics.workoutStats.current}
+              unit="días"
+              sub="entrenados"
+              delta={weekMetrics.workoutStats.deltaPct}
               secondary={
-                weekMetrics.volStats.lastCompleted != null
-                  ? `sem. anterior: ${formatVolume(weekMetrics.volStats.lastCompleted)}`
+                weekMetrics.workoutStats.lastCompleted != null
+                  ? `sem. anterior: ${weekMetrics.workoutStats.lastCompleted}`
                   : undefined
               }
               info={
-                "El número grande es el volumen acumulado en la semana en curso (todavía incompleta).\n\n" +
-                "El % en verde/rojo compara las dos últimas semanas anteriores (ya terminadas), no la actual. Verde = la última superó a la previa."
+                "Días distintos entrenados en la semana en curso. La constancia es el driver base: sin adherencia no hay volumen.\n\n" +
+                "El % compara las dos últimas semanas anteriores."
               }
             />
             <Stat
@@ -805,32 +808,6 @@ export default function RegistroPage() {
             </SectionCard>
           )}
 
-          {/* Fuerza: el tonelaje no va en portada. */}
-          {goal !== "fuerza" && (
-          <SectionCard
-            title="Volumen"
-            info={
-              "Volumen = reps × peso de cada serie de trabajo completada (no cuentan calentamientos). Si una serie tiene bajadas (drop set), se suman todas.\n\n" +
-              "Semanal: volumen de cada semana (últimas 10). Anual: volumen de cada mes."
-            }
-            action={
-              <div className="w-40">
-                <Tabs
-                  value={chartView}
-                  onChange={setChartView}
-                  options={[
-                    { value: "week", label: "Semanal" },
-                    { value: "month", label: "Anual" },
-                  ]}
-                />
-              </div>
-            }
-          >
-            <VolumeChart
-              data={chartView === "week" ? metrics.weekChart : metrics.monthChart}
-            />
-          </SectionCard>
-          )}
 
           {/* Fuerza: MEV/MAV/MRV son umbrales de hipertrofia, no aplican. */}
           {goal !== "fuerza" && (
@@ -878,7 +855,12 @@ export default function RegistroPage() {
                 • MRV (Máximo Volumen Recuperable): el techo; pasarte acumula
                 fatiga sin más ganancia.{"\n\n"}
                 Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde
-                (óptimo), sobre MRV = rojo (demasiado).
+                (óptimo), sobre MRV = rojo (demasiado).{"\n\n"}
+                Ojo: "volumen" acá es el <span className="text-fg">conteo de
+                series</span> cerca del fallo, que es lo que impulsa la
+                hipertrofia (<PaperLink label="Baz-Valle 2021" url="https://doi.org/10.1519/JSC.0000000000002776" />)
+                — no el tonelaje (series×reps×peso), que no moderó la hipertrofia
+                (<PaperLink label="Refalo 2023" url="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9935748/" />).
               </>
             }
           >
@@ -942,6 +924,51 @@ export default function RegistroPage() {
               </ul>
             </SectionCard>
           )}
+
+          {/* Tonelaje: carga externa, no "progreso". Fuera de portada. */}
+          <div className="card rounded-xl">
+            <button
+              onClick={() => setMoreOpen((v) => !v)}
+              className="flex items-center justify-between w-full p-4"
+              aria-expanded={moreOpen}
+            >
+              <span className="text-sm font-semibold">Más métricas</span>
+              <ChevronDown
+                className={clsx(
+                  "size-4 text-muted transition-transform",
+                  moreOpen && "rotate-180",
+                )}
+              />
+            </button>
+            {moreOpen && (
+              <div className="px-4 pb-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-sm font-medium">Volumen (tonelaje)</p>
+                  <div className="w-40">
+                    <Tabs
+                      value={chartView}
+                      onChange={setChartView}
+                      options={[
+                        { value: "week", label: "Semanal" },
+                        { value: "month", label: "Anual" },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted mb-3">
+                  Series × reps × peso. Es carga externa para comparar la misma
+                  rutina en el tiempo, no un indicador de progreso: sube con más
+                  trabajo, no con mejor trabajo. Lo que impulsa la hipertrofia es
+                  el conteo de series efectivas.
+                </p>
+                <VolumeChart
+                  data={
+                    chartView === "week" ? metrics.weekChart : metrics.monthChart
+                  }
+                />
+              </div>
+            )}
+          </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">

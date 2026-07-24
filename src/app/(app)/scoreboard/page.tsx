@@ -9,8 +9,17 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
+  Users,
+  SlidersHorizontal,
 } from "lucide-react";
-import { PageHeader, Spinner, EmptyState, Button, Tabs } from "@/components/ui";
+import {
+  PageHeader,
+  Spinner,
+  EmptyState,
+  Button,
+  Tabs,
+  Modal,
+} from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { NotificationToggle } from "@/components/NotificationToggle";
 import { FriendsPanel } from "@/components/FriendsPanel";
@@ -20,49 +29,37 @@ import {
   type Period,
 } from "@/hooks/useScoreboard";
 import { useCurrentUserId } from "@/hooks/useFriendProfile";
+import { useFriends } from "@/hooks/useFriends";
+import { useGoal } from "@/hooks/useGoal";
 import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
-import type { Exercise, Sex } from "@/lib/types";
+import type { Exercise, Sex, Goal } from "@/lib/types";
 
-type MetricDef = { key: Metric; label: string; caption: string };
+type BoardKey = "constancia" | "series" | "1rm" | "reps";
 
-// Métricas generales (sin elegir ejercicio): las más relevantes, al frente.
-const GENERAL: MetricDef[] = [
+const BOARDS: { key: BoardKey; label: string; caption: string }[] = [
   {
-    key: "frequency",
-    label: "Frecuencia",
-    caption:
-      "Días distintos con entrenamiento en el período. La constancia es lo que más pesa.",
+    key: "constancia",
+    label: "Constancia",
+    caption: "Días distintos con entrenamiento. La constancia es lo que más pesa.",
   },
   {
-    key: "hard_sets",
+    key: "series",
     label: "Series",
     caption:
-      "Series efectivas (≥5 reps, cerca del fallo). El driver de hipertrofia.",
+      "Series efectivas (≥5 reps, cerca del fallo): el volumen que impulsa la hipertrofia (no el tonelaje).",
   },
   {
-    key: "volume",
-    label: "Volumen",
-    caption: "Tonelaje total: reps × peso de las series de trabajo.",
-  },
-];
-// Fuerza por ejercicio (secundaria: requiere elegir un ejercicio).
-const STRENGTH: MetricDef[] = [
-  {
-    key: "strength",
+    key: "1rm",
     label: "1RM",
     caption: "1RM estimado (Epley) del ejercicio elegido.",
   },
   {
-    key: "strength_bw",
-    label: "1RM/peso",
-    caption:
-      "1RM estimado dividido tu peso corporal. Más justo entre distintos pesos.",
+    key: "reps",
+    label: "Reps",
+    caption: "Repeticiones totales de las series de trabajo.",
   },
 ];
-const CAPTIONS = new Map(
-  [...GENERAL, ...STRENGTH].map((m) => [m.key, m.caption]),
-);
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },
@@ -75,20 +72,47 @@ const SEXES: { key: Sex | ""; label: string }[] = [
   { key: "female", label: "Mujeres" },
 ];
 
+const GOAL_SHORT: Record<Goal, string> = {
+  fuerza: "Fue",
+  hipertrofia: "Hip",
+  resistencia: "Res",
+  perdida_grasa: "Grasa",
+};
+
+function boardForGoal(goal: Goal | null): BoardKey {
+  if (goal === "fuerza") return "1rm";
+  if (goal === "hipertrofia") return "series";
+  if (goal === "resistencia") return "reps";
+  return "constancia";
+}
+
 export default function ScoreboardPage() {
-  const [tab, setTab] = useState<"ranking" | "amigos">("ranking");
-  const [view, setView] = useState<"general" | "strength">("general");
-  const [genMetric, setGenMetric] = useState<Metric>("frequency");
-  const [strMetric, setStrMetric] = useState<Metric>("strength");
+  const [board, setBoard] = useState<BoardKey | null>(null);
+  const [bwMode, setBwMode] = useState(false); // 1RM ÷ peso
   const [period, setPeriod] = useState<Period>("week");
   const [sex, setSex] = useState<Sex | "">("");
+  const [sameGoal, setSameGoal] = useState(false);
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [picker, setPicker] = useState(false);
-
-  const metric = view === "general" ? genMetric : strMetric;
-  const needsExercise = view === "strength";
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const { data: meId } = useCurrentUserId();
+  const { data: myGoal } = useGoal();
+  const { data: friends } = useFriends();
+
+  const activeBoard = board ?? boardForGoal(myGoal ?? null);
+  const metric: Metric =
+    activeBoard === "constancia"
+      ? "frequency"
+      : activeBoard === "series"
+        ? "hard_sets"
+        : activeBoard === "reps"
+          ? "reps"
+          : bwMode
+            ? "strength_bw"
+            : "strength";
+  const needsExercise = activeBoard === "1rm";
 
   const { data, isLoading, isError } = useScoreboard(
     metric,
@@ -97,13 +121,26 @@ export default function ScoreboardPage() {
     sex || null,
   );
 
-  const caption = CAPTIONS.get(metric) ?? "";
+  // Objetivo por usuario (para badges + filtro "mi objetivo").
+  const goalOf = new Map<string, Goal | null>();
+  (friends ?? []).forEach((f) => goalOf.set(f.id, f.goal));
+  if (meId) goalOf.set(meId, myGoal ?? null);
+
+  const caption = BOARDS.find((b) => b.key === activeBoard)?.caption ?? "";
+
+  // Filtro "solo mi objetivo": recorta y reindexa el podio.
+  const rows =
+    sameGoal && myGoal
+      ? (data ?? []).filter((r) => goalOf.get(r.user_id) === myGoal)
+      : data ?? [];
+
+  const myIndex = rows.findIndex((r) => r.user_id === meId);
+  const myRow = myIndex >= 0 ? rows[myIndex] : null;
 
   function fmt(v: number) {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
     if (metric === "hard_sets") return `${v} ${v === 1 ? "set" : "sets"}`;
     if (metric === "reps") return `${v} reps`;
-    if (metric === "volume") return formatVolume(v);
     if (metric === "strength_bw") return `${Number(v).toFixed(2)}×`;
     return formatWeight(v);
   }
@@ -113,78 +150,126 @@ export default function ScoreboardPage() {
       <PageHeader
         title="Ranking"
         subtitle="Competí con tus amigos · ▲▼ vs el período anterior"
-        action={<NotificationToggle />}
+        action={
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setFriendsOpen(true)}
+              aria-label="Amigos"
+              className="size-9 grid place-items-center rounded-md text-muted hover:text-fg ring-1 ring-border"
+            >
+              <Users className="size-4" />
+            </button>
+            <NotificationToggle />
+          </div>
+        }
       />
 
-      <div className="mb-3">
+      {/* Tu puesto */}
+      {myRow && Number(myRow.value) > 0 && (
+        <div className="card flex items-center gap-3 p-3 mb-3">
+          <span className="text-xs text-muted">Tu puesto</span>
+          <span className="font-bold text-lg">{myIndex + 1}º</span>
+          {myRow.move != null && <MoveChip move={myRow.move} />}
+          {myGoal && (
+            <span className="ml-auto text-xs text-muted">
+              {GOAL_SHORT[myGoal]}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Boards */}
+      <div className="mb-2">
         <Tabs
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "ranking", label: "Ranking" },
-            { value: "amigos", label: "Amigos" },
-          ]}
+          scroll
+          value={activeBoard}
+          onChange={setBoard}
+          options={BOARDS.map((b) => ({
+            value: b.key,
+            label:
+              boardForGoal(myGoal ?? null) === b.key ? `★ ${b.label}` : b.label,
+          }))}
         />
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex-1">
+          <Tabs
+            value={period}
+            onChange={setPeriod}
+            options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+          />
+        </div>
+        <button
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-label="Filtros"
+          className={clsx(
+            "size-9 grid place-items-center rounded-md ring-1 shrink-0 transition",
+            filtersOpen || sex || sameGoal
+              ? "text-primary ring-primary/40 bg-primary/10"
+              : "text-muted ring-border hover:text-fg",
+          )}
+        >
+          <SlidersHorizontal className="size-4" />
+        </button>
       </div>
 
-      {tab === "amigos" ? (
-        <FriendsPanel />
-      ) : (
-        <>
-      <div className="mb-2">
-        <Tabs
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "general", label: "General" },
-            { value: "strength", label: "Fuerza" },
-          ]}
-        />
-      </div>
-      <div className="mb-2">
-        {view === "general" ? (
-          <Tabs
-            value={genMetric}
-            onChange={setGenMetric}
-            options={GENERAL.map((mt) => ({ value: mt.key, label: mt.label }))}
-          />
-        ) : (
-          <Tabs
-            value={strMetric}
-            onChange={setStrMetric}
-            options={STRENGTH.map((mt) => ({ value: mt.key, label: mt.label }))}
-          />
-        )}
-      </div>
-      <div className="mb-2">
-        <Tabs
-          value={period}
-          onChange={setPeriod}
-          options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
-        />
-      </div>
-      <div className="mb-2">
-        <Tabs
-          value={sex}
-          onChange={setSex}
-          options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
-        />
-      </div>
+      {filtersOpen && (
+        <div className="card p-3 mb-2 flex flex-col gap-3">
+          <div>
+            <p className="text-xs text-muted mb-1.5">Sexo</p>
+            <Tabs
+              value={sex}
+              onChange={setSex}
+              options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
+            />
+          </div>
+          {myGoal && (
+            <button
+              onClick={() => setSameGoal((v) => !v)}
+              className="flex items-center justify-between text-sm"
+            >
+              <span>Solo mi objetivo ({GOAL_SHORT[myGoal]})</span>
+              <span
+                className={clsx(
+                  "px-2 py-0.5 rounded text-xs font-medium ring-1",
+                  sameGoal
+                    ? "bg-primary/15 text-primary ring-primary/40"
+                    : "text-muted ring-border",
+                )}
+              >
+                {sameGoal ? "On" : "Off"}
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {activeBoard === "1rm" && (
+        <div className="flex gap-2 mb-3">
+          <Button
+            variant="secondary"
+            className="flex-1 justify-between"
+            onClick={() => setPicker(true)}
+          >
+            <span className="truncate">
+              {exercise ? exercise.name : "Elegí un ejercicio"}
+            </span>
+            <ChevronDown className="size-4" />
+          </Button>
+          <div className="w-28 shrink-0">
+            <Tabs
+              value={bwMode ? "bw" : "abs"}
+              onChange={(v) => setBwMode(v === "bw")}
+              options={[
+                { value: "abs", label: "kg" },
+                { value: "bw", label: "÷peso" },
+              ]}
+            />
+          </div>
+        </div>
+      )}
 
       <p className="text-xs text-muted mb-4 px-1">{caption}</p>
-
-      {needsExercise && (
-        <Button
-          variant="secondary"
-          className="w-full mb-4 justify-between"
-          onClick={() => setPicker(true)}
-        >
-          <span className="truncate">
-            {exercise ? exercise.name : "Elegí un ejercicio"}
-          </span>
-          <ChevronDown className="size-4" />
-        </Button>
-      )}
 
       {needsExercise && !exercise ? (
         <EmptyState
@@ -198,16 +283,21 @@ export default function ScoreboardPage() {
         </div>
       ) : isError ? (
         <EmptyState title="No se pudo cargar el ranking" />
-      ) : !data?.length ? (
+      ) : !rows.length ? (
         <EmptyState
           icon={<Trophy className="size-8" />}
           title="Sin datos todavía"
-          description="Sumá amigos y entrená para aparecer en el ranking."
+          description={
+            sameGoal
+              ? "Ningún amigo con tu mismo objetivo apareció acá."
+              : "Sumá amigos y entrená para aparecer en el ranking."
+          }
         />
       ) : (
         <ul className="flex flex-col gap-2">
-          {data.map((row, i) => {
+          {rows.map((row, i) => {
             const isMe = row.user_id === meId;
+            const g = goalOf.get(row.user_id);
             return (
               <li key={row.user_id}>
                 <Link
@@ -239,6 +329,11 @@ export default function ScoreboardPage() {
                       {isMe ? "Vos" : row.display_name ?? row.username}
                     </p>
                   </div>
+                  {g && (
+                    <span className="text-[10px] text-muted ring-1 ring-border rounded px-1.5 py-0.5 shrink-0">
+                      {GOAL_SHORT[g]}
+                    </span>
+                  )}
                   {row.move != null && <MoveChip move={row.move} />}
                   <span className="font-semibold tabular-nums">
                     {fmt(Number(row.value))}
@@ -257,8 +352,10 @@ export default function ScoreboardPage() {
         title="Elegí un ejercicio"
         onSelect={(ex) => setExercise(ex)}
       />
-        </>
-      )}
+
+      <Modal open={friendsOpen} onClose={() => setFriendsOpen(false)} title="Amigos">
+        <FriendsPanel />
+      </Modal>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Flag, Clock } from "lucide-react";
@@ -17,8 +17,10 @@ import {
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
+import { useHistory } from "@/hooks/useHistory";
 import { createClient } from "@/lib/supabase/client";
-import { formatClock } from "@/lib/format";
+import { formatClock, formatVolume, formatDuration } from "@/lib/format";
+import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
 import type { SessionPr } from "@/lib/types";
 
 function toLocalInput(iso: string | null): string {
@@ -38,9 +40,33 @@ export default function WorkoutPage() {
     sessionId,
   );
   const exMap = useExerciseMap();
+  const { data: history } = useHistory();
   const m = useSessionMutations(sessionId);
   const deleteSession = useDeleteSession();
   const qc = useQueryClient();
+
+  // Resumen de la sesión (para la vista de una sesión finalizada del historial):
+  // tonelaje como carga externa + series efectivas + Δ vs la misma rutina.
+  const summary = useMemo(() => {
+    if (!data) return null;
+    const sets = data.exercises.flatMap((e) => e.sets);
+    const tonnage = totalVolume(sets.filter(isCountableSet));
+    const hardSets = sets.filter(isHardSet).length;
+    let prevTonnage: number | null = null;
+    const rid = data.session.routine_id;
+    if (rid && history) {
+      const prev = history.find(
+        (h) => h.routine_id === rid && h.ended_at && h.id !== sessionId,
+      );
+      if (prev)
+        prevTonnage = totalVolume(
+          prev.workout_exercises
+            .flatMap((we) => we.workout_sets)
+            .filter(isCountableSet),
+        );
+    }
+    return { tonnage, hardSets, prevTonnage };
+  }, [data, history, sessionId]);
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(0);
   const [prModal, setPrModal] = useState<SessionPr | null>(null);
@@ -227,6 +253,53 @@ export default function WorkoutPage() {
           />
         </label>
       </div>
+
+      {/* Resumen (solo al ver una sesión ya finalizada del historial). */}
+      {ended && summary && (
+        <div className="card p-3 mb-4">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-[10px] text-muted">Volumen (tonelaje)</p>
+              <p className="text-base font-bold mt-0.5">
+                {formatVolume(summary.tonnage)}
+              </p>
+              {summary.prevTonnage != null && summary.prevTonnage > 0 && (
+                <p
+                  className={`text-[10px] font-semibold ${
+                    summary.tonnage >= summary.prevTonnage
+                      ? "text-success"
+                      : "text-danger"
+                  }`}
+                >
+                  {summary.tonnage >= summary.prevTonnage ? "+" : ""}
+                  {Math.round(
+                    ((summary.tonnage - summary.prevTonnage) /
+                      summary.prevTonnage) *
+                      100,
+                  )}
+                  % vs anterior
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] text-muted">Series efectivas</p>
+              <p className="text-base font-bold mt-0.5">{summary.hardSets}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted">Duración</p>
+              <p className="text-base font-bold mt-0.5">
+                {session.duration_seconds
+                  ? formatDuration(session.duration_seconds)
+                  : "—"}
+              </p>
+            </div>
+          </div>
+          <p className="text-[10px] text-muted mt-2 text-center">
+            El tonelaje es carga externa (comparar la misma rutina en el tiempo),
+            no un indicador de progreso.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         {exercises.map((we, i) => (

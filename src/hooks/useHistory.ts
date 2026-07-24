@@ -21,6 +21,7 @@ export interface HistoryExercise {
 export interface HistorySession {
   id: string;
   name: string;
+  routine_id: string | null;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
@@ -39,7 +40,7 @@ export function useHistory() {
       const { data, error } = await supabase
         .from("workout_sessions")
         .select(
-          "id, name, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, drops))",
+          "id, name, routine_id, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, drops))",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
