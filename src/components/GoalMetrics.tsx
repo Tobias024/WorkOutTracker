@@ -30,6 +30,8 @@ import {
   measurementSeries,
   waistSeries,
   avgRestBetweenSets,
+  readinessByMuscle,
+  type Readiness,
 } from "@/lib/metrics-goal";
 
 /** Cards de portada específicas del objetivo. Se calcula todo; el goal elige. */
@@ -62,13 +64,15 @@ export function GoalMetrics({
       sleepS: sleepSeries(sleep ?? [], 14),
       measS: measurementSeries(measurements ?? []),
       waistS: waistSeries(measurements ?? []),
+      ready: readinessByMuscle(sessions, exMap),
     }),
     [sessions, exMap, sleep, measurements],
   );
 
   const cards: ReactNode[] = [];
 
-  // Base (todos los objetivos): peso corporal + sueño.
+  // Base (todos los objetivos): listo para entrenar + peso corporal + sueño.
+  if (m.ready.length) cards.push(<ReadyCard rows={m.ready} />);
   if (m.bw.points.length >= 2) cards.push(<BodyweightCard bw={m.bw} />);
   cards.push(<SleepCard s={m.sleepS} />);
 
@@ -107,6 +111,32 @@ export function GoalMetrics({
 }
 
 // ── Cards ───────────────────────────────────────────────────────────────────
+
+function ReadyCard({ rows }: { rows: Readiness[] }) {
+  return (
+    <SectionCard
+      title="Listo para entrenar"
+      subtitle="Grupos descansados y con volumen bajo"
+      info="Combina recuperación (días desde que entrenaste el grupo) y rezago de volumen (series efectivas de la última semana por debajo del mínimo). Responde 'qué conviene entrenar hoy'. Diseño propio, no hay paper de esto."
+    >
+      <ul className="flex flex-col gap-2.5">
+        {rows.map((r) => (
+          <li key={r.muscle} className="flex items-center gap-3">
+            <span className="flex-1 font-medium">{muscleEs(r.muscle)}</span>
+            <span className="text-xs text-muted shrink-0">hace {r.days}d</span>
+            <div className="w-24 h-2 rounded bg-surface-2 overflow-hidden shrink-0">
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${Math.round(r.lag * 100)}%` }}
+                title={`Rezago de volumen ${Math.round(r.lag * 100)}%`}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  );
+}
 
 function BodyweightCard({
   bw,

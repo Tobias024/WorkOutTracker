@@ -5,6 +5,8 @@ import {
   sessionDate,
   weekStart,
   isCountableSet,
+  isHardSet,
+  landmarkFor,
   rirOf,
   muscleContributions,
 } from "@/lib/metrics";
@@ -514,6 +516,62 @@ export function waistSeries(rows: BodyMeasurement[]): Pt[] {
   return rows
     .filter((r) => r.waist_cm != null)
     .map((r) => ({ label: labelFromDate(r.measured_on), value: Number(r.waist_cm) }));
+}
+
+// ── Base (Fase 4): Listo para entrenar ──────────────────────────────────────
+
+export interface Readiness {
+  muscle: string;
+  days: number;
+  lag: number;
+  score: number;
+}
+
+/**
+ * Ranking de grupos musculares "listos": combina recuperación (días desde la
+ * última vez) y rezago de volumen (series efectivas de la última semana por
+ * debajo del MEV). Responde "qué conviene entrenar hoy". Diseño propio.
+ */
+export function readinessByMuscle(
+  sessions: HistorySession[],
+  exMap: Map<string, Exercise>,
+): Readiness[] {
+  const now = Date.now();
+  const lastAt = new Map<string, number>();
+  for (const s of sessions) {
+    const t = ms(s);
+    for (const we of s.workout_exercises) {
+      const ex = exMap.get(we.exercise_id);
+      if (!ex || !we.workout_sets.some(isCountableSet)) continue;
+      for (const mu of ex.primary_muscles)
+        lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
+    }
+  }
+  const cutoff = now - 7 * DAY;
+  const hard = new Map<string, number>();
+  for (const s of sessions) {
+    if (ms(s) < cutoff) continue;
+    for (const we of s.workout_exercises) {
+      const ex = exMap.get(we.exercise_id);
+      if (!ex) continue;
+      const contribs = muscleContributions(ex);
+      for (const set of we.workout_sets) {
+        if (!isHardSet(set)) continue;
+        for (const c of contribs)
+          hard.set(c.muscle, (hard.get(c.muscle) ?? 0) + c.weight);
+      }
+    }
+  }
+  const out: Readiness[] = [];
+  for (const [mu, t] of lastAt) {
+    const days = Math.floor((now - t) / DAY);
+    const mev = landmarkFor(mu).mev;
+    const sets = hard.get(mu) ?? 0;
+    const lag = Math.max(0, Math.min(1, (mev - sets) / mev));
+    const recovery = Math.min(1, days / 3);
+    out.push({ muscle: mu, days, lag, score: recovery * 0.6 + lag * 0.4 });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
 /** Descanso medio entre series (segundos). Sólo gaps del mismo ejercicio, cap 10 min. */
