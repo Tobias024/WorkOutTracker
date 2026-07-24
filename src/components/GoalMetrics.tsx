@@ -587,9 +587,12 @@ function RestCard({ avgSec, band }: { avgSec: number; band: string }) {
       subtitle={`Objetivo ${band}`}
       info={
         <>
-          Tiempo entre series consecutivas del mismo ejercicio (se ignoran gaps
-          &gt;10 min). Ojo: si completás varias series juntas al final, el dato
-          se subestima. <Ref id="5" />
+          Estimado. Sólo se guarda la marca de <span className="text-fg">fin</span>{" "}
+          de cada serie, así que el hueco entre dos series incluye el descanso{" "}
+          <span className="text-fg">más</span> el tiempo de hacer la serie; le
+          restamos una estimación de la ejecución (reps × ~3 s) para aproximar
+          el descanso real. Es aproximado, y para que sirva conviene tildar cada
+          serie cuando la terminás (no todas juntas al final). <Ref id="5" />
         </>
       }
     >

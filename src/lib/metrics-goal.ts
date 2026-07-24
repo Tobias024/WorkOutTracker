@@ -593,30 +593,40 @@ export function readinessByMuscle(
   return out.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
-/** Descanso medio entre series (segundos). Sólo gaps del mismo ejercicio, cap 10 min. */
+/**
+ * Descanso medio entre series (segundos), estimado. Sólo tenemos la marca de
+ * FIN de cada serie (completed_at), no la de inicio: el hueco entre dos fines
+ * = descanso + tiempo de ejecución de la 2ª serie. Restamos una estimación de
+ * la ejecución (reps × ~3 s) para aproximar el descanso real. Sólo gaps del
+ * mismo ejercicio; se ignoran los <10 s (auto-completado) y los > cap.
+ */
+const TEMPO_S = 3; // segundos por rep asumidos para la ejecución de la serie
 export function avgRestBetweenSets(
   sessions: HistorySession[],
   maxMin = 10,
 ): { avgSec: number | null; samples: number } {
   let sum = 0;
   let n = 0;
-  const cap = maxMin * 60000;
-  const floor = 10000; // <10 s = auto-completado en lote, no descanso real.
+  const capS = maxMin * 60;
   for (const s of sessions) {
     for (const we of s.workout_exercises) {
-      const times = we.workout_sets
+      const pairs = we.workout_sets
         .filter((x) => x.completed && x.completed_at)
-        .map((x) => new Date(x.completed_at as string).getTime())
-        .sort((a, b) => a - b);
-      for (let i = 1; i < times.length; i++) {
-        const gap = times[i] - times[i - 1];
-        if (gap >= floor && gap <= cap) {
-          sum += gap;
-          n++;
-        }
+        .map((x) => ({
+          t: new Date(x.completed_at as string).getTime(),
+          reps: x.reps ?? 0,
+        }))
+        .sort((a, b) => a.t - b.t);
+      for (let i = 1; i < pairs.length; i++) {
+        const gapS = (pairs[i].t - pairs[i - 1].t) / 1000;
+        if (gapS < 10 || gapS > capS) continue; // batch / outlier
+        // Descanso = hueco − ejecución estimada de la serie que se hizo en el medio.
+        const rest = Math.max(0, gapS - pairs[i].reps * TEMPO_S);
+        sum += rest;
+        n++;
       }
     }
   }
-  return { avgSec: n ? Math.round(sum / n / 1000) : null, samples: n };
+  return { avgSec: n ? Math.round(sum / n) : null, samples: n };
 }
 
