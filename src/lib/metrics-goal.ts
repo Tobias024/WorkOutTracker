@@ -582,6 +582,7 @@ export function avgRestBetweenSets(
   let sum = 0;
   let n = 0;
   const cap = maxMin * 60000;
+  const floor = 10000; // <10 s = auto-completado en lote, no descanso real.
   for (const s of sessions) {
     for (const we of s.workout_exercises) {
       const times = we.workout_sets
@@ -590,7 +591,7 @@ export function avgRestBetweenSets(
         .sort((a, b) => a - b);
       for (let i = 1; i < times.length; i++) {
         const gap = times[i] - times[i - 1];
-        if (gap > 0 && gap <= cap) {
+        if (gap >= floor && gap <= cap) {
           sum += gap;
           n++;
         }
