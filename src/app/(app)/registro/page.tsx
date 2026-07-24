@@ -63,6 +63,7 @@ import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/
 import { muscleEs } from "@/lib/i18n-exercise";
 import { PaperLink } from "@/components/PaperLink";
 import { useGoal } from "@/hooks/useGoal";
+import { GoalMetrics } from "@/components/GoalMetrics";
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise } from "@/lib/types";
 
@@ -779,6 +780,9 @@ export default function RegistroPage() {
             }
           />
 
+          {/* Portada específica del objetivo (métricas promovidas). */}
+          <GoalMetrics goal={goal ?? null} sessions={data ?? []} exMap={exMap} />
+
           {!!achievements?.length && (
             <SectionCard
               title="Logros"
@@ -801,6 +805,8 @@ export default function RegistroPage() {
             </SectionCard>
           )}
 
+          {/* Fuerza: el tonelaje no va en portada. */}
+          {goal !== "fuerza" && (
           <SectionCard
             title="Volumen"
             info={
@@ -824,6 +830,7 @@ export default function RegistroPage() {
               data={chartView === "week" ? metrics.weekChart : metrics.monthChart}
             />
           </SectionCard>
+          )}
 
           {/* Fuerza: MEV/MAV/MRV son umbrales de hipertrofia, no aplican. */}
           {goal !== "fuerza" && (
@@ -907,7 +914,8 @@ export default function RegistroPage() {
             </SectionCard>
           )}
 
-          {metrics.prs.length > 0 && (
+          {/* Resistencia: el 1RM pasa a secundario. */}
+          {goal !== "resistencia" && metrics.prs.length > 0 && (
             <SectionCard
               title="Récords (1RM estimado)"
               info="Mejor 1RM estimado por ejercicio, con la fórmula de Epley (peso × (1 + reps/30)). Es una señal de fuerza estable sesión a sesión."

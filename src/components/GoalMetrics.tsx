@@ -1,0 +1,436 @@
+"use client";
+
+import { Fragment, useMemo, type ReactNode } from "react";
+import { SectionCard } from "@/components/ui";
+import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
+import { Ref } from "@/components/PaperLink";
+import { muscleEs } from "@/lib/i18n-exercise";
+import { clsx } from "@/lib/clsx";
+import type { Goal, Exercise } from "@/lib/types";
+import type { HistorySession } from "@/hooks/useHistory";
+import {
+  e1rmSeriesByExercise,
+  intensityZones,
+  heavyRirTrend,
+  patternFrequency,
+  rirBucketsByMuscle,
+  daysSinceLastByMuscle,
+  repsPerSetWeekly,
+  sessionDensityWeekly,
+  maxRepsTest,
+  bodyweightSeries,
+  strengthRetentionIndex,
+} from "@/lib/metrics-goal";
+
+/** Cards de portada específicas del objetivo. Se calcula todo; el goal elige. */
+export function GoalMetrics({
+  goal,
+  sessions,
+  exMap,
+}: {
+  goal: Goal | null;
+  sessions: HistorySession[];
+  exMap: Map<string, Exercise>;
+}) {
+  const m = useMemo(
+    () => ({
+      e1rm: e1rmSeriesByExercise(sessions, exMap, 12),
+      intensity: intensityZones(sessions, 28),
+      heavyRir: heavyRirTrend(sessions, 12),
+      patterns: patternFrequency(sessions, exMap, 8),
+      rirBuckets: rirBucketsByMuscle(sessions, exMap, 30),
+      recency: daysSinceLastByMuscle(sessions, exMap),
+      reps: repsPerSetWeekly(sessions, 12),
+      density: sessionDensityWeekly(sessions, 12),
+      maxReps: maxRepsTest(sessions, exMap, 6),
+      bw: bodyweightSeries(sessions, 120),
+      retention: strengthRetentionIndex(sessions, exMap, 16),
+    }),
+    [sessions, exMap],
+  );
+
+  const cards: ReactNode[] = [];
+
+  // Base (todos los objetivos): peso corporal.
+  if (m.bw.points.length >= 2) cards.push(<BodyweightCard bw={m.bw} />);
+
+  if (goal === "fuerza") {
+    if (m.e1rm.length) cards.push(<E1rmTrendCard series={m.e1rm.slice(0, 4)} />);
+    if (m.intensity.total) cards.push(<IntensityCard d={m.intensity} />);
+    if (m.patterns.some((p) => p.value > 0))
+      cards.push(<PatternCard rows={m.patterns} />);
+    if (m.heavyRir.length) cards.push(<HeavyRirCard data={m.heavyRir} />);
+  } else if (goal === "hipertrofia") {
+    if (m.rirBuckets.length) cards.push(<RirBucketsCard rows={m.rirBuckets} />);
+    if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
+    if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
+  } else if (goal === "resistencia") {
+    if (m.reps.length) cards.push(<RepsCard data={m.reps} />);
+    if (m.density.length) cards.push(<DensityCard data={m.density} />);
+    if (m.maxReps.length) cards.push(<MaxRepsCard rows={m.maxReps} />);
+  } else if (goal === "perdida_grasa") {
+    if (m.retention.series.length) cards.push(<RetentionCard r={m.retention} />);
+  }
+
+  if (cards.length === 0) return null;
+  return (
+    <>
+      {cards.map((c, i) => (
+        <Fragment key={i}>{c}</Fragment>
+      ))}
+    </>
+  );
+}
+
+// ── Cards ───────────────────────────────────────────────────────────────────
+
+function BodyweightCard({
+  bw,
+}: {
+  bw: ReturnType<typeof bodyweightSeries>;
+}) {
+  const rate = bw.ratePctPerWeek;
+  return (
+    <SectionCard
+      title="Peso corporal"
+      subtitle="Media móvil de 7 días · tasa por semana"
+      info="La línea es el promedio móvil de 7 días (los puntos tenues son las mediciones crudas, que tienen ruido de agua/glucógeno de ±1-2 kg). El número accionable es la tasa de cambio por semana, no el peso de un día."
+    >
+      <p className="text-2xl font-bold tracking-tight mb-1">
+        {bw.last != null ? `${bw.last} kg` : "—"}
+        {rate != null && (
+          <span
+            className={clsx(
+              "text-sm font-semibold ml-2",
+              rate > 0.1 ? "text-danger" : rate < -0.1 ? "text-success" : "text-muted",
+            )}
+          >
+            {rate > 0 ? "+" : ""}
+            {rate}%/sem
+          </span>
+        )}
+      </p>
+      <MiniLine data={bw.ma} faint={bw.points} unit="kg" />
+    </SectionCard>
+  );
+}
+
+function E1rmTrendCard({
+  series,
+}: {
+  series: ReturnType<typeof e1rmSeriesByExercise>;
+}) {
+  const top = series[0];
+  return (
+    <SectionCard
+      title="1RM estimado"
+      subtitle={`Tus ${series.length} ejercicios más frecuentes · últimas 12 semanas`}
+      info={
+        <>
+          1RM estimado (Epley) por semana. Normaliza el progreso aunque cambien
+          las reps, cosa que el tonelaje no hace. <Ref id="3" />
+        </>
+      }
+    >
+      {top?.deltaPct != null && (
+        <p className="text-sm mb-2">
+          <span className="text-muted">{top.name}:</span>{" "}
+          <span
+            className={clsx(
+              "font-semibold",
+              top.deltaPct >= 0 ? "text-success" : "text-danger",
+            )}
+          >
+            {top.deltaPct >= 0 ? "+" : ""}
+            {top.deltaPct}%
+          </span>{" "}
+          <span className="text-muted text-xs">vs inicio</span>
+        </p>
+      )}
+      <MultiLine series={series.map((s) => ({ name: s.name, points: s.series }))} unit="kg" />
+    </SectionCard>
+  );
+}
+
+function IntensityCard({
+  d,
+}: {
+  d: ReturnType<typeof intensityZones>;
+}) {
+  return (
+    <SectionCard
+      title="Distribución de intensidad"
+      subtitle="Series por zona de %1RM · últimos 28 días"
+      info={
+        <>
+          Reparto de tus series según el peso ÷ tu 1RM estimado. Las cargas
+          pesadas tienen ventaja clara para la fuerza medida por 1RM. <Ref id="4" />
+        </>
+      }
+    >
+      <StackedBar
+        segments={[
+          { label: "Ligero <70%", value: d.light, className: "bg-muted" },
+          { label: "Medio 70-85%", value: d.medium, className: "bg-primary/70" },
+          { label: "Pesado >85%", value: d.heavy, className: "bg-success" },
+        ]}
+      />
+    </SectionCard>
+  );
+}
+
+function PatternCard({ rows }: { rows: { label: string; value: number }[] }) {
+  return (
+    <SectionCard
+      title="Frecuencia por patrón"
+      subtitle="Sesiones por semana · últimas 8 semanas"
+      info="En fuerza la especificidad es por patrón de movimiento (sentadilla / bisagra / empuje / tirón), no por músculo. Sentadilla y bisagra se infieren del músculo primario; empuje/tirón, del tipo de fuerza del ejercicio."
+    >
+      <HBars rows={rows} unit="/sem" />
+    </SectionCard>
+  );
+}
+
+function HeavyRirCard({ data }: { data: { label: string; value: number }[] }) {
+  return (
+    <SectionCard
+      title="RIR de series pesadas"
+      subtitle="Promedio semanal · series >85% 1RM"
+      info={
+        <>
+          Cuán cerca del fallo entrenás en las series pesadas. Los programas
+          autorregulados por RIR dieron más fuerza que las cargas fijas por
+          %1RM. <Ref id="6" />
+        </>
+      }
+    >
+      <MiniLine data={data} unit="RIR" />
+    </SectionCard>
+  );
+}
+
+function RirBucketsCard({
+  rows,
+}: {
+  rows: ReturnType<typeof rirBucketsByMuscle>;
+}) {
+  return (
+    <SectionCard
+      title="Proximidad al fallo"
+      subtitle="Reparto de series por RIR, por músculo · 30 días"
+      info={
+        <>
+          Para hipertrofia la serie tiene que estar cerca del fallo (ventaja
+          pequeña del fallo vs no-fallo). Las series con RIR 4+ inflan el conteo
+          sin estimular. Ojo: se subpredicen las reps al fallo; mejora con
+          experiencia. <Ref id="8" /> <Ref id="9" /> <Ref id="10" />
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {rows.map((r) => (
+          <div key={r.muscle}>
+            <p className="text-xs text-muted mb-1">{muscleEs(r.muscle)}</p>
+            <StackedBar
+              segments={[
+                { label: "RIR 0-1", value: r.b01, className: "bg-danger" },
+                { label: "RIR 2-3", value: r.b23, className: "bg-success" },
+                { label: "RIR 4+", value: r.b4, className: "bg-muted" },
+              ]}
+            />
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function SparklineGridCard({
+  series,
+}: {
+  series: ReturnType<typeof e1rmSeriesByExercise>;
+}) {
+  return (
+    <SectionCard
+      title="Progresión por ejercicio"
+      subtitle="1RM estimado · últimas 12 semanas"
+      info="En hipertrofia hay muchos ejercicios; una grilla de mini-gráficos deja ver de un vistazo cuáles progresan y cuáles están estancados."
+    >
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        {series.map((s) => (
+          <div key={s.exId}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium truncate">{s.name}</p>
+              {s.deltaPct != null && (
+                <span
+                  className={clsx(
+                    "text-[11px] font-semibold shrink-0",
+                    s.deltaPct >= 0 ? "text-success" : "text-danger",
+                  )}
+                >
+                  {s.deltaPct >= 0 ? "▲" : "▼"}
+                  {Math.abs(s.deltaPct)}%
+                </span>
+              )}
+            </div>
+            <Sparkline data={s.series} />
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function RecencyCard({
+  rows,
+}: {
+  rows: ReturnType<typeof daysSinceLastByMuscle>;
+}) {
+  return (
+    <SectionCard
+      title="Días desde la última sesión"
+      subtitle="Por grupo muscular"
+      info={
+        <>
+          Filtro de recuperación: cuántos días pasaron desde que entrenaste cada
+          músculo. Con volumen igualado, la frecuencia por sí sola casi no
+          cambia la hipertrofia — esto es para gestionar recuperación. <Ref id="11" />{" "}
+          <Ref id="12" />
+        </>
+      }
+    >
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map((r) => (
+          <span
+            key={r.muscle}
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ring-1",
+              r.days <= 3
+                ? "bg-success/15 text-success ring-success/30"
+                : r.days <= 6
+                  ? "bg-warning/15 text-warning ring-warning/30"
+                  : "bg-danger/15 text-danger ring-danger/30",
+            )}
+          >
+            {muscleEs(r.muscle)} · {r.days}d
+          </span>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
+function RepsCard({ data }: { data: { label: string; value: number }[] }) {
+  return (
+    <SectionCard
+      title="Reps por serie"
+      subtitle="Promedio semanal"
+      info={
+        <>
+          Para resistencia muscular local, más repeticiones por serie tienen un
+          efecto grande. <Ref id="14" />
+        </>
+      }
+    >
+      <MiniLine data={data} unit="reps" />
+    </SectionCard>
+  );
+}
+
+function DensityCard({ data }: { data: { label: string; value: number }[] }) {
+  const last = data[data.length - 1]?.value;
+  return (
+    <SectionCard
+      title="Densidad de sesión"
+      subtitle="Reps por minuto · tendencia semanal"
+      info="Acá el progreso es hacer el mismo trabajo en menos tiempo (más reps por minuto), no levantar más peso. Es el equivalente al 1RM del perfil de fuerza."
+    >
+      {last != null && (
+        <p className="text-2xl font-bold tracking-tight mb-1">
+          {last} <span className="text-sm text-muted font-medium">reps/min</span>
+        </p>
+      )}
+      <MiniLine data={data} unit="reps/min" />
+    </SectionCard>
+  );
+}
+
+function MaxRepsCard({
+  rows,
+}: {
+  rows: ReturnType<typeof maxRepsTest>;
+}) {
+  return (
+    <SectionCard
+      title="Test de reps máximas"
+      subtitle="Mejor serie · este mes vs el anterior"
+      info={
+        <>
+          El outcome de resistencia se mide completando el máximo de
+          repeticiones con una carga submáxima. Sin un test periódico no hay
+          métrica de resultado. <Ref id="13" />
+        </>
+      }
+    >
+      <ul className="flex flex-col gap-2">
+        {rows.map((r) => {
+          const delta = r.current - r.previous;
+          return (
+            <li key={r.name} className="flex items-center gap-3 text-sm">
+              <span className="flex-1 truncate">{r.name}</span>
+              {r.previous > 0 && (
+                <span className="text-muted text-xs tabular-nums">
+                  {r.previous} →
+                </span>
+              )}
+              <span className="font-semibold tabular-nums w-8 text-right">
+                {r.current}
+              </span>
+              {r.previous > 0 && (
+                <span
+                  className={clsx(
+                    "text-xs font-semibold w-8 text-right",
+                    delta > 0 ? "text-success" : delta < 0 ? "text-danger" : "text-muted",
+                  )}
+                >
+                  {delta > 0 ? "+" : ""}
+                  {delta}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </SectionCard>
+  );
+}
+
+function RetentionCard({
+  r,
+}: {
+  r: ReturnType<typeof strengthRetentionIndex>;
+}) {
+  const last = r.series[r.series.length - 1]?.value;
+  return (
+    <SectionCard
+      title="Retención de fuerza"
+      subtitle={`${r.name} · índice base 100`}
+      info="En un déficit, separa perder grasa de perder músculo: si el peso baja pero tu fuerza (1RM estimado del ejercicio más frecuente) se sostiene, vas bien. Una caída >10% sugiere un déficit muy agresivo o poca proteína."
+    >
+      {last != null && (
+        <p className="text-2xl font-bold tracking-tight mb-1">
+          {last}
+          <span
+            className={clsx(
+              "text-sm font-semibold ml-2",
+              last >= 100 ? "text-success" : last >= 90 ? "text-muted" : "text-danger",
+            )}
+          >
+            {last >= 90 ? "OK" : "Ojo"}
+          </span>
+        </p>
+      )}
+      <MiniLine data={r.series} />
+    </SectionCard>
+  );
+}
