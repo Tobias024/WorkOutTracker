@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, LineChart, Trophy, Users } from "lucide-react";
+import { Dumbbell, LineChart, Trophy } from "lucide-react";
 import { clsx } from "@/lib/clsx";
 
 const TABS = [
   { href: "/rutinas", label: "Rutinas", icon: Dumbbell },
   { href: "/registro", label: "Registro", icon: LineChart },
   { href: "/scoreboard", label: "Ranking", icon: Trophy },
-  { href: "/amigos", label: "Amigos", icon: Users },
 ];
 
 export function TabBar() {

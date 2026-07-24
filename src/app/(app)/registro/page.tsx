@@ -1259,7 +1259,12 @@ function WeeklyPlanCard({
                   "aspect-square rounded-md grid place-items-center text-xs font-medium",
                   pd.isEditableWeek && "cursor-pointer",
                   !pd.isEditableWeek && "cursor-default",
-                  !pd.planned && "bg-surface-2 text-muted",
+                  !pd.planned && !pd.completed && "bg-surface-2 text-muted",
+                  // Entrenaste un día que no estaba planeado: se marca igual
+                  // (ring en vez de relleno, para distinguir del día cumplido).
+                  !pd.planned &&
+                    pd.completed &&
+                    "ring-1 ring-success/50 text-success",
                   // Antes de la vigencia del plan: neutro (nunca se prometió).
                   pd.planned && !pd.judged && "bg-surface-2 text-muted",
                   pd.planned &&

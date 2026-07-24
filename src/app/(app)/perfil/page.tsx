@@ -77,7 +77,7 @@ export default function PerfilPage() {
       setError(error.message);
       return;
     }
-    router.push("/amigos");
+    router.push("/scoreboard");
   }
 
   if (checking) {
@@ -92,7 +92,7 @@ export default function PerfilPage() {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <button
-          onClick={() => router.push("/amigos")}
+          onClick={() => router.push("/scoreboard")}
           className="text-muted hover:text-fg"
         >
           <ArrowLeft className="size-5" />

@@ -64,7 +64,7 @@ export default function InvitePage() {
             <p className="text-sm text-muted mt-1 mb-5">
               Ahora pueden competir en el ranking.
             </p>
-            <Link href="/amigos">
+            <Link href="/scoreboard">
               <Button className="w-full">Ver amigos</Button>
             </Link>
           </>

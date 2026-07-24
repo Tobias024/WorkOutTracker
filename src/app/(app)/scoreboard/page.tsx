@@ -13,6 +13,7 @@ import {
 import { PageHeader, Spinner, EmptyState, Button, Tabs } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { NotificationToggle } from "@/components/NotificationToggle";
+import { FriendsPanel } from "@/components/FriendsPanel";
 import {
   useScoreboard,
   type Metric,
@@ -75,6 +76,7 @@ const SEXES: { key: Sex | ""; label: string }[] = [
 ];
 
 export default function ScoreboardPage() {
+  const [tab, setTab] = useState<"ranking" | "amigos">("ranking");
   const [view, setView] = useState<"general" | "strength">("general");
   const [genMetric, setGenMetric] = useState<Metric>("frequency");
   const [strMetric, setStrMetric] = useState<Metric>("strength");
@@ -114,6 +116,21 @@ export default function ScoreboardPage() {
         action={<NotificationToggle />}
       />
 
+      <div className="mb-3">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "ranking", label: "Ranking" },
+            { value: "amigos", label: "Amigos" },
+          ]}
+        />
+      </div>
+
+      {tab === "amigos" ? (
+        <FriendsPanel />
+      ) : (
+        <>
       <div className="mb-2">
         <Tabs
           value={view}
@@ -240,6 +257,8 @@ export default function ScoreboardPage() {
         title="Elegí un ejercicio"
         onSelect={(ex) => setExercise(ex)}
       />
+        </>
+      )}
     </div>
   );
 }

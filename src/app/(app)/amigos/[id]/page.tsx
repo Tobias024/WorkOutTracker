@@ -108,7 +108,7 @@ export default function FriendProfilePage() {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <button
-          onClick={() => router.push("/amigos")}
+          onClick={() => router.push("/scoreboard")}
           className="text-muted hover:text-fg"
         >
           <ArrowLeft className="size-5" />

@@ -1,5 +1,5 @@
 import type { HistorySession } from "@/hooks/useHistory";
-import { effectiveDrops, sessionDate, dateKey } from "@/lib/metrics";
+import { effectiveDrops, sessionDate, dateKey, rirOf } from "@/lib/metrics";
 import { muscleEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
 
@@ -30,6 +30,7 @@ export function buildSessionsRows(
       "reps",
       "peso_kg",
       "volumen_kg",
+      "rir",
       "completado",
       "duracion_min",
     ],
@@ -44,6 +45,7 @@ export function buildSessionsRows(
       const exName = ex?.name ?? "";
       const muscle = ex?.primary_muscles[0] ? muscleEs(ex.primary_muscles[0]) : "";
       we.workout_sets.forEach((set, si) => {
+        const rir = rirOf(set);
         const drops = effectiveDrops(set);
         drops.forEach((d) => {
           const vol = d.reps && d.weight ? d.reps * d.weight : 0;
@@ -56,6 +58,7 @@ export function buildSessionsRows(
             d.reps ?? "",
             d.weight ?? "",
             vol,
+            rir ?? "",
             set.completed ? "si" : "no",
             durMin,
           ]);
