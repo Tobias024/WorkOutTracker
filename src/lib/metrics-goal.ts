@@ -299,7 +299,9 @@ export function daysSinceLastByMuscle(
     for (const we of s.workout_exercises) {
       const ex = exMap.get(we.exercise_id);
       if (!ex || !we.workout_sets.some(isCountableSet)) continue;
-      for (const m of ex.primary_muscles)
+      // Cuenta primarios y secundarios: un músculo exigido de forma compuesta
+      // (ej. tríceps en un press) igual se fatigó y cuenta para recuperación.
+      for (const m of [...ex.primary_muscles, ...ex.secondary_muscles])
         last.set(m, Math.max(last.get(m) ?? 0, t));
     }
   }
@@ -543,7 +545,8 @@ export function readinessByMuscle(
     for (const we of s.workout_exercises) {
       const ex = exMap.get(we.exercise_id);
       if (!ex || !we.workout_sets.some(isCountableSet)) continue;
-      for (const mu of ex.primary_muscles)
+      // Primarios + secundarios (participación compuesta cuenta para recuperación).
+      for (const mu of [...ex.primary_muscles, ...ex.secondary_muscles])
         lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
     }
   }
