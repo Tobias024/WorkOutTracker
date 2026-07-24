@@ -117,7 +117,24 @@ function ReadyCard({ rows }: { rows: Readiness[] }) {
     <SectionCard
       title="Listo para entrenar"
       subtitle="Grupos descansados y con volumen bajo"
-      info="Combina recuperación (días desde que entrenaste el grupo) y rezago de volumen (series efectivas de la última semana por debajo del mínimo). Responde 'qué conviene entrenar hoy'. Diseño propio, no hay paper de esto."
+      info={
+        <>
+          Ranking propio de &ldquo;qué conviene entrenar hoy&rdquo; por grupo
+          muscular. Combina dos señales en un puntaje:{"\n\n"}
+          • <span className="text-fg">Recuperación</span> = días desde la última
+          vez que lo entrenaste, escalado 0–1 (min(1, días/3): 3+ días = del
+          todo recuperado).{"\n"}
+          • <span className="text-fg">Rezago de volumen</span> = cuánto te falta
+          para el MEV esta semana: (MEV − series efectivas de los últimos 7
+          días) / MEV, 0–1. Es lo que muestra la barra.{"\n\n"}
+          Puntaje = 0,6 × recuperación + 0,4 × rezago; se muestran los 3 más
+          altos.{"\n\n"}
+          Los insumos tienen respaldo — recuperación/frecuencia (<Ref id="11" />,{" "}
+          <Ref id="12" />) y volumen medido por conteo de series vs MEV
+          (<Ref id="1" />, <Ref id="7" />). El compuesto y los pesos 0,6/0,4 son
+          una heurística de producto, no un resultado de paper.
+        </>
+      }
     >
       <ul className="flex flex-col gap-2.5">
         {rows.map((r) => (
