@@ -127,11 +127,14 @@ export function Modal({
   onClose,
   title,
   children,
+  center,
 }: {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
+  /** Centrado (diálogo) en vez de hoja pegada abajo. Para tooltips de info. */
+  center?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -147,11 +150,19 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+      className={clsx(
+        "fixed inset-0 z-50 flex justify-center bg-black/60 backdrop-blur-sm",
+        center ? "items-center p-4" : "items-end sm:items-center",
+      )}
       onClick={onClose}
     >
       <div
-        className="card w-full sm:max-w-lg max-h-[85vh] flex flex-col rounded-b-none sm:rounded-lg"
+        className={clsx(
+          "card max-h-[85vh] flex flex-col",
+          center
+            ? "w-full max-w-md rounded-lg"
+            : "w-full sm:max-w-lg rounded-b-none sm:rounded-lg",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -233,7 +244,12 @@ export function Stat({
       )}
       {secondary && <p className="text-[10px] text-muted mt-1.5">{secondary}</p>}
       {info && (
-        <Modal open={showInfo} onClose={() => setShowInfo(false)} title={label}>
+        <Modal
+          open={showInfo}
+          onClose={() => setShowInfo(false)}
+          title={label}
+          center
+        >
           <div className="text-sm text-muted whitespace-pre-line">{info}</div>
         </Modal>
       )}
@@ -298,7 +314,12 @@ export function SectionCard({
       </div>
       {children}
       {info && (
-        <Modal open={showInfo} onClose={() => setShowInfo(false)} title={title}>
+        <Modal
+          open={showInfo}
+          onClose={() => setShowInfo(false)}
+          title={title}
+          center
+        >
           <div className="text-sm text-muted whitespace-pre-line">{info}</div>
         </Modal>
       )}

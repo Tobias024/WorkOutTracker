@@ -16,9 +16,9 @@ export function PaperLink({ label, url }: { label: string; url: string }) {
   );
 }
 
-/** Cita numerada [n] resuelta desde REFERENCES (ids del spec). */
+/** Cita clickeable con el nombre del paper, resuelta desde REFERENCES. */
 export function Ref({ id }: { id: keyof typeof REFERENCES | string }) {
   const r = REFERENCES[id as string];
   if (!r) return null;
-  return <PaperLink label={`[${id}]`} url={r.url} />;
+  return <PaperLink label={r.short} url={r.url} />;
 }
