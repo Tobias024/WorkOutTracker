@@ -84,6 +84,63 @@ export function useCreateRoutine() {
   });
 }
 
+/** Crea una rutina completa desde datos parseados (import de Excel). */
+export function useImportRoutine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      name,
+      items,
+    }: {
+      name: string;
+      items: { exerciseId: string; plans: SetPlan[] }[];
+    }): Promise<string> => {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+
+      const { data: routine, error } = await supabase
+        .from("routines")
+        .insert({ name, owner_id: user.id })
+        .select()
+        .single();
+      if (error) throw error;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const plans = it.plans.length
+          ? it.plans
+          : [{ target_reps: null, target_weight: null }];
+        const { data: rex, error: e1 } = await supabase
+          .from("routine_exercises")
+          .insert({
+            routine_id: routine.id,
+            exercise_id: it.exerciseId,
+            position: i,
+            target_sets: plans.length,
+            target_reps: plans[0].target_reps,
+          })
+          .select()
+          .single();
+        if (e1) throw e1;
+        const { error: e2 } = await supabase.from("routine_sets").insert(
+          plans.map((p, si) => ({
+            routine_exercise_id: rex.id,
+            set_number: si + 1,
+            target_reps: p.target_reps,
+            target_weight: p.target_weight,
+          })),
+        );
+        if (e2) throw e2;
+      }
+      return routine.id as string;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["routines"] }),
+  });
+}
+
 export function useDeleteRoutine() {
   const qc = useQueryClient();
   return useMutation({
