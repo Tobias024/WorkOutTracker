@@ -1,13 +1,19 @@
 "use client";
 
-import { Fragment, useMemo, type ReactNode } from "react";
-import { SectionCard } from "@/components/ui";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { SectionCard, Button } from "@/components/ui";
 import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { dateKey } from "@/lib/metrics";
 import { clsx } from "@/lib/clsx";
 import type { Goal, Exercise } from "@/lib/types";
 import type { HistorySession } from "@/hooks/useHistory";
+import {
+  useSleep,
+  useLogSleep,
+  useMeasurements,
+} from "@/hooks/useBodyData";
 import {
   e1rmSeriesByExercise,
   intensityZones,
@@ -20,6 +26,10 @@ import {
   maxRepsTest,
   bodyweightSeries,
   strengthRetentionIndex,
+  sleepSeries,
+  measurementSeries,
+  waistSeries,
+  avgRestBetweenSets,
 } from "@/lib/metrics-goal";
 
 /** Cards de portada específicas del objetivo. Se calcula todo; el goal elige. */
@@ -32,6 +42,9 @@ export function GoalMetrics({
   sessions: HistorySession[];
   exMap: Map<string, Exercise>;
 }) {
+  const { data: sleep } = useSleep();
+  const { data: measurements } = useMeasurements();
+
   const m = useMemo(
     () => ({
       e1rm: e1rmSeriesByExercise(sessions, exMap, 12),
@@ -45,14 +58,19 @@ export function GoalMetrics({
       maxReps: maxRepsTest(sessions, exMap, 6),
       bw: bodyweightSeries(sessions, 120),
       retention: strengthRetentionIndex(sessions, exMap, 16),
+      rest: avgRestBetweenSets(sessions),
+      sleepS: sleepSeries(sleep ?? [], 14),
+      measS: measurementSeries(measurements ?? []),
+      waistS: waistSeries(measurements ?? []),
     }),
-    [sessions, exMap],
+    [sessions, exMap, sleep, measurements],
   );
 
   const cards: ReactNode[] = [];
 
-  // Base (todos los objetivos): peso corporal.
+  // Base (todos los objetivos): peso corporal + sueño.
   if (m.bw.points.length >= 2) cards.push(<BodyweightCard bw={m.bw} />);
+  cards.push(<SleepCard s={m.sleepS} />);
 
   if (goal === "fuerza") {
     if (m.e1rm.length) cards.push(<E1rmTrendCard series={m.e1rm.slice(0, 4)} />);
@@ -60,16 +78,22 @@ export function GoalMetrics({
     if (m.patterns.some((p) => p.value > 0))
       cards.push(<PatternCard rows={m.patterns} />);
     if (m.heavyRir.length) cards.push(<HeavyRirCard data={m.heavyRir} />);
+    if (m.rest.avgSec != null)
+      cards.push(<RestCard avgSec={m.rest.avgSec} band="2-5 min" />);
   } else if (goal === "hipertrofia") {
     if (m.rirBuckets.length) cards.push(<RirBucketsCard rows={m.rirBuckets} />);
     if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
     if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
+    if (m.measS.length) cards.push(<MeasurementsCard series={m.measS} />);
   } else if (goal === "resistencia") {
     if (m.reps.length) cards.push(<RepsCard data={m.reps} />);
     if (m.density.length) cards.push(<DensityCard data={m.density} />);
     if (m.maxReps.length) cards.push(<MaxRepsCard rows={m.maxReps} />);
+    if (m.rest.avgSec != null)
+      cards.push(<RestCard avgSec={m.rest.avgSec} band="30-60 s" />);
   } else if (goal === "perdida_grasa") {
     if (m.retention.series.length) cards.push(<RetentionCard r={m.retention} />);
+    if (m.waistS.length) cards.push(<WaistCard data={m.waistS} />);
   }
 
   if (cards.length === 0) return null;
@@ -401,6 +425,123 @@ function MaxRepsCard({
           );
         })}
       </ul>
+    </SectionCard>
+  );
+}
+
+function SleepCard({ s }: { s: ReturnType<typeof sleepSeries> }) {
+  const log = useLogSleep();
+  const [hours, setHours] = useState("");
+  const max = Math.max(9, ...s.points.map((p) => p.value));
+  return (
+    <SectionCard
+      title="Sueño"
+      subtitle="Últimas 2 semanas · objetivo 7 h"
+      info={
+        <>
+          La restricción de sueño interfiere con las adaptaciones al
+          entrenamiento. Barato de registrar, alto impacto. <Ref id="2" />
+        </>
+      }
+    >
+      {s.points.length > 0 ? (
+        <div className="relative h-28 flex items-end gap-1">
+          <div
+            className="absolute inset-x-0 border-t border-dashed border-border"
+            style={{ bottom: `${(7 / max) * 100}%` }}
+          />
+          {s.points.map((p, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center justify-end">
+              <div
+                className="w-full rounded-t bg-primary/70"
+                style={{ height: `${(p.value / max) * 100}%` }}
+                title={`${p.value} h`}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">Todavía no registraste sueño.</p>
+      )}
+      <div className="flex items-center gap-2 mt-3">
+        <input
+          type="number"
+          inputMode="decimal"
+          step={0.5}
+          placeholder="Horas anoche"
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
+          className="h-9 flex-1 min-w-0 rounded bg-surface-2 px-2 text-sm outline-none ring-1 ring-border focus:ring-primary"
+        />
+        <Button
+          size="sm"
+          loading={log.isPending}
+          disabled={!hours}
+          onClick={() => {
+            log.mutate({
+              sleptOn: dateKey(new Date().toISOString()),
+              hours: Number(hours),
+            });
+            setHours("");
+          }}
+        >
+          Registrar
+        </Button>
+      </div>
+      {s.avg != null && (
+        <p className="text-xs text-muted mt-2">Promedio: {s.avg} h</p>
+      )}
+    </SectionCard>
+  );
+}
+
+function RestCard({ avgSec, band }: { avgSec: number; band: string }) {
+  const min = Math.floor(avgSec / 60);
+  const sec = avgSec % 60;
+  return (
+    <SectionCard
+      title="Descanso medio entre series"
+      subtitle={`Objetivo ${band}`}
+      info={
+        <>
+          Tiempo entre series consecutivas del mismo ejercicio (se ignoran gaps
+          &gt;10 min). Ojo: si completás varias series juntas al final, el dato
+          se subestima. <Ref id="5" />
+        </>
+      }
+    >
+      <p className="text-2xl font-bold tracking-tight">
+        {min}:{String(sec).padStart(2, "0")}{" "}
+        <span className="text-sm text-muted font-medium">min</span>
+      </p>
+    </SectionCard>
+  );
+}
+
+function MeasurementsCard({
+  series,
+}: {
+  series: { name: string; points: { label: string; value: number }[] }[];
+}) {
+  return (
+    <SectionCard
+      title="Circunferencias"
+      subtitle="cm · por medición"
+      info="Todo lo demás mide el estímulo; esto mide el resultado. Cargá tus medidas en Perfil (idealmente una vez por mes)."
+    >
+      <MultiLine series={series} unit="cm" />
+    </SectionCard>
+  );
+}
+
+function WaistCard({ data }: { data: { label: string; value: number }[] }) {
+  return (
+    <SectionCard
+      title="Cintura"
+      subtitle="cm · por medición"
+      info="Desacopla el cambio de composición del cambio de peso: la cintura puede bajar aunque la balanza no se mueva."
+    >
+      <MiniLine data={data} unit="cm" />
     </SectionCard>
   );
 }

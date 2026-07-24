@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Dumbbell, TrendingUp, Timer, TrendingDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Spinner } from "@/components/ui";
-import { bmi, bmiCategory } from "@/lib/metrics";
+import { bmi, bmiCategory, dateKey } from "@/lib/metrics";
+import { useAddMeasurement } from "@/hooks/useBodyData";
 import { clsx } from "@/lib/clsx";
 import type { Sex, Goal } from "@/lib/types";
 
@@ -196,6 +197,68 @@ export default function PerfilPage() {
         </Button>
         {error && <p className="text-sm text-danger">{error}</p>}
       </form>
+
+      <MeasurementsForm />
+    </div>
+  );
+}
+
+function MeasurementsForm() {
+  const add = useAddMeasurement();
+  const [v, setV] = useState({ arm: "", chest: "", waist: "", thigh: "", bf: "" });
+  const [saved, setSaved] = useState(false);
+  const num = (x: string) => (x === "" ? null : Number(x));
+  const empty =
+    !v.arm && !v.chest && !v.waist && !v.thigh && !v.bf;
+
+  async function save() {
+    if (empty) return;
+    await add.mutateAsync({
+      measured_on: dateKey(new Date().toISOString()),
+      arm_cm: num(v.arm),
+      chest_cm: num(v.chest),
+      waist_cm: num(v.waist),
+      thigh_cm: num(v.thigh),
+      bodyfat_pct: num(v.bf),
+    });
+    setV({ arm: "", chest: "", waist: "", thigh: "", bf: "" });
+    setSaved(true);
+  }
+
+  const field = (key: keyof typeof v, label: string) => (
+    <label className="flex flex-col gap-1 text-sm text-muted">
+      {label}
+      <Input
+        type="number"
+        inputMode="decimal"
+        value={v[key]}
+        onChange={(e) => {
+          setV((s) => ({ ...s, [key]: e.target.value }));
+          setSaved(false);
+        }}
+      />
+    </label>
+  );
+
+  return (
+    <div className="card p-6 flex flex-col gap-4 mt-4">
+      <div>
+        <h2 className="font-semibold">Medidas corporales</h2>
+        <p className="text-xs text-muted mt-0.5">
+          Cargalas cada tanto (mensual). Alimentan las métricas de circunferencias
+          y cintura.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {field("arm", "Brazo (cm)")}
+        {field("chest", "Pecho (cm)")}
+        {field("waist", "Cintura (cm)")}
+        {field("thigh", "Muslo (cm)")}
+        {field("bf", "% graso")}
+      </div>
+      <Button onClick={save} loading={add.isPending} disabled={empty}>
+        {saved ? "Guardada ✓" : "Guardar medida de hoy"}
+      </Button>
     </div>
   );
 }

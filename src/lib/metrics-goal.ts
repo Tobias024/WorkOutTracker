@@ -1,5 +1,5 @@
 import type { HistorySession } from "@/hooks/useHistory";
-import type { Exercise } from "@/lib/types";
+import type { Exercise, SleepLog, BodyMeasurement } from "@/lib/types";
 import {
   estimate1RM,
   sessionDate,
@@ -464,3 +464,81 @@ export function strengthRetentionIndex(
     })),
   };
 }
+
+// ── Datos capturados (Fase 3): sueño / medidas / descanso ───────────────────
+
+function labelFromDate(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${d}/${m}`;
+}
+
+/** Sueño de los últimos `days` días (barras) + promedio. */
+export function sleepSeries(
+  rows: SleepLog[],
+  days = 14,
+): { points: Pt[]; avg: number | null } {
+  const recent = rows.slice(-days);
+  const points = recent.map((r) => ({
+    label: labelFromDate(r.slept_on),
+    value: r.hours,
+  }));
+  const avg = recent.length
+    ? Math.round((recent.reduce((a, r) => a + r.hours, 0) / recent.length) * 10) /
+      10
+    : null;
+  return { points, avg };
+}
+
+/** Series por sitio de circunferencia (para líneas mensuales). */
+export function measurementSeries(
+  rows: BodyMeasurement[],
+): { name: string; points: Pt[] }[] {
+  const sites: [keyof BodyMeasurement, string][] = [
+    ["arm_cm", "Brazo"],
+    ["chest_cm", "Pecho"],
+    ["waist_cm", "Cintura"],
+    ["thigh_cm", "Muslo"],
+  ];
+  return sites
+    .map(([key, name]) => ({
+      name,
+      points: rows
+        .filter((r) => r[key] != null)
+        .map((r) => ({ label: labelFromDate(r.measured_on), value: Number(r[key]) })),
+    }))
+    .filter((s) => s.points.length > 0);
+}
+
+/** Serie de cintura (para Pérdida de grasa). */
+export function waistSeries(rows: BodyMeasurement[]): Pt[] {
+  return rows
+    .filter((r) => r.waist_cm != null)
+    .map((r) => ({ label: labelFromDate(r.measured_on), value: Number(r.waist_cm) }));
+}
+
+/** Descanso medio entre series (segundos). Sólo gaps del mismo ejercicio, cap 10 min. */
+export function avgRestBetweenSets(
+  sessions: HistorySession[],
+  maxMin = 10,
+): { avgSec: number | null; samples: number } {
+  let sum = 0;
+  let n = 0;
+  const cap = maxMin * 60000;
+  for (const s of sessions) {
+    for (const we of s.workout_exercises) {
+      const times = we.workout_sets
+        .filter((x) => x.completed && x.completed_at)
+        .map((x) => new Date(x.completed_at as string).getTime())
+        .sort((a, b) => a - b);
+      for (let i = 1; i < times.length; i++) {
+        const gap = times[i] - times[i - 1];
+        if (gap > 0 && gap <= cap) {
+          sum += gap;
+          n++;
+        }
+      }
+    }
+  }
+  return { avgSec: n ? Math.round(sum / n / 1000) : null, samples: n };
+}
+

@@ -109,8 +109,29 @@ export type WorkoutSet = {
   comment: string | null;
   is_warmup: boolean;
   completed: boolean;
+  /** Timestamp de cuándo se completó (trigger). Para el descanso entre series. */
+  completed_at: string | null;
   /** Bajadas de peso sin descanso dentro de la misma serie. null = serie simple (usar reps/weight). */
   drops: SetDrop[] | null;
+};
+
+export type SleepLog = {
+  user_id: string;
+  slept_on: string;
+  hours: number;
+  created_at: string;
+};
+
+export type BodyMeasurement = {
+  id: string;
+  user_id: string;
+  measured_on: string;
+  arm_cm: number | null;
+  chest_cm: number | null;
+  waist_cm: number | null;
+  thigh_cm: number | null;
+  bodyfat_pct: number | null;
+  created_at: string;
 };
 
 /** Nota fija del usuario sobre un ejercicio, compartida entre todas sus rutinas. */
@@ -238,6 +259,8 @@ export type Database = {
       workout_sets: Table<WorkoutSet>;
       exercise_substitutions: Table<ExerciseSubstitution>;
       user_exercise_notes: Table<UserExerciseNote>;
+      sleep_logs: Table<SleepLog>;
+      body_measurements: Table<BodyMeasurement>;
       friendships: Table<Friendship>;
       invites: Table<Invite>;
       push_subscriptions: Table<PushSubscription>;
