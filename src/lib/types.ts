@@ -6,12 +6,15 @@ export type FriendshipStatus = "pending" | "accepted";
 
 export type Sex = "male" | "female";
 
+export type Goal = "fuerza" | "hipertrofia" | "resistencia" | "perdida_grasa";
+
 export type Profile = {
   id: string;
   username: string;
   display_name: string | null;
   avatar_url: string | null;
   sex: Sex | null;
+  goal: Goal | null;
   height_cm: number | null;
   weight_kg: number | null;
   /** Días de la semana que el usuario planea entrenar (0=domingo … 6=sábado). */

@@ -2,18 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Dumbbell, TrendingUp, Timer, TrendingDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Spinner } from "@/components/ui";
 import { bmi, bmiCategory } from "@/lib/metrics";
 import { clsx } from "@/lib/clsx";
-import type { Sex } from "@/lib/types";
+import type { Sex, Goal } from "@/lib/types";
+
+const GOALS: { value: Goal; label: string; icon: typeof Dumbbell }[] = [
+  { value: "fuerza", label: "Fuerza", icon: Dumbbell },
+  { value: "hipertrofia", label: "Hipertrofia", icon: TrendingUp },
+  { value: "resistencia", label: "Resistencia", icon: Timer },
+  { value: "perdida_grasa", label: "Pérdida de grasa", icon: TrendingDown },
+];
 
 export default function PerfilPage() {
   const router = useRouter();
   const supabase = createClient();
   const [displayName, setDisplayName] = useState("");
   const [sex, setSex] = useState<Sex | null>(null);
+  const [goal, setGoal] = useState<Goal | null>(null);
   const [heightCm, setHeightCm] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,11 +39,12 @@ export default function PerfilPage() {
       }
       const { data } = await supabase
         .from("profiles")
-        .select("display_name, sex, height_cm, weight_kg")
+        .select("display_name, sex, goal, height_cm, weight_kg")
         .eq("id", user.id)
         .maybeSingle();
       setDisplayName(data?.display_name ?? "");
       setSex(data?.sex ?? null);
+      setGoal((data?.goal as Goal | null) ?? null);
       setHeightCm(data?.height_cm != null ? String(data.height_cm) : "");
       setWeightKg(data?.weight_kg != null ? String(data.weight_kg) : "");
       setChecking(false);
@@ -67,6 +76,7 @@ export default function PerfilPage() {
       .update({
         display_name: name,
         sex,
+        goal,
         height_cm: heightNum,
         weight_kg: weightNum,
       })
@@ -128,6 +138,24 @@ export default function PerfilPage() {
           </div>
         </div>
 
+        <div className="flex flex-col gap-2">
+          <label className="text-sm text-muted">Objetivo</label>
+          <p className="text-xs text-muted -mt-1">
+            Cambia qué métricas se muestran primero en Registro.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {GOALS.map((g) => (
+              <GoalButton
+                key={g.value}
+                icon={g.icon}
+                label={g.label}
+                active={goal === g.value}
+                onClick={() => setGoal(goal === g.value ? null : g.value)}
+              />
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-2">
             <label className="text-sm text-muted">Altura (cm)</label>
@@ -169,6 +197,35 @@ export default function PerfilPage() {
         {error && <p className="text-sm text-danger">{error}</p>}
       </form>
     </div>
+  );
+}
+
+function GoalButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof Dumbbell;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={clsx(
+        "flex items-center gap-2.5 rounded-lg px-3 py-3 ring-1 transition text-left",
+        active
+          ? "bg-primary/15 ring-primary text-fg"
+          : "bg-surface-2 ring-border text-muted hover:text-fg",
+      )}
+    >
+      <Icon className={clsx("size-5 shrink-0", active && "text-primary")} />
+      <span className="text-sm font-medium">{label}</span>
+    </button>
   );
 }
 

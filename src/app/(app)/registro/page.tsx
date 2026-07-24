@@ -61,7 +61,8 @@ import { buildSessionsRows } from "@/lib/export-csv";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
-import { openExternal } from "@/lib/external";
+import { PaperLink } from "@/components/PaperLink";
+import { useGoal } from "@/hooks/useGoal";
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise } from "@/lib/types";
 
@@ -159,19 +160,6 @@ function computeHardSets(
     .slice(0, 8);
 }
 
-/** Cita de paper clickeable: abre el link con confirmación previa. */
-function PaperLink({ label, url }: { label: string; url: string }) {
-  return (
-    <button
-      type="button"
-      onClick={() => openExternal(url)}
-      className="text-primary underline underline-offset-2"
-    >
-      {label}
-    </button>
-  );
-}
-
 export default function RegistroPage() {
   const { data, isLoading } = useHistory();
   const exMap = useExerciseMap();
@@ -179,6 +167,7 @@ export default function RegistroPage() {
   const setPlan = useSetWeeklyPlan();
   const { data: plannedSince } = usePlannedSince();
   const { data: achievements } = useAchievements();
+  const { data: goal } = useGoal();
   const deleteSession = useDeleteSession();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
@@ -836,6 +825,8 @@ export default function RegistroPage() {
             />
           </SectionCard>
 
+          {/* Fuerza: MEV/MAV/MRV son umbrales de hipertrofia, no aplican. */}
+          {goal !== "fuerza" && (
           <SectionCard
             title="Series efectivas por grupo"
             subtitle={
@@ -888,6 +879,7 @@ export default function RegistroPage() {
               data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
             />
           </SectionCard>
+          )}
 
           <SectionCard
             title="Balance de patrones"
@@ -905,7 +897,7 @@ export default function RegistroPage() {
             <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
           </SectionCard>
 
-          {metrics.muscleDonut.length > 0 && (
+          {goal !== "fuerza" && metrics.muscleDonut.length > 0 && (
             <SectionCard
               title="Músculos entrenados"
               subtitle="Sets · últimos 30 días"

@@ -1,0 +1,71 @@
+/**
+ * Referencias de papers usadas en los tooltips ⓘ de métricas. IDs = numeración
+ * del spec Asset/spec-metricas-por-objetivo.md (sección Referencias).
+ */
+export const REFERENCES: Record<string, { cite: string; url: string }> = {
+  "1": {
+    cite: "Schoenfeld, Ogborn, Krieger 2017 — volumen semanal e hipertrofia",
+    url: "https://pubmed.ncbi.nlm.nih.gov/27433992/",
+  },
+  "2": {
+    cite: "Restricción de sueño y adaptaciones al entrenamiento",
+    url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC11390164/",
+  },
+  "3": {
+    cite: "Precisión de las ecuaciones de predicción de 1RM",
+    url: "https://journal.iusca.org/index.php/Journal/article/view/327",
+  },
+  "4": {
+    cite: "Schoenfeld et al. 2021 — cargas para fuerza/hipertrofia/resistencia",
+    url: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7927075/",
+  },
+  "5": {
+    cite: "Descanso autoseleccionado vs fijo",
+    url: "https://sportrxiv.org/index.php/server/preprint/view/975",
+  },
+  "6": {
+    cite: "Autorregulación por RIR (Helms; Graham & Cleather)",
+    url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC7706636/",
+  },
+  "7": {
+    cite: "Baz-Valle et al. 2021 — series totales como medida de volumen",
+    url: "https://doi.org/10.1519/JSC.0000000000002776",
+  },
+  "8": {
+    cite: "Refalo et al. 2023 — proximidad al fallo e hipertrofia",
+    url: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9935748/",
+  },
+  "9": {
+    cite: "Steele et al. 2017 — precisión al predecir reps al fallo",
+    url: "https://peerj.com/articles/4105/",
+  },
+  "10": {
+    cite: "Halperin et al. 2022 — predicción de reps al fallo",
+    url: "https://link.springer.com/article/10.1007/s40279-021-01559-x",
+  },
+  "11": {
+    cite: "Schoenfeld et al. 2016 — frecuencia e hipertrofia",
+    url: "https://doi.org/10.1007/s40279-016-0543-8",
+  },
+  "12": {
+    cite: "Schoenfeld et al. 2019 — frecuencia por músculo",
+    url: "https://doi.org/10.1080/02640414.2018.1555906",
+  },
+  "13": {
+    cite: "Resistencia muscular local en adultos (meta-análisis)",
+    url: "https://www.sciencedirect.com/science/article/abs/pii/S016749432300033X",
+  },
+  "14": {
+    cite: "Reps totales por serie y resistencia muscular local",
+    url: "https://www.sciencedirect.com/science/article/abs/pii/S0765159722000405",
+  },
+  "15": {
+    cite: "ACSM 2021 — recomendaciones de descanso por objetivo",
+    url: "https://www.frontiersin.org/journals/physiology/articles/10.3389/fphys.2025.1549609/full",
+  },
+  // Renaissance Periodization (marcas de volumen MEV/MAV/MRV)
+  rp: {
+    cite: "Renaissance Periodization — volume landmarks",
+    url: "https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth",
+  },
+};
