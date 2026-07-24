@@ -298,19 +298,51 @@ function RirBucketsCard({
         </>
       }
     >
-      <div className="flex flex-col gap-3">
-        {rows.map((r) => (
-          <div key={r.muscle}>
-            <p className="text-xs text-muted mb-1">{muscleEs(r.muscle)}</p>
-            <StackedBar
-              segments={[
-                { label: "RIR 0-1", value: r.b01, className: "bg-danger" },
-                { label: "RIR 2-3", value: r.b23, className: "bg-success" },
-                { label: "RIR 4+", value: r.b4, className: "bg-muted" },
-              ]}
-            />
-          </div>
-        ))}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-danger" />
+          RIR 0-1
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-success" />
+          RIR 2-3
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-muted" />
+          RIR 4+
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {rows.map((r) => {
+          const total = r.total || 1;
+          return (
+            <div key={r.muscle} className="flex items-center gap-2">
+              <span className="w-16 shrink-0 text-xs text-muted truncate">
+                {muscleEs(r.muscle)}
+              </span>
+              <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-surface-2">
+                {r.b01 > 0 && (
+                  <div
+                    className="bg-danger"
+                    style={{ width: `${(r.b01 / total) * 100}%` }}
+                  />
+                )}
+                {r.b23 > 0 && (
+                  <div
+                    className="bg-success"
+                    style={{ width: `${(r.b23 / total) * 100}%` }}
+                  />
+                )}
+                {r.b4 > 0 && (
+                  <div
+                    className="bg-muted"
+                    style={{ width: `${(r.b4 / total) * 100}%` }}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </SectionCard>
   );

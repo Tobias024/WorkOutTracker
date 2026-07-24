@@ -61,7 +61,7 @@ import { buildSessionsRows } from "@/lib/export-csv";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
-import { PaperLink } from "@/components/PaperLink";
+import { PaperLink, Ref } from "@/components/PaperLink";
 import { useGoal } from "@/hooks/useGoal";
 import { GoalMetrics } from "@/components/GoalMetrics";
 import { clsx } from "@/lib/clsx";
@@ -453,6 +453,7 @@ export default function RegistroPage() {
   const [chartView, setChartView] = useState<"week" | "month">("week");
   // Tonelaje (carga externa) fuera de portada: en "Más métricas" plegable.
   const [moreOpen, setMoreOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // Ventana de series efectivas: 7 días (default, medida directa vs marcas
   // semanales) o 30 días (promedio, más suave).
   const [hardWindow, setHardWindow] = useState<"7d" | "30d">("7d");
@@ -681,8 +682,12 @@ export default function RegistroPage() {
                   : undefined
               }
               info={
-                "Series de trabajo (≥5 reps y cerca del fallo) acumuladas en la semana en curso. Es el mejor indicador de estímulo para hipertrofia.\n\n" +
-                "El % compara las dos últimas semanas anteriores."
+                <>
+                  Series de trabajo (≥5 reps y cerca del fallo) acumuladas en la
+                  semana en curso. Es el mejor indicador de estímulo para
+                  hipertrofia (<Ref id="1" />, <Ref id="7" />).{"\n\n"}
+                  El % compara las dos últimas semanas anteriores.
+                </>
               }
             />
           </div>
@@ -886,64 +891,27 @@ export default function RegistroPage() {
             <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
           </SectionCard>
 
-          {goal !== "fuerza" && metrics.muscleDonut.length > 0 && (
-            <SectionCard
-              title="Músculos entrenados"
-              subtitle="Sets · últimos 30 días"
-              info="Distribución de las series por grupo muscular en los últimos 30 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad)."
-            >
-              <MuscleDonut data={metrics.muscleDonut} />
-            </SectionCard>
-          )}
-
-          {/* Resistencia: el 1RM pasa a secundario. */}
-          {goal !== "resistencia" && metrics.prs.length > 0 && (
-            <SectionCard
-              title="Récords (1RM estimado)"
-              info="Mejor 1RM estimado por ejercicio, con la fórmula de Epley (peso × (1 + reps/30)). Es una señal de fuerza estable sesión a sesión."
-            >
-              <ul className="flex flex-col gap-2">
-                {metrics.prs.map(([exId, pr]) => (
-                  <li
-                    key={exId}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="min-w-0 mr-2">
-                      <span className="block truncate">
-                        {exMap.get(exId)?.name ?? "—"}
-                      </span>
-                      <span className="block text-xs text-muted">
-                        {formatDateTime(pr.date)}
-                      </span>
-                    </span>
-                    <span className="text-accent font-medium shrink-0">
-                      {pr.orm} kg
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          )}
-
-          {/* Tonelaje: carga externa, no "progreso". Fuera de portada. */}
-          <div className="card rounded-xl">
-            <button
-              onClick={() => setMoreOpen((v) => !v)}
-              className="flex items-center justify-between w-full p-4"
-              aria-expanded={moreOpen}
-            >
-              <span className="text-sm font-semibold">Más métricas</span>
-              <ChevronDown
-                className={clsx(
-                  "size-4 text-muted transition-transform",
-                  moreOpen && "rotate-180",
-                )}
-              />
-            </button>
-            {moreOpen && (
-              <div className="px-4 pb-4">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <p className="text-sm font-medium">Volumen (tonelaje)</p>
+          {/* Más métricas (off-portada): tonelaje, músculos entrenados, récords. */}
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            className="card rounded-xl flex items-center justify-between w-full p-4"
+            aria-expanded={moreOpen}
+          >
+            <span className="text-sm font-semibold">Más métricas</span>
+            <ChevronDown
+              className={clsx(
+                "size-4 text-muted transition-transform",
+                moreOpen && "rotate-180",
+              )}
+            />
+          </button>
+          {moreOpen && (
+            <div className="flex flex-col gap-5">
+              <SectionCard
+                title="Volumen (tonelaje)"
+                subtitle="Carga externa · no es tu progreso"
+                info="Series × reps × peso. Sirve para comparar la misma rutina en el tiempo, no como indicador de progreso: sube con más trabajo, no con mejor trabajo. Lo que impulsa la hipertrofia es el conteo de series efectivas."
+                action={
                   <div className="w-40">
                     <Tabs
                       value={chartView}
@@ -954,27 +922,82 @@ export default function RegistroPage() {
                       ]}
                     />
                   </div>
-                </div>
-                <p className="text-xs text-muted mb-3">
-                  Series × reps × peso. Es carga externa para comparar la misma
-                  rutina en el tiempo, no un indicador de progreso: sube con más
-                  trabajo, no con mejor trabajo. Lo que impulsa la hipertrofia es
-                  el conteo de series efectivas.
-                </p>
+                }
+              >
                 <VolumeChart
                   data={
                     chartView === "week" ? metrics.weekChart : metrics.monthChart
                   }
                 />
-              </div>
-            )}
-          </div>
+              </SectionCard>
+
+              {metrics.muscleDonut.length > 0 && (
+                <SectionCard
+                  title="Músculos entrenados"
+                  subtitle="Sets · últimos 30 días"
+                  info="Distribución de las series por grupo muscular en los últimos 30 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad)."
+                >
+                  <MuscleDonut data={metrics.muscleDonut} />
+                </SectionCard>
+              )}
+
+              {metrics.prs.length > 0 && (
+                <SectionCard
+                  title="Récords (1RM estimado)"
+                  info={
+                    <>
+                      Mejor 1RM estimado por ejercicio, con la fórmula de Epley
+                      (peso × (1 + reps/30)). Es un dato de fuerza estable, no un
+                      indicador de avance: para ver progreso mirá la tendencia de
+                      1RM de tu objetivo. Precisión de las fórmulas: <Ref id="3" />
+                      .
+                    </>
+                  }
+                >
+                  <ul className="flex flex-col gap-2">
+                    {metrics.prs.map(([exId, pr]) => (
+                      <li
+                        key={exId}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="min-w-0 mr-2">
+                          <span className="block truncate">
+                            {exMap.get(exId)?.name ?? "—"}
+                          </span>
+                          <span className="block text-xs text-muted">
+                            {formatDateTime(pr.date)}
+                          </span>
+                        </span>
+                        <span className="text-accent font-medium shrink-0">
+                          {pr.orm} kg
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </SectionCard>
+              )}
+            </div>
+          )}
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setHistoryOpen((v) => !v)}
+              className="flex items-center justify-between w-full mb-2"
+              aria-expanded={historyOpen}
+            >
               <p className="text-sm font-medium">Historial</p>
-              <span className="text-xs text-muted">{data.length} entrenos</span>
-            </div>
+              <span className="flex items-center gap-2 text-xs text-muted">
+                {data.length} entrenos
+                <ChevronDown
+                  className={clsx(
+                    "size-4 transition-transform",
+                    historyOpen && "rotate-180",
+                  )}
+                />
+              </span>
+            </button>
+            {historyOpen && (
+              <>
             {historyGroups.map((g) => (
               <div key={g.key}>
                 <p className="text-[11px] text-muted uppercase tracking-wide mt-3 mb-1.5 capitalize">
@@ -1023,6 +1046,8 @@ export default function RegistroPage() {
               >
                 Ver todos ({data.length})
               </Button>
+            )}
+              </>
             )}
           </div>
         </div>
