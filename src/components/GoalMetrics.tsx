@@ -396,8 +396,12 @@ function RecencyCard({
       info={
         <>
           Filtro de recuperación: cuántos días pasaron desde que entrenaste cada
-          músculo. Con volumen igualado, la frecuencia por sí sola casi no
-          cambia la hipertrofia — esto es para gestionar recuperación. <Ref id="11" />{" "}
+          músculo. Un músculo cuenta como entrenado ese día si acumuló ≥2 sets
+          efectivos, contando el trabajo compuesto (primario = 1 set, secundario
+          = 0,5 c/u) — así el tríceps en un press cuenta, pero la participación
+          incidental no.{"\n\n"}
+          Con volumen igualado, la frecuencia por sí sola casi no cambia la
+          hipertrofia — esto es para gestionar recuperación. <Ref id="11" />{" "}
           <Ref id="12" />
         </>
       }

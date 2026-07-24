@@ -37,6 +37,28 @@ function ms(s: HistorySession): number {
   return new Date(sessionDate(s)).getTime();
 }
 
+/** Sets efectivos por músculo en una sesión: primario = 1, secundario = 0,5 c/u
+ *  (convención estándar, sin repartir el 0,5 entre secundarios). */
+function sessionMuscleSets(
+  s: HistorySession,
+  exMap: Map<string, Exercise>,
+): Map<string, number> {
+  const per = new Map<string, number>();
+  for (const we of s.workout_exercises) {
+    const ex = exMap.get(we.exercise_id);
+    if (!ex) continue;
+    const n = we.workout_sets.filter(isCountableSet).length;
+    if (!n) continue;
+    for (const m of ex.primary_muscles) per.set(m, (per.get(m) ?? 0) + n);
+    for (const m of ex.secondary_muscles) per.set(m, (per.get(m) ?? 0) + n * 0.5);
+  }
+  return per;
+}
+
+/** Umbral de sets efectivos para considerar un músculo "entrenado" ese día
+ *  (ignora participación mínima/incidental). */
+const RECOVERY_MIN_SETS = 2;
+
 // ── Fuerza / Hipertrofia: e1RM por ejercicio ────────────────────────────────
 
 export interface ExerciseSeries {
@@ -296,13 +318,11 @@ export function daysSinceLastByMuscle(
   const last = new Map<string, number>();
   for (const s of sessions) {
     const t = ms(s);
-    for (const we of s.workout_exercises) {
-      const ex = exMap.get(we.exercise_id);
-      if (!ex || !we.workout_sets.some(isCountableSet)) continue;
-      // Cuenta primarios y secundarios: un músculo exigido de forma compuesta
-      // (ej. tríceps en un press) igual se fatigó y cuenta para recuperación.
-      for (const m of [...ex.primary_muscles, ...ex.secondary_muscles])
-        last.set(m, Math.max(last.get(m) ?? 0, t));
+    // Cuenta el músculo (primario o secundario) solo si superó el umbral de
+    // sets efectivos ese día — así el trabajo compuesto real cuenta, pero la
+    // participación incidental no.
+    for (const [m, sets] of sessionMuscleSets(s, exMap)) {
+      if (sets >= RECOVERY_MIN_SETS) last.set(m, Math.max(last.get(m) ?? 0, t));
     }
   }
   const now = Date.now();
@@ -542,12 +562,8 @@ export function readinessByMuscle(
   const lastAt = new Map<string, number>();
   for (const s of sessions) {
     const t = ms(s);
-    for (const we of s.workout_exercises) {
-      const ex = exMap.get(we.exercise_id);
-      if (!ex || !we.workout_sets.some(isCountableSet)) continue;
-      // Primarios + secundarios (participación compuesta cuenta para recuperación).
-      for (const mu of [...ex.primary_muscles, ...ex.secondary_muscles])
-        lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
+    for (const [mu, sets] of sessionMuscleSets(s, exMap)) {
+      if (sets >= RECOVERY_MIN_SETS) lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
     }
   }
   const cutoff = now - 7 * DAY;
