@@ -244,10 +244,23 @@ export default function WorkoutPage() {
             key={session.body_weight_kg ?? lastBw ?? "bw"}
             defaultValue={session.body_weight_kg ?? lastBw ?? ""}
             placeholder="opcional"
-            onBlur={(e) => {
+            onBlur={async (e) => {
               const v = e.target.value === "" ? null : Number(e.target.value);
-              if (v !== session.body_weight_kg)
-                m.updateSession.mutate({ body_weight_kg: v });
+              if (v === session.body_weight_kg) return;
+              m.updateSession.mutate({ body_weight_kg: v });
+              // Peso corporal es uno solo: sincroniza el "peso actual" del perfil.
+              if (v != null) {
+                const supabase = createClient();
+                const {
+                  data: { user },
+                } = await supabase.auth.getUser();
+                if (user)
+                  await supabase
+                    .from("profiles")
+                    .update({ weight_kg: v })
+                    .eq("id", user.id);
+                qc.invalidateQueries({ queryKey: ["last-bodyweight"] });
+              }
             }}
             className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
           />

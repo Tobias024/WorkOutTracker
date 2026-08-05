@@ -14,13 +14,9 @@ export function useSleep() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return [];
-      const since = new Date(Date.now() - 30 * 86400000)
-        .toISOString()
-        .slice(0, 10);
       const { data } = await supabase
         .from("sleep_logs")
         .select("*")
-        .gte("slept_on", since)
         .order("slept_on", { ascending: true });
       return data ?? [];
     },

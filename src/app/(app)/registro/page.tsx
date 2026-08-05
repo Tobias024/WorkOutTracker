@@ -31,6 +31,7 @@ import { useHistory, type HistorySession } from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useAchievements } from "@/hooks/useAchievements";
 import { useDeleteSession } from "@/hooks/useWorkout";
+import { useSleep, useMeasurements } from "@/hooks/useBodyData";
 import { useToday } from "@/hooks/useToday";
 import {
   useWeeklyPlan,
@@ -172,6 +173,8 @@ export default function RegistroPage() {
   const { data: achievements } = useAchievements();
   const { data: goal } = useGoal();
   const deleteSession = useDeleteSession();
+  const { data: sleepLogs } = useSleep();
+  const { data: measurements } = useMeasurements();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
@@ -501,13 +504,69 @@ export default function RegistroPage() {
       if (to && d > to) return false;
       return true;
     });
-    // Hoja 1: series (según el período elegido). Hoja 2: tus métricas actuales.
     const seriesRows = buildSessionsRows(sessions, exMap);
     const metricRows = buildMetricsSheet();
+
+    // Hoja "Sesiones": una fila por sesión (tiempos + peso corporal + resumen).
+    const sessionRows: SheetCell[][] = [
+      [
+        "fecha",
+        "inicio",
+        "fin",
+        "duracion_min",
+        "peso_corporal_kg",
+        "series_efectivas",
+        "volumen_kg",
+      ],
+      ...sessions.map((s): SheetCell[] => {
+        const hard = s.workout_exercises
+          .flatMap((we) => we.workout_sets)
+          .filter(isHardSet).length;
+        return [
+          dateKey(sessionDate(s)),
+          s.started_at ?? "",
+          s.ended_at ?? "",
+          s.duration_seconds != null ? Math.round(s.duration_seconds / 60) : "",
+          s.body_weight_kg ?? "",
+          hard,
+          Math.round(sessionVolume(s)),
+        ];
+      }),
+    ];
+
+    const inRange = (iso: string) => {
+      const d = new Date(iso);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    };
+    const sleepRows: SheetCell[][] = [
+      ["fecha", "horas"],
+      ...(sleepLogs ?? [])
+        .filter((r) => inRange(r.slept_on))
+        .map((r): SheetCell[] => [r.slept_on, r.hours]),
+    ];
+    const measRows: SheetCell[][] = [
+      ["fecha", "brazo_cm", "pecho_cm", "cintura_cm", "muslo_cm", "grasa_pct"],
+      ...(measurements ?? [])
+        .filter((r) => inRange(r.measured_on))
+        .map((r): SheetCell[] => [
+          r.measured_on,
+          r.arm_cm ?? "",
+          r.chest_cm ?? "",
+          r.waist_cm ?? "",
+          r.thigh_cm ?? "",
+          r.bodyfat_pct ?? "",
+        ]),
+    ];
+
     setExportOpen(false);
     try {
       await downloadWorkbook(`wolf-${tag}.xlsx`, [
         { name: "Series", rows: seriesRows },
+        { name: "Sesiones", rows: sessionRows },
+        { name: "Sueño", rows: sleepRows },
+        { name: "Medidas", rows: measRows },
         { name: "Métricas", rows: metricRows },
       ]);
     } catch (e) {
