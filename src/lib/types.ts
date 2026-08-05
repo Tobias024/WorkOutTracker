@@ -109,8 +109,10 @@ export type WorkoutSet = {
   comment: string | null;
   is_warmup: boolean;
   completed: boolean;
-  /** Timestamp de cuándo se completó (trigger). Para el descanso entre series. */
+  /** Timestamp de cuándo se completó (trigger). */
   completed_at: string | null;
+  /** Descanso tomado tras esta serie (segundos), medido con el cronómetro. */
+  rest_seconds: number | null;
   /** Bajadas de peso sin descanso dentro de la misma serie. null = serie simple (usar reps/weight). */
   drops: SetDrop[] | null;
 };

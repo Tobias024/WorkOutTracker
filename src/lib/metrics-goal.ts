@@ -594,13 +594,10 @@ export function readinessByMuscle(
 }
 
 /**
- * Descanso medio entre series (segundos), estimado. Sólo tenemos la marca de
- * FIN de cada serie (completed_at), no la de inicio: el hueco entre dos fines
- * = descanso + tiempo de ejecución de la 2ª serie. Restamos una estimación de
- * la ejecución (reps × ~3 s) para aproximar el descanso real. Sólo gaps del
- * mismo ejercicio; se ignoran los <10 s (auto-completado) y los > cap.
+ * Descanso medio entre series (segundos), MEDIDO: promedia el `rest_seconds`
+ * que guarda el cronómetro de descanso por serie. Se ignoran nulos y outliers
+ * (> cap minutos).
  */
-const TEMPO_S = 3; // segundos por rep asumidos para la ejecución de la serie
 export function avgRestBetweenSets(
   sessions: HistorySession[],
   maxMin = 10,
@@ -610,19 +607,10 @@ export function avgRestBetweenSets(
   const capS = maxMin * 60;
   for (const s of sessions) {
     for (const we of s.workout_exercises) {
-      const pairs = we.workout_sets
-        .filter((x) => x.completed && x.completed_at)
-        .map((x) => ({
-          t: new Date(x.completed_at as string).getTime(),
-          reps: x.reps ?? 0,
-        }))
-        .sort((a, b) => a.t - b.t);
-      for (let i = 1; i < pairs.length; i++) {
-        const gapS = (pairs[i].t - pairs[i - 1].t) / 1000;
-        if (gapS < 10 || gapS > capS) continue; // batch / outlier
-        // Descanso = hueco − ejecución estimada de la serie que se hizo en el medio.
-        const rest = Math.max(0, gapS - pairs[i].reps * TEMPO_S);
-        sum += rest;
+      for (const set of we.workout_sets) {
+        const r = set.rest_seconds;
+        if (r == null || r <= 0 || r > capS) continue;
+        sum += r;
         n++;
       }
     }

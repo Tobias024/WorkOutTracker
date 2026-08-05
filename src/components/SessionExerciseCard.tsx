@@ -43,6 +43,7 @@ export function SessionExerciseCard({
   onStartMove,
   onEndMove,
   onMove,
+  onSetCompleted,
 }: {
   we: SessionExercise;
   exercise?: Exercise;
@@ -63,6 +64,8 @@ export function SessionExerciseCard({
   onStartMove?: () => void;
   onEndMove?: () => void;
   onMove?: (dir: "up" | "down") => void;
+  /** El usuario tildó una serie (para arrancar el cronómetro de descanso). */
+  onSetCompleted?: (setId: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [replace, setReplace] = useState(false);
@@ -121,6 +124,8 @@ export function SessionExerciseCard({
   function handleSetChange(set: WorkoutSet, patch: Partial<WorkoutSet>) {
     onUpdateSet(set.id, adopt(set, patch));
     if (!patch.completed) return;
+    // Tildó una serie: arranca el cronómetro de descanso (solo el tick real).
+    onSetCompleted?.(set.id);
     const sorted = [...we.sets].sort((a, b) => a.set_number - b.set_number);
     const isLast = sorted[sorted.length - 1]?.id === set.id;
     if (!isLast) return;

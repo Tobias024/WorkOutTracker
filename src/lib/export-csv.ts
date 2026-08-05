@@ -31,6 +31,7 @@ export function buildSessionsRows(
       "peso_kg",
       "volumen_kg",
       "rir",
+      "descanso_s",
       "completado",
       "duracion_min",
     ],
@@ -59,6 +60,7 @@ export function buildSessionsRows(
             d.weight ?? "",
             vol,
             rir ?? "",
+            set.rest_seconds ?? "",
             set.completed ? "si" : "no",
             durMin,
           ]);

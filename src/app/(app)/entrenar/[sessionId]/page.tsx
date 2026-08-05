@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Flag, Clock } from "lucide-react";
+import { ArrowLeft, Plus, Flag, Clock, Timer } from "lucide-react";
 import { Button, Input, Spinner, Modal } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
@@ -74,6 +74,11 @@ export default function WorkoutPage() {
   const [movingId, setMovingId] = useState<string | null>(null);
   // #1 candado: modal de "Descartar entrenamiento".
   const [discardOpen, setDiscardOpen] = useState(false);
+  // Cronómetro de descanso: serie que arrancó el descanso + tiempo vivo.
+  const [restFor, setRestFor] = useState<{ setId: string; startMs: number } | null>(
+    null,
+  );
+  const [restNow, setRestNow] = useState(0);
 
   const ended = !!data?.session.ended_at;
 
@@ -84,6 +89,18 @@ export default function WorkoutPage() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [ended]);
+
+  // Tiempo vivo del cronómetro de descanso.
+  useEffect(() => {
+    if (!restFor) {
+      setRestNow(0);
+      return;
+    }
+    const tick = () => setRestNow(Math.round((Date.now() - restFor.startMs) / 1000));
+    tick();
+    const t = setInterval(tick, 500);
+    return () => clearInterval(t);
+  }, [restFor]);
 
   // En un entrenamiento activo (cargado y sin finalizar) ocultamos la TabBar
   // inferior para aprovechar la pantalla. Al finalizar o salir, reaparece.
@@ -182,6 +199,24 @@ export default function WorkoutPage() {
     await deleteSession.mutateAsync(sessionId);
     setDiscardOpen(false);
     router.replace("/rutinas");
+  }
+
+  // Cronómetro de descanso: guarda el descanso en la serie que lo arrancó.
+  function saveRest(setId: string, sec: number) {
+    if (sec > 0) m.updateSet.mutate({ id: setId, patch: { rest_seconds: sec } });
+  }
+  function onSetCompleted(setId: string) {
+    const t = Date.now();
+    setRestFor((prev) => {
+      if (prev) saveRest(prev.setId, Math.round((t - prev.startMs) / 1000));
+      return { setId, startMs: t };
+    });
+  }
+  function stopRest() {
+    setRestFor((prev) => {
+      if (prev) saveRest(prev.setId, Math.round((Date.now() - prev.startMs) / 1000));
+      return null;
+    });
   }
 
   return (
@@ -325,6 +360,7 @@ export default function WorkoutPage() {
             moveMode={movingId !== null}
             isFirst={i === 0}
             isLast={i === exercises.length - 1}
+            onSetCompleted={ended ? undefined : onSetCompleted}
             onStartMove={() => setMovingId(we.id)}
             onEndMove={() => setMovingId(null)}
             onMove={(dir) => {
@@ -368,6 +404,25 @@ export default function WorkoutPage() {
       >
         <Plus className="size-4" /> Agregar ejercicio
       </Button>
+
+      {restFor && !ended && (
+        <div className="fixed inset-x-0 bottom-20 px-4 z-40">
+          <div className="mx-auto max-w-2xl">
+            <div className="card flex items-center gap-3 p-3 shadow-lg ring-1 ring-primary/40">
+              <Timer className="size-5 text-primary shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted">Descanso</p>
+                <p className="font-mono text-lg tabular-nums leading-none">
+                  {formatClock(restNow)}
+                </p>
+              </div>
+              <Button size="sm" onClick={stopRest}>
+                Detener
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={`fixed inset-x-0 px-4 ${ended ? "bottom-20" : "bottom-4"}`}>
         <div className="mx-auto max-w-2xl">

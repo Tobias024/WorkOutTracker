@@ -95,6 +95,7 @@ export function useSessionMutations(sessionId: string) {
         is_warmup: false,
         completed: false,
         completed_at: null,
+        rest_seconds: null,
         drops: null,
       };
       return optimistic((s) => ({

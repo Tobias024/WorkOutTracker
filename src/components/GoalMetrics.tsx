@@ -589,12 +589,9 @@ function RestCard({ avgSec, band }: { avgSec: number; band: string }) {
       subtitle={`Objetivo ${band}`}
       info={
         <>
-          Estimado. Sólo se guarda la marca de <span className="text-fg">fin</span>{" "}
-          de cada serie, así que el hueco entre dos series incluye el descanso{" "}
-          <span className="text-fg">más</span> el tiempo de hacer la serie; le
-          restamos una estimación de la ejecución (reps × ~3 s) para aproximar
-          el descanso real. Es aproximado, y para que sirva conviene tildar cada
-          serie cuando la terminás (no todas juntas al final). <Ref id="5" />
+          Medido con el cronómetro de descanso: arranca cuando tildás una serie
+          y se detiene cuando empezás la siguiente. Promedia el descanso real de
+          tus series (se ignoran huecos &gt; 10 min). <Ref id="5" />
         </>
       }
     >
