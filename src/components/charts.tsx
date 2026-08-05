@@ -9,17 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import { clsx } from "@/lib/clsx";
-
-const AXIS = "#9c9a92";
-const GOLD = "#cda548";
-const SERIES_COLORS = ["#cda548", "#7bb0d1", "#8fbf7b", "#d19a6f"];
-const TIP = {
-  background: "#1c1c1a",
-  border: "1px solid #2e2c27",
-  borderRadius: 8,
-  color: "#f2f1ed",
-  fontSize: 12,
-};
+import { useChartColors } from "@/lib/chart-theme";
 
 export interface LinePoint {
   label: string;
@@ -38,6 +28,7 @@ export function MiniLine({
   height?: number;
   unit?: string;
 }) {
+  const c = useChartColors();
   const merged = data.map((d, i) => ({
     label: d.label,
     value: d.value,
@@ -48,35 +39,35 @@ export function MiniLine({
       <LineChart data={merged} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
         <XAxis
           dataKey="label"
-          stroke={AXIS}
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
           minTickGap={22}
         />
         <YAxis
-          stroke={AXIS}
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
           width={40}
         />
         <Tooltip
-          contentStyle={TIP}
-          labelStyle={{ color: AXIS }}
+          contentStyle={c.tip}
+          labelStyle={{ color: c.tipLabel }}
           formatter={(v) => [`${v}${unit ? ` ${unit}` : ""}`, ""]}
         />
         {faint && (
           <Line
             type="monotone"
             dataKey="faint"
-            stroke={AXIS}
+            stroke={c.axis}
             strokeWidth={1}
             dot={false}
             opacity={0.35}
           />
         )}
-        <Line type="monotone" dataKey="value" stroke={GOLD} strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="value" stroke={c.primary} strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -97,6 +88,7 @@ export function MultiLine({
   height?: number;
   unit?: string;
 }) {
+  const c = useChartColors();
   const labelSet = new Map<string, number>();
   for (const s of series)
     for (const p of s.points) labelSet.set(p.label, labelKey(p.label));
@@ -115,22 +107,22 @@ export function MultiLine({
       <LineChart data={rows} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
         <XAxis
           dataKey="label"
-          stroke={AXIS}
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
           minTickGap={22}
         />
         <YAxis
-          stroke={AXIS}
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
           width={40}
         />
         <Tooltip
-          contentStyle={TIP}
-          labelStyle={{ color: AXIS }}
+          contentStyle={c.tip}
+          labelStyle={{ color: c.tipLabel }}
           formatter={(v, _n, p) => [
             `${v}${unit ? ` ${unit}` : ""}`,
             (p as { name?: string })?.name ?? "",
@@ -142,7 +134,7 @@ export function MultiLine({
             type="monotone"
             dataKey={"s" + i}
             name={s.name}
-            stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+            stroke={c.series[i % c.series.length]}
             strokeWidth={2}
             dot={false}
             connectNulls
@@ -155,10 +147,11 @@ export function MultiLine({
 
 /** Sparkline mínima (sin ejes), para grillas de muchos ejercicios. */
 export function Sparkline({ data, height = 34 }: { data: LinePoint[]; height?: number }) {
+  const c = useChartColors();
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 3, right: 2, left: 2, bottom: 3 }}>
-        <Line type="monotone" dataKey="value" stroke={GOLD} strokeWidth={1.5} dot={false} />
+        <Line type="monotone" dataKey="value" stroke={c.primary} strokeWidth={1.5} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );

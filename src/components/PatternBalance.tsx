@@ -1,5 +1,7 @@
 "use client";
 
+import { useChartColors } from "@/lib/chart-theme";
+
 export interface BalanceData {
   push: number;
   pull: number;
@@ -59,6 +61,7 @@ function SplitBar({
 
 /** Balance de patrones: empuje/tirón (de `force`) y compuesto/aislamiento (de `mechanic`). */
 export function PatternBalance({ data }: { data: BalanceData }) {
+  const c = useChartColors();
   const noData =
     data.push + data.pull === 0 && data.compound + data.isolation === 0;
   if (noData) {
@@ -75,8 +78,8 @@ export function PatternBalance({ data }: { data: BalanceData }) {
         rightLabel="Tirón"
         a={data.push}
         b={data.pull}
-        leftColor="#e8c468"
-        rightColor="#cda548"
+        leftColor={c.accent}
+        rightColor={c.primary}
         note={ratioLabel(data.push, data.pull)}
       />
       <SplitBar
@@ -84,8 +87,8 @@ export function PatternBalance({ data }: { data: BalanceData }) {
         rightLabel="Aislamiento"
         a={data.compound}
         b={data.isolation}
-        leftColor="#e8c468"
-        rightColor="#3a3833"
+        leftColor={c.accent}
+        rightColor={c.neutral}
         note={ratioLabel(data.compound, data.isolation)}
       />
     </div>

@@ -135,6 +135,12 @@ function LoginForm() {
           <div className="text-center">
             <h1 className="text-2xl font-bold tracking-wide">WOLF</h1>
             <p className="text-sm text-muted mt-1">
+              <span className="text-primary font-semibold">W</span>ork
+              <span className="text-primary font-semibold">O</span>ut,{" "}
+              <span className="text-primary font-semibold">L</span>ogs &amp;{" "}
+              <span className="text-primary font-semibold">F</span>riends
+            </p>
+            <p className="text-xs text-muted mt-1">
               Rutinas, registro y ranking con amigos.
             </p>
           </div>

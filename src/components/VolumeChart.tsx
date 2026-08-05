@@ -8,6 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useChartColors } from "@/lib/chart-theme";
 
 export interface ChartPoint {
   label: string;
@@ -15,24 +16,25 @@ export interface ChartPoint {
 }
 
 export function VolumeChart({ data }: { data: ChartPoint[] }) {
+  const c = useChartColors();
   return (
     <ResponsiveContainer width="100%" height={180}>
       <AreaChart data={data} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
         <defs>
           <linearGradient id="vol" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#cda548" stopOpacity={0.45} />
-            <stop offset="100%" stopColor="#cda548" stopOpacity={0} />
+            <stop offset="0%" stopColor={c.primary} stopOpacity={0.45} />
+            <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
           </linearGradient>
         </defs>
         <XAxis
           dataKey="label"
-          stroke="#9c9a92"
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
-          stroke="#9c9a92"
+          stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
@@ -40,20 +42,14 @@ export function VolumeChart({ data }: { data: ChartPoint[] }) {
           tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
         />
         <Tooltip
-          contentStyle={{
-            background: "#1c1c1a",
-            border: "1px solid #2e2c27",
-            borderRadius: 8,
-            color: "#f2f1ed",
-            fontSize: 12,
-          }}
-          labelStyle={{ color: "#9c9a92" }}
+          contentStyle={c.tip}
+          labelStyle={{ color: c.tipLabel }}
           formatter={(value) => [`${Math.round(Number(value))} kg`, "Volumen"]}
         />
         <Area
           type="monotone"
           dataKey="value"
-          stroke="#cda548"
+          stroke={c.primary}
           strokeWidth={2}
           fill="url(#vol)"
         />

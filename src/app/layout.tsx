@@ -30,7 +30,20 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es" className={`${archivo.variable} antialiased`}>
+    <html
+      lang="es"
+      className={`${archivo.variable} antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Aplica la paleta elegida (localStorage) antes del primer paint,
+            para evitar el flash del tema oscuro al recargar. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("wot-theme")==="girly"){document.documentElement.dataset.theme="girly";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#f6ebe1")}}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-dvh">
         <Providers>{children}</Providers>
       </body>

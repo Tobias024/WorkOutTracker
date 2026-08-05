@@ -1,6 +1,7 @@
 "use client";
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { useChartColors } from "@/lib/chart-theme";
 
 export interface MusclePoint {
   label: string;
@@ -24,6 +25,7 @@ const MAX_SLICES = 7;
 /** Donut categórico de distribución (ej. sets por músculo). Colores por identidad
  *  en orden fijo; el 8°+ se pliega en "Otros". Leyenda siempre presente. */
 export function MuscleDonut({ data }: { data: MusclePoint[] }) {
+  const c = useChartColors();
   const sorted = [...data].sort((a, b) => b.value - a.value);
   const head = sorted.slice(0, MAX_SLICES);
   const tail = sorted.slice(MAX_SLICES);
@@ -60,13 +62,7 @@ export function MuscleDonut({ data }: { data: MusclePoint[] }) {
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{
-                background: "#1c1c1a",
-                border: "1px solid #2e2c27",
-                borderRadius: 8,
-                color: "#f2f1ed",
-                fontSize: 12,
-              }}
+              contentStyle={c.tip}
               formatter={(value, name) => {
                 const v = Number(value);
                 return [

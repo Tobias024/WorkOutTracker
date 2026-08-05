@@ -24,6 +24,26 @@
   color-scheme: dark;
 }
 
+/* Tema "Floral" (girly): paleta cálida clara. Al ser tokens `--color-*`,
+   Tailwind v4 los lee en runtime, así que overridearlos acá reflekta a toda
+   la app (fondos, .card, bordes, botones, inputs, heatmap) automáticamente.
+   Los gráficos recharts usan hex fijos y se adaptan aparte (chart-theme.ts). */
+:root[data-theme="girly"] {
+  color-scheme: light;
+  --color-bg: #f6ebe1; /* crema cálida (fondo) */
+  --color-surface: #fdf6f0; /* tarjeta crema clara */
+  --color-surface-2: #f3e0da; /* inset rosa empolvado */
+  --color-border: #e6c9c6; /* borde malva suave */
+  --color-fg: #4a2b39; /* texto ciruela/borgoña */
+  --color-muted: #9a6f79; /* malva apagado */
+  --color-primary: #b25c7d; /* rosa/malva principal */
+  --color-primary-fg: #fff7fb; /* texto sobre primary */
+  --color-success: #4a9db0; /* teal (colorblind-friendly) */
+  --color-accent: #d98c6a; /* durazno/terracota */
+  --color-danger: #d1495b; /* rojo rosado */
+  --color-warning: #cf8a3c; /* ámbar/terracota */
+}
+
 * {
   border-color: var(--color-border);
 }

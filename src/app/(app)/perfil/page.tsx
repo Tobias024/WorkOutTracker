@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Dumbbell, TrendingUp, Timer, TrendingDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Spinner } from "@/components/ui";
+import { Button, Input, Spinner, Tabs } from "@/components/ui";
 import { bmi, bmiCategory, dateKey } from "@/lib/metrics";
 import { useAddMeasurement } from "@/hooks/useBodyData";
+import { useTheme, type Theme } from "@/hooks/useTheme";
 import { clsx } from "@/lib/clsx";
 import type { Sex, Goal } from "@/lib/types";
 
@@ -199,6 +200,31 @@ export default function PerfilPage() {
       </form>
 
       <MeasurementsForm />
+
+      <ThemeSection />
+    </div>
+  );
+}
+
+/** Preferencia de paleta (local, por dispositivo). No pasa por Supabase. */
+function ThemeSection() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <div className="card p-6 flex flex-col gap-3 mt-4">
+      <div>
+        <h2 className="font-semibold">Apariencia</h2>
+        <p className="text-xs text-muted mt-0.5">
+          Elegí la paleta de colores. Se guarda en este dispositivo.
+        </p>
+      </div>
+      <Tabs<Theme>
+        value={theme}
+        onChange={setTheme}
+        options={[
+          { value: "classic", label: "Clásico" },
+          { value: "girly", label: "Floral 🌺" },
+        ]}
+      />
     </div>
   );
 }
