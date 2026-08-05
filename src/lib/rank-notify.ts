@@ -32,11 +32,21 @@ export async function runRankCheck(): Promise<{
       .select("*")
       .eq("user_id", o.user_id);
 
-    const payload = JSON.stringify({
-      title: "Te pasaron en el ranking 🏋️",
-      body: `${o.by_name ?? "Alguien"} te superó en volumen esta semana. ¡A recuperar el puesto!`,
-      url: "/scoreboard",
-    });
+    const payload = JSON.stringify(
+      o.kind === "gained"
+        ? {
+            title: "¡Subiste en el ranking! 💪",
+            body: `Estás ${o.new_rank}º en series esta semana${
+              o.other_name ? ` — pasaste a ${o.other_name}` : ""
+            }.`,
+            url: "/scoreboard",
+          }
+        : {
+            title: "Te pasaron en el ranking 🏋️",
+            body: `${o.other_name ?? "Alguien"} te superó en series esta semana. ¡A recuperar el puesto!`,
+            url: "/scoreboard",
+          },
+    );
 
     for (const s of subs ?? []) {
       try {

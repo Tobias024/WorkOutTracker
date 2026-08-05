@@ -169,9 +169,15 @@ export default function WorkoutPage() {
     // Ya no es una sesión activa: soltamos el candado (ActiveSessionGuard) sin
     // esperar un refetch, para no rebotar al navegar a /registro.
     qc.setQueryData(["active-session"], null);
-    // Recién ahora cambió el volumen: avisamos si superaste a algún amigo en el
-    // ranking. Fire-and-forget: no bloquea la navegación ni importa si falla.
-    fetch("/api/rank/notify", { method: "POST" }).catch(() => {});
+    // Recién ahora cambió el ranking: dispara los avisos (subiste / te pasaron).
+    // Fire-and-forget, pero logueamos el resultado/errores (antes se tragaban).
+    fetch("/api/rank/notify", { method: "POST" })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) console.warn("rank/notify falló:", j);
+        else console.info("rank/notify:", j);
+      })
+      .catch((e) => console.warn("rank/notify error:", e));
 
     // Logros: registra PRs/hitos de la sesión. Si hubo PR de e1RM, muestra el
     // modal de celebración antes de volver (la navegación ocurre al cerrarlo).

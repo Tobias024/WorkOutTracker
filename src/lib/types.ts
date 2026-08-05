@@ -299,7 +299,13 @@ export type Database = {
       };
       detect_rank_overtakes: {
         Args: Record<string, never>;
-        Returns: { user_id: string; by_name: string | null; by_id: string }[];
+        Returns: {
+          user_id: string;
+          kind: "overtaken" | "gained";
+          other_name: string | null;
+          other_id: string | null;
+          new_rank: number;
+        }[];
       };
       friend_metrics: {
         Args: { p_friend_id: string; p_since: string };
