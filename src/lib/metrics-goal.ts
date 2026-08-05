@@ -496,12 +496,19 @@ function labelFromDate(iso: string): string {
   return `${d}/${m}`;
 }
 
-/** Sueño de los últimos `days` días (barras) + promedio. */
+/** Sueño de los últimos `days` días de calendario (barras) + promedio. */
 export function sleepSeries(
   rows: SleepLog[],
   days = 14,
 ): { points: Pt[]; avg: number | null } {
-  const recent = rows.slice(-days);
+  // Ventana real por FECHA (no las últimas N filas): así el conteo coincide con
+  // lo registrado en las 2 semanas y no arrastra logs viejos del historial.
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+  const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+  // rows viene ordenado asc por slept_on ("YYYY-MM-DD" → comparación lexicográfica ok).
+  const recent = rows.filter((r) => r.slept_on >= cutoffKey);
   const points = recent.map((r) => ({
     label: labelFromDate(r.slept_on),
     value: r.hours,
