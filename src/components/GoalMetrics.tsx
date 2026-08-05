@@ -86,7 +86,6 @@ export function GoalMetrics({
       cards.push(<RestCard avgSec={m.rest.avgSec} band="2-5 min" />);
   } else if (goal === "hipertrofia") {
     if (m.rirBuckets.length) cards.push(<RirBucketsCard rows={m.rirBuckets} />);
-    if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
     if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
     if (m.measS.length) cards.push(<MeasurementsCard series={m.measS} />);
   } else if (goal === "resistencia") {
@@ -348,7 +347,7 @@ function RirBucketsCard({
   );
 }
 
-function SparklineGridCard({
+export function SparklineGridCard({
   series,
 }: {
   series: ReturnType<typeof e1rmSeriesByExercise>;
@@ -534,7 +533,10 @@ function SleepCard({ s }: { s: ReturnType<typeof sleepSeries> }) {
             style={{ bottom: `${(7 / max) * 100}%` }}
           />
           {s.points.map((p, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center justify-end">
+            <div
+              key={i}
+              className="flex-1 h-full flex flex-col items-center justify-end"
+            >
               <div
                 className="w-full rounded-t bg-primary/70"
                 style={{ height: `${(p.value / max) * 100}%` }}

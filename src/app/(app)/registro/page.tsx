@@ -10,6 +10,7 @@ import {
   Trophy,
   Flame,
   Trash2,
+  UserCog,
 } from "lucide-react";
 import {
   PageHeader,
@@ -63,7 +64,8 @@ import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/
 import { muscleEs } from "@/lib/i18n-exercise";
 import { PaperLink, Ref } from "@/components/PaperLink";
 import { useGoal } from "@/hooks/useGoal";
-import { GoalMetrics } from "@/components/GoalMetrics";
+import { GoalMetrics, SparklineGridCard } from "@/components/GoalMetrics";
+import { e1rmSeriesByExercise } from "@/lib/metrics-goal";
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise } from "@/lib/types";
 
@@ -370,6 +372,7 @@ export default function RegistroPage() {
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
       favoriteMuscle,
+      sparklines: e1rmSeriesByExercise(sessions, exMap, 12).slice(0, 12),
     };
     // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -632,16 +635,23 @@ export default function RegistroPage() {
         title="Registro"
         subtitle="Tu progreso y métricas"
         action={
-          !!data?.length && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setExportOpen(true)}
-              aria-label="Exportar Excel"
-            >
-              <Download className="size-4" />
-            </Button>
-          )
+          <div className="flex items-center gap-1">
+            <Link href="/perfil" aria-label="Mi perfil">
+              <Button size="sm" variant="ghost">
+                <UserCog className="size-4" />
+              </Button>
+            </Link>
+            {!!data?.length && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setExportOpen(true)}
+                aria-label="Exportar Excel"
+              >
+                <Download className="size-4" />
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -975,6 +985,10 @@ export default function RegistroPage() {
                     ))}
                   </ul>
                 </SectionCard>
+              )}
+
+              {metrics.sparklines.length > 0 && (
+                <SparklineGridCard series={metrics.sparklines} />
               )}
             </div>
           )}
