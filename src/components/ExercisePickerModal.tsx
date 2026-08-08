@@ -7,7 +7,7 @@ import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
 import { sessionDate } from "@/lib/metrics";
-import { MUSCLES_ES, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { MUSCLES_ES, MUSCLE_FILTERS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
 
 export function ExercisePickerModal({
@@ -67,7 +67,7 @@ export function ExercisePickerModal({
           onChange={setMuscle}
           options={[
             { value: "", label: "Todos" },
-            ...Object.keys(MUSCLES_ES).map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+            ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
           ]}
         />
 

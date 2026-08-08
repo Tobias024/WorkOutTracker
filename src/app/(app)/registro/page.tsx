@@ -55,6 +55,7 @@ import {
   isCountableSet,
   isHardSet,
   muscleContributions,
+  baseToGroup,
   landmarkFor,
   weeklyMetricStats,
   type PlanResolver,
@@ -264,10 +265,13 @@ export default function RegistroPage() {
       if (new Date(sessionDate(s)) < cutoff) continue;
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
-        const m = ex?.primary_muscles[0];
-        if (!m) continue;
+        if (!ex) continue;
+        const m0 = ex.primary_muscles[0];
+        if (!m0) continue;
+        // Split de deltoides también en el donut: shoulders → cabeza concreta.
+        const g = baseToGroup(m0, ex, "primary");
         const done = we.workout_sets.filter(isCountableSet).length;
-        muscleSets30.set(m, (muscleSets30.get(m) ?? 0) + done);
+        muscleSets30.set(g, (muscleSets30.get(g) ?? 0) + done);
       }
     }
     const muscleDonut: MusclePoint[] = [...muscleSets30.entries()].map(

@@ -9,6 +9,7 @@ import {
   landmarkFor,
   rirOf,
   muscleContributions,
+  baseToGroup,
 } from "@/lib/metrics";
 
 // Helpers de métricas por objetivo (Fase 2). Todo se calcula desde el historial;
@@ -49,8 +50,15 @@ function sessionMuscleSets(
     if (!ex) continue;
     const n = we.workout_sets.filter(isCountableSet).length;
     if (!n) continue;
-    for (const m of ex.primary_muscles) per.set(m, (per.get(m) ?? 0) + n);
-    for (const m of ex.secondary_muscles) per.set(m, (per.get(m) ?? 0) + n * 0.5);
+    // Split de deltoides también acá (recovery): shoulders → cabeza concreta.
+    for (const m of ex.primary_muscles) {
+      const g = baseToGroup(m, ex, "primary");
+      per.set(g, (per.get(g) ?? 0) + n);
+    }
+    for (const m of ex.secondary_muscles) {
+      const g = baseToGroup(m, ex, "secondary");
+      per.set(g, (per.get(g) ?? 0) + n * 0.5);
+    }
   }
   return per;
 }
@@ -593,7 +601,8 @@ export function readinessByMuscle(
     const days = Math.floor((now - t) / DAY);
     const mev = landmarkFor(mu).mev;
     const sets = hard.get(mu) ?? 0;
-    const lag = Math.max(0, Math.min(1, (mev - sets) / mev));
+    // MEV 0 (ej. deltoide anterior, que se nutre de los press) → sin déficit.
+    const lag = mev > 0 ? Math.max(0, Math.min(1, (mev - sets) / mev)) : 0;
     const recovery = Math.min(1, days / 3);
     out.push({ muscle: mu, days, lag, score: recovery * 0.6 + lag * 0.4 });
   }

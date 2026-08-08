@@ -5,7 +5,7 @@ import { Search } from "lucide-react";
 import { PageHeader, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
-import { MUSCLES_ES, equipmentEs, categoryEs } from "@/lib/i18n-exercise";
+import { MUSCLES_ES, MUSCLE_FILTERS, equipmentEs, categoryEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 
@@ -44,7 +44,7 @@ export default function ExercisesPage() {
           onChange={setMuscle}
           options={[
             { value: "", label: "Todos" },
-            ...Object.keys(MUSCLES_ES).map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+            ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
           ]}
         />
       </div>

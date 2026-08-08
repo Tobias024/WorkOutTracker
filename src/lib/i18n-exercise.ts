@@ -17,9 +17,25 @@ export const MUSCLES_ES: Record<string, string> = {
   neck: "Cuello",
   quadriceps: "Cuádriceps",
   shoulders: "Hombros",
+  // Cabezas del deltoides (grupo derivado del split de "shoulders" para métricas).
+  "front delts": "Deltoides anterior",
+  "side delts": "Deltoides lateral",
+  "rear delts": "Deltoides posterior",
   traps: "Trapecios",
   triceps: "Tríceps",
 };
+
+/**
+ * Músculos para los chips de filtro del catálogo: son los valores REALES que
+ * aparecen en `primary_muscles` (incluye "shoulders"). NO incluye las cabezas
+ * de deltoides, que son un grupo DERIVADO para métricas, no un tag de datos —
+ * filtrar por ellas no matchearía ninguna fila.
+ */
+export const MUSCLE_FILTERS: string[] = [
+  "abdominals", "abductors", "adductors", "biceps", "calves", "chest",
+  "forearms", "glutes", "hamstrings", "lats", "lower back", "middle back",
+  "neck", "quadriceps", "shoulders", "traps", "triceps",
+];
 
 export const EQUIPMENT_ES: Record<string, string> = {
   "body only": "Peso corporal",

@@ -38,18 +38,10 @@ export function isHardSet(s: {
   return rir == null || rir <= 3;
 }
 
-/** Reparto fraccional de un set entre músculos: primarios 1.0/n, secundarios 0.5/n. */
-export function muscleContributions(ex: {
-  primary_muscles: string[];
-  secondary_muscles: string[];
-}): { muscle: string; weight: number }[] {
-  const out: { muscle: string; weight: number }[] = [];
-  const prim = ex.primary_muscles ?? [];
-  const sec = ex.secondary_muscles ?? [];
-  for (const m of prim) out.push({ muscle: m, weight: 1 / prim.length });
-  for (const m of sec) out.push({ muscle: m, weight: 0.5 / sec.length });
-  return out;
-}
+// El reparto fraccional por músculo vive ahora en la capa de contribución
+// (overrides por slug + split de deltoides + fallback). Se re-exporta acá para
+// no cambiar los imports existentes.
+export { muscleContributions, baseToGroup } from "./muscle-contributions";
 
 /** Volume landmarks aproximados (sets/semana) por músculo, estilo Schoenfeld/RP. */
 export interface Landmark {
@@ -64,7 +56,10 @@ export const MUSCLE_LANDMARKS: Record<string, Landmark> = {
   "middle back": { mev: 10, mav: 16, mrv: 22 },
   "lower back": { mev: 6, mav: 10, mrv: 16 },
   traps: { mev: 6, mav: 12, mrv: 20 },
-  shoulders: { mev: 8, mav: 18, mrv: 26 },
+  shoulders: { mev: 8, mav: 18, mrv: 26 }, // legacy: el split usa las 3 cabezas
+  "front delts": { mev: 0, mav: 8, mrv: 12 }, // recibe mucho de los press → MEV 0
+  "side delts": { mev: 8, mav: 18, mrv: 26 },
+  "rear delts": { mev: 6, mav: 14, mrv: 20 },
   biceps: { mev: 8, mav: 14, mrv: 20 },
   triceps: { mev: 6, mav: 12, mrv: 18 },
   forearms: { mev: 6, mav: 12, mrv: 16 },
