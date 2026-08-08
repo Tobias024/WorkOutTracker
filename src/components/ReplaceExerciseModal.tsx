@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { Search } from "lucide-react";
-import { Modal, Input, Spinner, Badge } from "@/components/ui";
+import { Modal, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
-import { muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { MUSCLES_ES, MUSCLE_FILTERS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
 
 export function ReplaceExerciseModal({
@@ -25,10 +25,12 @@ export function ReplaceExerciseModal({
 }) {
   const { data, isLoading } = useExercises();
   const [query, setQuery] = useState("");
+  const [muscle, setMuscle] = useState("");
   const [saveForFuture, setSaveForFuture] = useState(false);
 
-  // Prioriza (sin ocultar el resto) las opciones del mismo grupo muscular.
-  const list = filterExercises(data ?? [], query)
+  // Con filtro de músculo activo, acota; sin él, prioriza (sin ocultar el resto)
+  // las opciones del mismo grupo muscular que el ejercicio a reemplazar.
+  const list = filterExercises(data ?? [], query, muscle || undefined)
     .slice()
     .sort((a, b) => {
       const aMatch = a.primary_muscles[0] === currentMuscle ? 0 : 1;
@@ -67,6 +69,16 @@ export function ReplaceExerciseModal({
             className="pl-9"
           />
         </div>
+
+        <Tabs
+          scroll
+          value={muscle}
+          onChange={setMuscle}
+          options={[
+            { value: "", label: "Todos" },
+            ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+          ]}
+        />
 
         {isLoading ? (
           <div className="grid place-items-center py-10">
