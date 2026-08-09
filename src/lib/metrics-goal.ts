@@ -1,5 +1,5 @@
 import type { HistorySession } from "@/hooks/useHistory";
-import type { Exercise, SleepLog, BodyMeasurement } from "@/lib/types";
+import type { Exercise, SleepLog, BodyWeightLog, BodyMeasurement } from "@/lib/types";
 import {
   estimate1RM,
   sessionDate,
@@ -449,16 +449,8 @@ export interface BwSeries {
   last: number | null;
 }
 
-/** Peso corporal: puntos crudos + media móvil de 7 días + tasa %/semana. */
-export function bodyweightSeries(
-  sessions: HistorySession[],
-  days = 120,
-): BwSeries {
-  const cutoff = Date.now() - days * DAY;
-  const raw = sessions
-    .filter((s) => s.body_weight_kg != null && ms(s) >= cutoff)
-    .map((s) => ({ t: ms(s), w: s.body_weight_kg as number }))
-    .sort((a, b) => a.t - b.t);
+/** Media móvil de 7 días + tasa %/semana a partir de puntos {t, w} ordenados. */
+function weightTrendFromRaw(raw: { t: number; w: number }[]): BwSeries {
   if (raw.length === 0)
     return { points: [], ma: [], ratePctPerWeek: null, last: null };
   const points = raw.map((r) => ({ label: weekLabel(r.t), value: r.w }));
@@ -476,6 +468,51 @@ export function bodyweightSeries(
       ? Math.round((((lastp.w - first.w) / first.w) * 100) / spanWeeks * 100) / 100
       : null;
   return { points, ma, ratePctPerWeek, last: lastp.w };
+}
+
+/** Peso corporal (solo sesiones): puntos crudos + media móvil + tasa %/semana. */
+export function bodyweightSeries(
+  sessions: HistorySession[],
+  days = 120,
+): BwSeries {
+  const cutoff = Date.now() - days * DAY;
+  const raw = sessions
+    .filter((s) => s.body_weight_kg != null && ms(s) >= cutoff)
+    .map((s) => ({ t: ms(s), w: s.body_weight_kg as number }))
+    .sort((a, b) => a.t - b.t);
+  return weightTrendFromRaw(raw);
+}
+
+const dayKeyOf = (t: number): string => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/**
+ * Tendencia de peso mergeando los logs diarios (`body_weight_logs`) con el
+ * body_weight_kg de las sesiones. Dedup por día calendario; el log gana sobre
+ * la sesión (es el registro explícito). Así no se pierde la historia previa.
+ */
+export function bodyWeightTrend(
+  logs: BodyWeightLog[],
+  sessions: HistorySession[],
+  days = 120,
+): BwSeries {
+  const cutoff = Date.now() - days * DAY;
+  const byDay = new Map<string, { t: number; w: number }>();
+  for (const s of sessions) {
+    if (s.body_weight_kg == null) continue;
+    const t = ms(s);
+    if (t < cutoff) continue;
+    byDay.set(dayKeyOf(t), { t, w: s.body_weight_kg });
+  }
+  for (const l of logs) {
+    const t = new Date(l.weighed_on + "T12:00:00").getTime();
+    if (t < cutoff) continue;
+    byDay.set(l.weighed_on, { t, w: Number(l.weight_kg) }); // log pisa a la sesión
+  }
+  const raw = [...byDay.values()].sort((a, b) => a.t - b.t);
+  return weightTrendFromRaw(raw);
 }
 
 /** Índice de retención de fuerza: e1RM del ejercicio más frecuente, base=100. */

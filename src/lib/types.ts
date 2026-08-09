@@ -124,6 +124,13 @@ export type SleepLog = {
   created_at: string;
 };
 
+export type BodyWeightLog = {
+  user_id: string;
+  weighed_on: string;
+  weight_kg: number;
+  created_at: string;
+};
+
 export type BodyMeasurement = {
   id: string;
   user_id: string;
@@ -262,6 +269,7 @@ export type Database = {
       exercise_substitutions: Table<ExerciseSubstitution>;
       user_exercise_notes: Table<UserExerciseNote>;
       sleep_logs: Table<SleepLog>;
+      body_weight_logs: Table<BodyWeightLog>;
       body_measurements: Table<BodyMeasurement>;
       friendships: Table<Friendship>;
       invites: Table<Invite>;

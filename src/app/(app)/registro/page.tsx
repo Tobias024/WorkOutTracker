@@ -67,6 +67,7 @@ import { muscleEs } from "@/lib/i18n-exercise";
 import { PaperLink, Ref } from "@/components/PaperLink";
 import { useGoal } from "@/hooks/useGoal";
 import { GoalMetrics, SparklineGridCard } from "@/components/GoalMetrics";
+import { BodyProgress } from "@/components/BodyProgress";
 import { e1rmSeriesByExercise } from "@/lib/metrics-goal";
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise } from "@/lib/types";
@@ -860,6 +861,18 @@ export default function RegistroPage() {
               setPendingToggle({ wkMs: thisWeekMs, weekday })
             }
           />
+
+          {/* Avances corporales (igual para todos los objetivos): registro
+              diario de peso/sueño + medidas. Separado del entrenamiento. */}
+          <div>
+            <h2 className="text-lg font-bold">Avances corporales</h2>
+            <p className="text-xs text-muted mb-3">
+              Peso, sueño y medidas · registralos a diario
+            </p>
+            <BodyProgress sessions={data ?? []} />
+          </div>
+
+          <h2 className="text-lg font-bold pt-1">Entrenamiento</h2>
 
           {/* Portada específica del objetivo (métricas promovidas). */}
           <GoalMetrics goal={goal ?? null} sessions={data ?? []} exMap={exMap} />
