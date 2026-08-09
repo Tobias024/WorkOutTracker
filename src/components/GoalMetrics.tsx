@@ -6,7 +6,7 @@ import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
-import type { Goal, Exercise } from "@/lib/types";
+import type { TrainingProfile, BodyObjective, Exercise } from "@/lib/types";
 import type { HistorySession } from "@/hooks/useHistory";
 import {
   e1rmSeriesByExercise,
@@ -24,15 +24,32 @@ import {
   type Readiness,
 } from "@/lib/metrics-goal";
 
-/** Cards de portada específicas del objetivo. Se calcula todo; el goal elige. */
+/**
+ * Portada de métricas de ENTRENAMIENTO (100% 🏋️), ordenada por PERFIL
+ * (fuerza/hipertrofia/resistencia) + modificador de OBJETIVO corporal (déficit).
+ * Los cards `muscleSetsBar`, `constancia` y `retention` los construye registro y
+ * los pasa como slots cuando el perfil/objetivo los promueve a portada — así no
+ * se duplican en el "fijo abajo".
+ */
 export function GoalMetrics({
-  goal,
+  trainingProfile,
+  bodyObjective,
   sessions,
   exMap,
+  muscleSetsBar,
+  retention,
+  constancia,
 }: {
-  goal: Goal | null;
+  trainingProfile: TrainingProfile | null;
+  bodyObjective: BodyObjective | null;
   sessions: HistorySession[];
   exMap: Map<string, Exercise>;
+  /** Series efectivas por grupo (MEV/MAV/MRV): a portada en Hipertrofia. */
+  muscleSetsBar?: ReactNode;
+  /** Retención de fuerza: a portada cuando el objetivo es déficit. */
+  retention?: ReactNode;
+  /** Constancia (adherencia): a portada cuando el objetivo es déficit. */
+  constancia?: ReactNode;
 }) {
   const m = useMemo(
     () => ({
@@ -45,7 +62,6 @@ export function GoalMetrics({
       reps: repsPerSetWeekly(sessions, 12),
       density: sessionDensityWeekly(sessions, 12),
       maxReps: maxRepsTest(sessions, exMap, 6),
-      retention: strengthRetentionIndex(sessions, exMap, 16),
       rest: avgRestBetweenSets(sessions),
       ready: readinessByMuscle(sessions, exMap),
     }),
@@ -54,11 +70,10 @@ export function GoalMetrics({
 
   const cards: ReactNode[] = [];
 
-  // Base (todos los objetivos): listo para entrenar. El peso/sueño/medidas
-  // viven en "Avances corporales" (BodyProgress), no acá.
+  // Base (todos los perfiles): listo para entrenar.
   if (m.ready.length) cards.push(<ReadyCard rows={m.ready} />);
 
-  if (goal === "fuerza") {
+  if (trainingProfile === "fuerza") {
     if (m.e1rm.length) cards.push(<E1rmTrendCard series={m.e1rm.slice(0, 4)} />);
     if (m.intensity.total) cards.push(<IntensityCard d={m.intensity} />);
     if (m.patterns.some((p) => p.value > 0))
@@ -66,17 +81,24 @@ export function GoalMetrics({
     if (m.heavyRir.length) cards.push(<HeavyRirCard data={m.heavyRir} />);
     if (m.rest.avgSec != null)
       cards.push(<RestCard avgSec={m.rest.avgSec} band="2-5 min" />);
-  } else if (goal === "hipertrofia") {
+  } else if (trainingProfile === "hipertrofia") {
+    // Series efectivas por grupo (MEV/MAV/MRV) es LA métrica del perfil → arriba.
+    if (muscleSetsBar) cards.push(muscleSetsBar);
     if (m.rirBuckets.length) cards.push(<RirBucketsCard rows={m.rirBuckets} />);
     if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
-  } else if (goal === "resistencia") {
+    if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
+  } else if (trainingProfile === "resistencia") {
+    if (m.maxReps.length) cards.push(<MaxRepsCard rows={m.maxReps} />);
     if (m.reps.length) cards.push(<RepsCard data={m.reps} />);
     if (m.density.length) cards.push(<DensityCard data={m.density} />);
-    if (m.maxReps.length) cards.push(<MaxRepsCard rows={m.maxReps} />);
     if (m.rest.avgSec != null)
       cards.push(<RestCard avgSec={m.rest.avgSec} band="30-60 s" />);
-  } else if (goal === "perdida_grasa") {
-    if (m.retention.series.length) cards.push(<RetentionCard r={m.retention} />);
+  }
+
+  // Modificador déficit (cualquier perfil): distingue perder grasa de músculo.
+  if (bodyObjective === "deficit") {
+    if (retention) cards.push(retention);
+    if (constancia) cards.push(constancia);
   }
 
   if (cards.length === 0) return null;
@@ -483,7 +505,7 @@ function RestCard({ avgSec, band }: { avgSec: number; band: string }) {
   );
 }
 
-function RetentionCard({
+export function RetentionCard({
   r,
 }: {
   r: ReturnType<typeof strengthRetentionIndex>;

@@ -65,10 +65,10 @@ import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { PaperLink, Ref } from "@/components/PaperLink";
-import { useGoal } from "@/hooks/useGoal";
-import { GoalMetrics, SparklineGridCard } from "@/components/GoalMetrics";
+import { useTrainingProfile } from "@/hooks/useGoal";
+import { GoalMetrics, SparklineGridCard, RetentionCard } from "@/components/GoalMetrics";
 import { BodyProgress } from "@/components/BodyProgress";
-import { e1rmSeriesByExercise } from "@/lib/metrics-goal";
+import { e1rmSeriesByExercise, strengthRetentionIndex } from "@/lib/metrics-goal";
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise } from "@/lib/types";
 
@@ -173,7 +173,9 @@ export default function RegistroPage() {
   const setPlan = useSetWeeklyPlan();
   const { data: plannedSince } = usePlannedSince();
   const { data: achievements } = useAchievements();
-  const { data: goal } = useGoal();
+  const { data: prefs } = useTrainingProfile();
+  const trainingProfile = prefs?.trainingProfile ?? null;
+  const bodyObjective = prefs?.bodyObjective ?? null;
   const deleteSession = useDeleteSession();
   const { data: sleepLogs } = useSleep();
   const { data: measurements } = useMeasurements();
@@ -360,10 +362,6 @@ export default function RegistroPage() {
       heatWeeks.push(col);
     }
 
-    // Músculo estrella: top de la ventana de 30 días por sets (igual que el donut).
-    const favoriteMuscle =
-      [...muscleSets30.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-
     return {
       totalVol,
       weekChart,
@@ -379,8 +377,8 @@ export default function RegistroPage() {
       heatMax,
       count: sessions.length,
       avgDurationSec: avgDuration(sessions),
-      favoriteMuscle,
       sparklines: e1rmSeriesByExercise(sessions, exMap, 12).slice(0, 12),
+      retention: strengthRetentionIndex(sessions, exMap, 16),
     };
     // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -616,11 +614,6 @@ export default function RegistroPage() {
       ["Racha (semanas)", hasPlan ? planStats.streakWeeks : "", ""],
       ["Cumplimiento 30d (%)", hasPlan ? planStats.compliance.pct : "", ""],
       ["Duración promedio (min)", Math.round(metrics.avgDurationSec / 60), ""],
-      [
-        "Músculo estrella",
-        metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "",
-        "",
-      ],
       [],
       [
         hardWindow === "7d"
@@ -692,6 +685,83 @@ export default function RegistroPage() {
       </div>
     );
   }
+
+  // Cards que se PROMUEVEN a portada según perfil/objetivo (o van al fijo abajo
+  // si no). Se construyen una vez y se ubican en UN solo lugar → sin duplicados.
+  const muscleSetsSection = (
+    <SectionCard
+      title="Series efectivas por grupo"
+      subtitle={
+        hardWindow === "7d"
+          ? "Series por semana · últimos 7 días · marcas MEV / MAV / MRV"
+          : "Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
+      }
+      action={
+        <div className="w-28">
+          <Tabs
+            value={hardWindow}
+            onChange={setHardWindow}
+            options={[
+              { value: "7d", label: "7 días" },
+              { value: "30d", label: "30 días" },
+            ]}
+          />
+        </div>
+      }
+      info={
+        <>
+          {hardWindow === "7d"
+            ? "Series de trabajo (≥5 reps y cerca del fallo) por músculo, contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
+            : "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días. "}
+          Cada ejercicio reparte sus series entre sus músculos (primarios
+          enteros, secundarios a la mitad).{"\n\n"}
+          Las marcas verticales son las series por semana de referencia (
+          <PaperLink
+            label="Schoenfeld"
+            url="https://pubmed.ncbi.nlm.nih.gov/27433992/"
+          />
+          {" / "}
+          <PaperLink
+            label="Renaissance Periodization"
+            url="https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth"
+          />
+          ):{"\n"}
+          • MEV (Mínimo Volumen Efectivo): el piso para que un músculo
+          crezca.{"\n"}
+          • MAV (Máximo Volumen Adaptativo): el rango donde más rendís.
+          {"\n"}
+          • MRV (Máximo Volumen Recuperable): el techo; pasarte acumula
+          fatiga sin más ganancia.{"\n\n"}
+          Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde
+          (óptimo), sobre MRV = rojo (demasiado).{"\n\n"}
+          Ojo: "volumen" acá es el <span className="text-fg">conteo de
+          series</span> cerca del fallo, que es lo que impulsa la
+          hipertrofia (<PaperLink label="Baz-Valle 2021" url="https://doi.org/10.1519/JSC.0000000000002776" />)
+          — no el tonelaje (series×reps×peso), que no moderó la hipertrofia
+          (<PaperLink label="Refalo 2023" url="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9935748/" />).
+        </>
+      }
+    >
+      <MuscleSetsBar
+        data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
+      />
+    </SectionCard>
+  );
+
+  const constanciaSection = (
+    <SectionCard
+      title="Constancia"
+      subtitle="Últimas 12 semanas"
+      info="Cada celda es un día; más dorado = más volumen ese día. Las columnas son semanas (izquierda = más antigua) y las filas los días (lunes arriba)."
+    >
+      <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
+    </SectionCard>
+  );
+
+  const retentionCard =
+    metrics.retention.series.length > 0 ? (
+      <RetentionCard r={metrics.retention} />
+    ) : null;
 
   return (
     <div>
@@ -816,7 +886,7 @@ export default function RegistroPage() {
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             <Stat
               label="Promedio semanal"
               value={
@@ -839,13 +909,6 @@ export default function RegistroPage() {
                 metrics.avgDurationSec
                   ? formatDuration(metrics.avgDurationSec)
                   : "—"
-              }
-            />
-            <Stat
-              label="Músculo estrella"
-              info="El músculo que más entrenaste (por cantidad de series) en los últimos 30 días. Coincide con el más grande del gráfico 'Músculos entrenados'."
-              value={
-                metrics.favoriteMuscle ? muscleEs(metrics.favoriteMuscle) : "—"
               }
             />
           </div>
@@ -875,7 +938,19 @@ export default function RegistroPage() {
           <h2 className="text-lg font-bold pt-1">Entrenamiento</h2>
 
           {/* Portada específica del objetivo (métricas promovidas). */}
-          <GoalMetrics goal={goal ?? null} sessions={data ?? []} exMap={exMap} />
+          <GoalMetrics
+            trainingProfile={trainingProfile}
+            bodyObjective={bodyObjective}
+            sessions={data ?? []}
+            exMap={exMap}
+            muscleSetsBar={
+              trainingProfile === "hipertrofia" ? muscleSetsSection : undefined
+            }
+            retention={bodyObjective === "deficit" ? retentionCard : undefined}
+            constancia={
+              bodyObjective === "deficit" ? constanciaSection : undefined
+            }
+          />
 
           {!!achievements?.length && (
             <SectionCard
@@ -900,66 +975,12 @@ export default function RegistroPage() {
           )}
 
 
-          {/* Fuerza: MEV/MAV/MRV son umbrales de hipertrofia, no aplican. */}
-          {goal !== "fuerza" && (
-          <SectionCard
-            title="Series efectivas por grupo"
-            subtitle={
-              hardWindow === "7d"
-                ? "Series por semana · últimos 7 días · marcas MEV / MAV / MRV"
-                : "Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
-            }
-            action={
-              <div className="w-28">
-                <Tabs
-                  value={hardWindow}
-                  onChange={setHardWindow}
-                  options={[
-                    { value: "7d", label: "7 días" },
-                    { value: "30d", label: "30 días" },
-                  ]}
-                />
-              </div>
-            }
-            info={
-              <>
-                {hardWindow === "7d"
-                  ? "Series de trabajo (≥5 reps y cerca del fallo) por músculo, contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
-                  : "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días. "}
-                Cada ejercicio reparte sus series entre sus músculos (primarios
-                enteros, secundarios a la mitad).{"\n\n"}
-                Las marcas verticales son las series por semana de referencia (
-                <PaperLink
-                  label="Schoenfeld"
-                  url="https://pubmed.ncbi.nlm.nih.gov/27433992/"
-                />
-                {" / "}
-                <PaperLink
-                  label="Renaissance Periodization"
-                  url="https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth"
-                />
-                ):{"\n"}
-                • MEV (Mínimo Volumen Efectivo): el piso para que un músculo
-                crezca.{"\n"}
-                • MAV (Máximo Volumen Adaptativo): el rango donde más rendís.
-                {"\n"}
-                • MRV (Máximo Volumen Recuperable): el techo; pasarte acumula
-                fatiga sin más ganancia.{"\n\n"}
-                Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde
-                (óptimo), sobre MRV = rojo (demasiado).{"\n\n"}
-                Ojo: "volumen" acá es el <span className="text-fg">conteo de
-                series</span> cerca del fallo, que es lo que impulsa la
-                hipertrofia (<PaperLink label="Baz-Valle 2021" url="https://doi.org/10.1519/JSC.0000000000002776" />)
-                — no el tonelaje (series×reps×peso), que no moderó la hipertrofia
-                (<PaperLink label="Refalo 2023" url="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9935748/" />).
-              </>
-            }
-          >
-            <MuscleSetsBar
-              data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
-            />
-          </SectionCard>
-          )}
+          {/* Series efectivas por grupo (MEV/MAV/MRV): en Hipertrofia va arriba
+              (portada); acá abajo solo en Resistencia / sin perfil. En Fuerza no
+              aplica (esos umbrales son de hipertrofia). */}
+          {trainingProfile !== "fuerza" &&
+            trainingProfile !== "hipertrofia" &&
+            muscleSetsSection}
 
           <SectionCard
             title="Balance de patrones"
@@ -969,13 +990,9 @@ export default function RegistroPage() {
             <PatternBalance data={metrics.balance} />
           </SectionCard>
 
-          <SectionCard
-            title="Constancia"
-            subtitle="Últimas 12 semanas"
-            info="Cada celda es un día; más dorado = más volumen ese día. Las columnas son semanas (izquierda = más antigua) y las filas los días (lunes arriba)."
-          >
-            <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
-          </SectionCard>
+          {/* Constancia (adherencia): en Déficit sube a portada; acá abajo en
+              el resto de los casos (no duplicar). */}
+          {bodyObjective !== "deficit" && constanciaSection}
 
           {/* Más métricas (off-portada): tonelaje, músculos entrenados, récords. */}
           <button
@@ -1063,9 +1080,14 @@ export default function RegistroPage() {
                 </SectionCard>
               )}
 
-              {metrics.sparklines.length > 0 && (
-                <SparklineGridCard series={metrics.sparklines} />
-              )}
+              {/* Progresión por ejercicio: en Hipertrofia va en portada. */}
+              {trainingProfile !== "hipertrofia" &&
+                metrics.sparklines.length > 0 && (
+                  <SparklineGridCard series={metrics.sparklines} />
+                )}
+
+              {/* Retención de fuerza: en Déficit va en portada; acá en el resto. */}
+              {bodyObjective !== "deficit" && retentionCard}
             </div>
           )}
 

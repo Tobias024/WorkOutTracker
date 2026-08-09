@@ -6,7 +6,15 @@ export type FriendshipStatus = "pending" | "accepted";
 
 export type Sex = "male" | "female";
 
+/** @deprecated Reemplazado por training_profile + body_objective. Se conserva
+ *  la columna y se sincroniza para no romper el scoreboard. */
 export type Goal = "fuerza" | "hipertrofia" | "resistencia" | "perdida_grasa";
+
+/** Perfil de entrenamiento: qué métricas de entrenamiento se priorizan. */
+export type TrainingProfile = "fuerza" | "hipertrofia" | "resistencia";
+
+/** Objetivo corporal: modificador de composición (énfasis de seguimiento). */
+export type BodyObjective = "superavit" | "mantenimiento" | "deficit";
 
 export type Profile = {
   id: string;
@@ -14,7 +22,10 @@ export type Profile = {
   display_name: string | null;
   avatar_url: string | null;
   sex: Sex | null;
+  /** @deprecated usar training_profile + body_objective. */
   goal: Goal | null;
+  training_profile: TrainingProfile | null;
+  body_objective: BodyObjective | null;
   height_cm: number | null;
   weight_kg: number | null;
   /** Días de la semana que el usuario planea entrenar (0=domingo … 6=sábado). */
