@@ -459,6 +459,8 @@ export default function RegistroPage() {
   const [planExpanded, setPlanExpanded] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
+  // Pestaña de Registro: métricas de entrenamiento vs. avances corporales.
+  const [regView, setRegView] = useState<"entreno" | "cuerpo">("entreno");
   const [chartView, setChartView] = useState<"week" | "month">("week");
   // Tonelaje (carga externa) fuera de portada: en "Más métricas" plegable.
   const [moreOpen, setMoreOpen] = useState(false);
@@ -925,18 +927,28 @@ export default function RegistroPage() {
             }
           />
 
-          {/* Avances corporales (igual para todos los objetivos): registro
-              diario de peso/sueño + medidas. Separado del entrenamiento. */}
-          <div>
-            <h2 className="text-lg font-bold">Avances corporales</h2>
-            <p className="text-xs text-muted mb-3">
-              Peso, sueño y medidas · registralos a diario
-            </p>
-            <BodyProgress sessions={data ?? []} />
-          </div>
+          {/* División: métricas de entrenamiento vs. avances corporales. */}
+          <Tabs
+            value={regView}
+            onChange={setRegView}
+            options={[
+              { value: "entreno", label: "Entrenamiento" },
+              { value: "cuerpo", label: "Cuerpo" },
+            ]}
+          />
 
-          <h2 className="text-lg font-bold pt-1">Entrenamiento</h2>
+          {regView === "cuerpo" && (
+            <div>
+              <p className="text-xs text-muted mb-1">
+                Peso, sueño y medidas · registralos a diario (igual para todos
+                los objetivos).
+              </p>
+              <BodyProgress sessions={data ?? []} />
+            </div>
+          )}
 
+          {regView === "entreno" && (
+            <>
           {/* Portada específica del objetivo (métricas promovidas). */}
           <GoalMetrics
             trainingProfile={trainingProfile}
@@ -1162,6 +1174,8 @@ export default function RegistroPage() {
               </>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
 
