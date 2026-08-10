@@ -175,7 +175,6 @@ export default function RegistroPage() {
   const { data: achievements } = useAchievements();
   const { data: prefs } = useTrainingProfile();
   const trainingProfile = prefs?.trainingProfile ?? null;
-  const bodyObjective = prefs?.bodyObjective ?? null;
   const deleteSession = useDeleteSession();
   const { data: sleepLogs } = useSleep();
   const { data: measurements } = useMeasurements();
@@ -952,15 +951,10 @@ export default function RegistroPage() {
           {/* Portada específica del objetivo (métricas promovidas). */}
           <GoalMetrics
             trainingProfile={trainingProfile}
-            bodyObjective={bodyObjective}
             sessions={data ?? []}
             exMap={exMap}
             muscleSetsBar={
               trainingProfile === "hipertrofia" ? muscleSetsSection : undefined
-            }
-            retention={bodyObjective === "deficit" ? retentionCard : undefined}
-            constancia={
-              bodyObjective === "deficit" ? constanciaSection : undefined
             }
           />
 
@@ -1002,9 +996,7 @@ export default function RegistroPage() {
             <PatternBalance data={metrics.balance} />
           </SectionCard>
 
-          {/* Constancia (adherencia): en Déficit sube a portada; acá abajo en
-              el resto de los casos (no duplicar). */}
-          {bodyObjective !== "deficit" && constanciaSection}
+          {constanciaSection}
 
           {/* Más métricas (off-portada): tonelaje, músculos entrenados, récords. */}
           <button
@@ -1098,8 +1090,8 @@ export default function RegistroPage() {
                   <SparklineGridCard series={metrics.sparklines} />
                 )}
 
-              {/* Retención de fuerza: en Déficit va en portada; acá en el resto. */}
-              {bodyObjective !== "deficit" && retentionCard}
+              {/* Retención de fuerza: dato de fuerza estable (off-portada). */}
+              {retentionCard}
             </div>
           )}
 

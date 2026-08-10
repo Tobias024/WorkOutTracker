@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Dumbbell, TrendingUp, Timer, TrendingDown, Minus } from "lucide-react";
+import { ArrowLeft, Dumbbell, TrendingUp, Timer } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Spinner, Tabs } from "@/components/ui";
 import { bmi, bmiCategory, dateKey } from "@/lib/metrics";
@@ -11,18 +11,12 @@ import { useAddMeasurement } from "@/hooks/useBodyData";
 import { goalFromPrefs } from "@/hooks/useGoal";
 import { useTheme, type Theme } from "@/hooks/useTheme";
 import { clsx } from "@/lib/clsx";
-import type { Sex, TrainingProfile, BodyObjective } from "@/lib/types";
+import type { Sex, TrainingProfile } from "@/lib/types";
 
 const PROFILES: { value: TrainingProfile; label: string; icon: typeof Dumbbell }[] = [
   { value: "fuerza", label: "Fuerza", icon: Dumbbell },
   { value: "hipertrofia", label: "Hipertrofia", icon: TrendingUp },
   { value: "resistencia", label: "Resistencia", icon: Timer },
-];
-
-const OBJECTIVES: { value: BodyObjective; label: string; icon: typeof Dumbbell }[] = [
-  { value: "superavit", label: "Superávit", icon: TrendingUp },
-  { value: "mantenimiento", label: "Mantenimiento", icon: Minus },
-  { value: "deficit", label: "Déficit", icon: TrendingDown },
 ];
 
 export default function PerfilPage() {
@@ -32,7 +26,6 @@ export default function PerfilPage() {
   const [displayName, setDisplayName] = useState("");
   const [sex, setSex] = useState<Sex | null>(null);
   const [trainingProfile, setTrainingProfile] = useState<TrainingProfile | null>(null);
-  const [bodyObjective, setBodyObjective] = useState<BodyObjective | null>(null);
   const [heightCm, setHeightCm] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -50,13 +43,12 @@ export default function PerfilPage() {
       }
       const { data } = await supabase
         .from("profiles")
-        .select("display_name, sex, training_profile, body_objective, height_cm, weight_kg")
+        .select("display_name, sex, training_profile, height_cm, weight_kg")
         .eq("id", user.id)
         .maybeSingle();
       setDisplayName(data?.display_name ?? "");
       setSex(data?.sex ?? null);
       setTrainingProfile((data?.training_profile as TrainingProfile | null) ?? null);
-      setBodyObjective((data?.body_objective as BodyObjective | null) ?? null);
       setHeightCm(data?.height_cm != null ? String(data.height_cm) : "");
       setWeightKg(data?.weight_kg != null ? String(data.weight_kg) : "");
       setChecking(false);
@@ -89,9 +81,8 @@ export default function PerfilPage() {
         display_name: name,
         sex,
         training_profile: trainingProfile,
-        body_objective: bodyObjective,
         // `goal` (deprecado) se mantiene sincronizado para el scoreboard.
-        goal: goalFromPrefs({ trainingProfile, bodyObjective }),
+        goal: goalFromPrefs({ trainingProfile }),
         height_cm: heightNum,
         weight_kg: weightNum,
       })
@@ -169,27 +160,6 @@ export default function PerfilPage() {
                 active={trainingProfile === g.value}
                 onClick={() =>
                   setTrainingProfile(trainingProfile === g.value ? null : g.value)
-                }
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-muted">Objetivo corporal</label>
-          <p className="text-xs text-muted -mt-1">
-            Ajusta el seguimiento de composición. En déficit se prioriza retener
-            fuerza y la adherencia. (Pérdida de grasa = Hipertrofia + Déficit.)
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            {OBJECTIVES.map((o) => (
-              <GoalButton
-                key={o.value}
-                icon={o.icon}
-                label={o.label}
-                active={bodyObjective === o.value}
-                onClick={() =>
-                  setBodyObjective(bodyObjective === o.value ? null : o.value)
                 }
               />
             ))}
@@ -344,14 +314,14 @@ function GoalButton({
       onClick={onClick}
       aria-pressed={active}
       className={clsx(
-        "flex items-center gap-2.5 rounded-lg px-3 py-3 ring-1 transition text-left",
+        "flex flex-col items-center justify-center gap-1.5 rounded-lg px-2 py-3 ring-1 transition text-center",
         active
           ? "bg-primary/15 ring-primary text-fg"
           : "bg-surface-2 ring-border text-muted hover:text-fg",
       )}
     >
       <Icon className={clsx("size-5 shrink-0", active && "text-primary")} />
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-[13px] font-medium leading-tight">{label}</span>
     </button>
   );
 }

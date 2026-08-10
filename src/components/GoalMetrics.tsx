@@ -6,7 +6,7 @@ import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
-import type { TrainingProfile, BodyObjective, Exercise } from "@/lib/types";
+import type { TrainingProfile, Exercise } from "@/lib/types";
 import type { HistorySession } from "@/hooks/useHistory";
 import {
   e1rmSeriesByExercise,
@@ -26,30 +26,21 @@ import {
 
 /**
  * Portada de métricas de ENTRENAMIENTO (100% 🏋️), ordenada por PERFIL
- * (fuerza/hipertrofia/resistencia) + modificador de OBJETIVO corporal (déficit).
- * Los cards `muscleSetsBar`, `constancia` y `retention` los construye registro y
- * los pasa como slots cuando el perfil/objetivo los promueve a portada — así no
- * se duplican en el "fijo abajo".
+ * (fuerza/hipertrofia/resistencia). "Series efectivas por grupo" la construye
+ * registro y la pasa como slot para promoverla a portada en Hipertrofia (así no
+ * se duplica en el "fijo abajo").
  */
 export function GoalMetrics({
   trainingProfile,
-  bodyObjective,
   sessions,
   exMap,
   muscleSetsBar,
-  retention,
-  constancia,
 }: {
   trainingProfile: TrainingProfile | null;
-  bodyObjective: BodyObjective | null;
   sessions: HistorySession[];
   exMap: Map<string, Exercise>;
   /** Series efectivas por grupo (MEV/MAV/MRV): a portada en Hipertrofia. */
   muscleSetsBar?: ReactNode;
-  /** Retención de fuerza: a portada cuando el objetivo es déficit. */
-  retention?: ReactNode;
-  /** Constancia (adherencia): a portada cuando el objetivo es déficit. */
-  constancia?: ReactNode;
 }) {
   const m = useMemo(
     () => ({
@@ -93,12 +84,6 @@ export function GoalMetrics({
     if (m.density.length) cards.push(<DensityCard data={m.density} />);
     if (m.rest.avgSec != null)
       cards.push(<RestCard avgSec={m.rest.avgSec} band="30-60 s" />);
-  }
-
-  // Modificador déficit (cualquier perfil): distingue perder grasa de músculo.
-  if (bodyObjective === "deficit") {
-    if (retention) cards.push(retention);
-    if (constancia) cards.push(constancia);
   }
 
   if (cards.length === 0) return null;

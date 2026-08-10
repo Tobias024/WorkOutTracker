@@ -2,22 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type { Goal, TrainingProfile, BodyObjective } from "@/lib/types";
+import type { Goal, TrainingProfile } from "@/lib/types";
 
 export type TrainingPrefs = {
   trainingProfile: TrainingProfile | null;
-  bodyObjective: BodyObjective | null;
 };
 
-/** goal (deprecado) derivado del par perfil×objetivo, para el scoreboard. */
+/** goal (deprecado) derivado del perfil, para el scoreboard. */
 export function goalFromPrefs(p: TrainingPrefs): Goal | null {
-  if (p.trainingProfile == null) return null;
-  if (p.trainingProfile === "hipertrofia" && p.bodyObjective === "deficit")
-    return "perdida_grasa";
   return p.trainingProfile;
 }
 
-/** Perfil de entrenamiento + objetivo corporal del usuario. */
+/** Perfil de entrenamiento del usuario. */
 export function useTrainingProfile() {
   return useQuery({
     queryKey: ["training-profile"],
@@ -26,15 +22,14 @@ export function useTrainingProfile() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return { trainingProfile: null, bodyObjective: null };
+      if (!user) return { trainingProfile: null };
       const { data } = await supabase
         .from("profiles")
-        .select("training_profile, body_objective")
+        .select("training_profile")
         .eq("id", user.id)
         .maybeSingle();
       return {
         trainingProfile: (data?.training_profile as TrainingProfile | null) ?? null,
-        bodyObjective: (data?.body_objective as BodyObjective | null) ?? null,
       };
     },
   });
@@ -53,7 +48,6 @@ export function useSetTrainingProfile() {
         .from("profiles")
         .update({
           training_profile: prefs.trainingProfile,
-          body_objective: prefs.bodyObjective,
           goal: goalFromPrefs(prefs), // sincroniza el legacy para el scoreboard
         })
         .eq("id", user.id);
