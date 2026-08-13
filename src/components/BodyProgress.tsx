@@ -42,6 +42,8 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
   const [kg, setKg] = useState("");
   const bw = bodyWeightTrend(logs ?? [], sessions, 120);
   const rate = bw.ratePctPerWeek;
+  const weightKg = kg === "" ? null : Number(kg);
+  const validWeight = weightKg != null && weightKg >= 25 && weightKg <= 400;
   return (
     <SectionCard
       title="Peso corporal"
@@ -63,7 +65,12 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
         )}
       </p>
       {bw.points.length >= 2 ? (
-        <MiniLine data={bw.ma} faint={bw.points} unit="kg" />
+        <MiniLine
+          data={bw.ma}
+          faint={bw.points}
+          unit="kg"
+          domain={["dataMin - 1", "dataMax + 1"]}
+        />
       ) : (
         <p className="text-sm text-muted">
           Registrá tu peso unos días para ver la tendencia.
@@ -74,6 +81,8 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
           type="number"
           inputMode="decimal"
           step={0.1}
+          min={25}
+          max={400}
           placeholder="Peso hoy (kg)"
           value={kg}
           onChange={(e) => setKg(e.target.value)}
@@ -82,11 +91,12 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
         <Button
           size="sm"
           loading={log.isPending}
-          disabled={!kg}
+          disabled={!validWeight}
           onClick={() => {
+            if (weightKg == null) return;
             log.mutate({
               weighedOn: dateKey(new Date().toISOString()),
-              weightKg: Number(kg),
+              weightKg,
             });
             setKg("");
           }}
@@ -94,6 +104,11 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
           Registrar
         </Button>
       </div>
+      {kg !== "" && !validWeight && (
+        <p className="text-xs text-danger mt-1.5">
+          Ingresá un peso entre 25 y 400 kg.
+        </p>
+      )}
     </SectionCard>
   );
 }

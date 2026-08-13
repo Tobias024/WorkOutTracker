@@ -11,13 +11,13 @@ import { StopwatchFab } from "@/components/Stopwatch";
 import { PrCelebrationModal } from "@/components/PrCelebrationModal";
 import {
   useWorkoutSession,
-  useLastBodyWeight,
   useLastExerciseLogs,
   useDeleteSession,
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
+import { useBodyWeight } from "@/hooks/useBodyData";
 import { createClient } from "@/lib/supabase/client";
 import { formatClock, formatVolume, formatDuration } from "@/lib/format";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
@@ -34,7 +34,12 @@ export default function WorkoutPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const router = useRouter();
   const { data, isLoading } = useWorkoutSession(sessionId);
-  const { data: lastBw } = useLastBodyWeight();
+  // Último peso registrado (de "Registro") para la fuerza relativa del PR. La
+  // rutina ya no pide peso: se registra solo en Registro.
+  const { data: bwLogs } = useBodyWeight();
+  const lastLoggedWeight = bwLogs?.length
+    ? Number(bwLogs[bwLogs.length - 1].weight_kg)
+    : null;
   const { data: lastLogs } = useLastExerciseLogs(
     (data?.exercises ?? []).map((e) => e.exercise_id),
     sessionId,
@@ -276,36 +281,6 @@ export default function WorkoutPage() {
             />
           </label>
         </div>
-        <label className="text-xs text-muted block mt-2">
-          Peso corporal (kg)
-          <input
-            type="number"
-            inputMode="decimal"
-            step={0.1}
-            key={session.body_weight_kg ?? lastBw ?? "bw"}
-            defaultValue={session.body_weight_kg ?? lastBw ?? ""}
-            placeholder="opcional"
-            onBlur={async (e) => {
-              const v = e.target.value === "" ? null : Number(e.target.value);
-              if (v === session.body_weight_kg) return;
-              m.updateSession.mutate({ body_weight_kg: v });
-              // Peso corporal es uno solo: sincroniza el "peso actual" del perfil.
-              if (v != null) {
-                const supabase = createClient();
-                const {
-                  data: { user },
-                } = await supabase.auth.getUser();
-                if (user)
-                  await supabase
-                    .from("profiles")
-                    .update({ weight_kg: v })
-                    .eq("id", user.id);
-                qc.invalidateQueries({ queryKey: ["last-bodyweight"] });
-              }
-            }}
-            className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
-          />
-        </label>
       </div>
 
       {/* Resumen (solo al ver una sesión ya finalizada del historial). */}
@@ -463,7 +438,7 @@ export default function WorkoutPage() {
         exerciseName={
           prModal ? exMap.get(prModal.exercise_id)?.name ?? "Ejercicio" : ""
         }
-        bodyWeightKg={session.body_weight_kg}
+        bodyWeightKg={lastLoggedWeight}
         onClose={() => {
           setPrModal(null);
           router.push("/registro");

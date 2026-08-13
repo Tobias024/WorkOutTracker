@@ -73,6 +73,8 @@ export function useLogBodyWeight() {
       weighedOn: string;
       weightKg: number;
     }) => {
+      if (!(weightKg >= 25 && weightKg <= 400))
+        throw new Error("Peso fuera de rango (25-400 kg).");
       const supabase = createClient();
       const {
         data: { user },

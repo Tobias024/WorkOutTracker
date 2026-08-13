@@ -488,6 +488,10 @@ const dayKeyOf = (t: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** Descarta pesos claramente erróneos (fat-finger) para que no abran la escala. */
+const isPlausibleWeight = (w: number): boolean =>
+  Number.isFinite(w) && w >= 25 && w <= 400;
+
 /**
  * Tendencia de peso mergeando los logs diarios (`body_weight_logs`) con el
  * body_weight_kg de las sesiones. Dedup por día calendario; el log gana sobre
@@ -501,15 +505,17 @@ export function bodyWeightTrend(
   const cutoff = Date.now() - days * DAY;
   const byDay = new Map<string, { t: number; w: number }>();
   for (const s of sessions) {
-    if (s.body_weight_kg == null) continue;
+    if (s.body_weight_kg == null || !isPlausibleWeight(s.body_weight_kg)) continue;
     const t = ms(s);
     if (t < cutoff) continue;
     byDay.set(dayKeyOf(t), { t, w: s.body_weight_kg });
   }
   for (const l of logs) {
+    const w = Number(l.weight_kg);
+    if (!isPlausibleWeight(w)) continue;
     const t = new Date(l.weighed_on + "T12:00:00").getTime();
     if (t < cutoff) continue;
-    byDay.set(l.weighed_on, { t, w: Number(l.weight_kg) }); // log pisa a la sesión
+    byDay.set(l.weighed_on, { t, w }); // log pisa a la sesión
   }
   const raw = [...byDay.values()].sort((a, b) => a.t - b.t);
   return weightTrendFromRaw(raw);

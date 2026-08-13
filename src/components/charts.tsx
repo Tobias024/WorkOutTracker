@@ -22,11 +22,14 @@ export function MiniLine({
   faint,
   height = 170,
   unit = "",
+  domain,
 }: {
   data: LinePoint[];
   faint?: LinePoint[];
   height?: number;
   unit?: string;
+  /** Dominio del eje Y (ej. ["dataMin - 1", "dataMax + 1"] para ceñir). */
+  domain?: [number | string, number | string];
 }) {
   const c = useChartColors();
   const merged = data.map((d, i) => ({
@@ -51,6 +54,7 @@ export function MiniLine({
           tickLine={false}
           axisLine={false}
           width={40}
+          domain={domain}
         />
         <Tooltip
           contentStyle={c.tip}
