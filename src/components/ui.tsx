@@ -158,7 +158,7 @@ export function Modal({
     >
       <div
         className={clsx(
-          "card max-h-[85vh] flex flex-col",
+          "card max-h-[85dvh] flex flex-col",
           center
             ? "w-full max-w-md rounded-lg"
             : "w-full sm:max-w-lg rounded-b-none sm:rounded-lg",

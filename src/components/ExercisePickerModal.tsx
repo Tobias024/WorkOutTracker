@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { Modal, Input, Spinner, Badge, Tabs } from "@/components/ui";
+import { Search, Plus } from "lucide-react";
+import { Modal, Input, Spinner, Badge, Tabs, Button } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
+import { CreateExerciseModal } from "@/components/CreateExerciseModal";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
 import { sessionDate } from "@/lib/metrics";
@@ -25,6 +26,7 @@ export function ExercisePickerModal({
   const { data: history } = useHistory();
   const [query, setQuery] = useState("");
   const [muscle, setMuscle] = useState<string>("");
+  const [creating, setCreating] = useState(false);
 
   // Fecha del último uso por ejercicio, para sugerir primero los ya realizados.
   const doneAt = useMemo(() => {
@@ -48,37 +50,45 @@ export function ExercisePickerModal({
   }, [data, query, muscle, doneAt]);
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title={title}>
       <div className="flex flex-col gap-3">
-        <div className="relative">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input
-            autoFocus
-            placeholder="Buscar ejercicio…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
+        {/* Búsqueda + filtro pegados arriba: el teclado no tapa los resultados
+            (la hoja usa dvh y esto queda sticky mientras scrolleás la lista). */}
+        <div className="sticky top-0 z-10 bg-surface -mx-4 -mt-4 px-4 pt-4 pb-2 flex flex-col gap-3 border-b border-border">
+          <div className="relative">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              autoFocus
+              placeholder="Buscar ejercicio…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <Tabs
+            scroll
+            value={muscle}
+            onChange={setMuscle}
+            options={[
+              { value: "", label: "Todos" },
+              ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+            ]}
           />
         </div>
-
-        <Tabs
-          scroll
-          value={muscle}
-          onChange={setMuscle}
-          options={[
-            { value: "", label: "Todos" },
-            ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
-          ]}
-        />
 
         {isLoading ? (
           <div className="grid place-items-center py-10">
             <Spinner />
           </div>
         ) : list.length === 0 ? (
-          <p className="text-sm text-muted text-center py-10">
-            No se encontraron ejercicios.
-          </p>
+          <div className="text-center py-8 flex flex-col items-center gap-3">
+            <p className="text-sm text-muted">No se encontraron ejercicios.</p>
+            <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="size-4" /> Crear &ldquo;{query.trim() || "ejercicio"}&rdquo;
+            </Button>
+          </div>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {list.map((ex) => (
@@ -116,7 +126,30 @@ export function ExercisePickerModal({
             ))}
           </ul>
         )}
+
+        {list.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="size-4" /> Crear ejercicio nuevo
+          </Button>
+        )}
       </div>
     </Modal>
+
+      <CreateExerciseModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        initialName={query.trim()}
+        onCreated={(ex) => {
+          setCreating(false);
+          onSelect(ex);
+          onClose();
+        }}
+      />
+    </>
   );
 }
