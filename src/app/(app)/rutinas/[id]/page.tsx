@@ -13,13 +13,16 @@ import {
   Play,
   Check,
   Copy,
+  Repeat,
   X,
 } from "lucide-react";
 import { Button, Input, Spinner, Badge, Modal } from "@/components/ui";
+import { createClient } from "@/lib/supabase/client";
 import { copyToClipboard } from "@/lib/clipboard";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
+import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import {
   useRoutine,
   useUpdateRoutine,
@@ -48,6 +51,7 @@ export default function RoutineEditorPage() {
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
+  const [copying, setCopying] = useState(false);
 
   if (isLoading || !data) {
     return (
@@ -79,6 +83,22 @@ export default function RoutineEditorPage() {
     router.push(`/entrenar/${sessionId}`);
   }
 
+  async function handleCopy() {
+    setCopying(true);
+    try {
+      // Copia = compartir a uno mismo: aseguramos share_code e importamos.
+      const code = await share.mutateAsync(routine);
+      const supabase = createClient();
+      const { data: newId, error } = await supabase.rpc("import_routine", {
+        p_share_code: code,
+      });
+      if (error) throw error;
+      router.push(`/rutinas/${newId}`);
+    } catch {
+      setCopying(false);
+    }
+  }
+
   return (
     <div className="pb-20">
       <div className="flex items-center gap-2 mb-4">
@@ -98,6 +118,9 @@ export default function RoutineEditorPage() {
       <div className="flex gap-2 mb-4">
         <Button variant="secondary" size="sm" onClick={handleShare} loading={share.isPending}>
           <Share2 className="size-4" /> Compartir
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleCopy} loading={copying}>
+          <Copy className="size-4" /> Copiar
         </Button>
         <Button
           variant="danger"
@@ -130,6 +153,9 @@ export default function RoutineEditorPage() {
                 ops.saveSets.mutate({ rexId: rex.id, plans })
               }
               onRemove={() => ops.remove.mutate(rex.id)}
+              onReplace={(newEx) =>
+                ops.replace.mutate({ id: rex.id, exerciseId: newEx.id })
+              }
               onMoveUp={() => ops.swap.mutate({ a: rex, b: exercises[i - 1] })}
               onMoveDown={() => ops.swap.mutate({ a: rex, b: exercises[i + 1] })}
             />
@@ -205,6 +231,7 @@ function RoutineExerciseRow({
   isLast,
   onSaveSets,
   onRemove,
+  onReplace,
   onMoveUp,
   onMoveDown,
 }: {
@@ -214,10 +241,12 @@ function RoutineExerciseRow({
   isLast: boolean;
   onSaveSets: (plans: SetPlan[]) => void;
   onRemove: () => void;
+  onReplace: (newExercise: Exercise) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
   const [detail, setDetail] = useState(false);
+  const [replace, setReplace] = useState(false);
 
   return (
     <li className="card p-3">
@@ -254,6 +283,13 @@ function RoutineExerciseRow({
             <ChevronDown className="size-4" />
           </button>
         </div>
+        <button
+          onClick={() => setReplace(true)}
+          aria-label="Reemplazar ejercicio"
+          className="text-muted hover:text-fg p-1"
+        >
+          <Repeat className="size-4" />
+        </button>
         <button onClick={onRemove} className="text-muted hover:text-danger p-1">
           <Trash2 className="size-4" />
         </button>
@@ -264,6 +300,17 @@ function RoutineExerciseRow({
       <ExerciseDetailModal
         exercise={detail ? exercise ?? null : null}
         onClose={() => setDetail(false)}
+      />
+      <ReplaceExerciseModal
+        open={replace}
+        onClose={() => setReplace(false)}
+        currentName={exercise?.name ?? ""}
+        currentMuscle={exercise?.primary_muscles[0]}
+        canSaveForFuture={false}
+        onReplace={(newEx) => {
+          onReplace(newEx);
+          setReplace(false);
+        }}
       />
     </li>
   );

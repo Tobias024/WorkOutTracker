@@ -285,7 +285,21 @@ export function useRoutineExerciseOps(routineId: string) {
     onSuccess: invalidate,
   });
 
-  /** Intercambia la posición de dos ejercicios. */
+  /** Cambia el ejercicio de una fila conservando sus series/reps/peso. */
+  const replace = useMutation({
+    mutationFn: async ({ id, exerciseId }: { id: string; exerciseId: string }) => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("routine_exercises")
+        .update({ exercise_id: exerciseId })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+
+  /** Intercambia la posición de dos ejercicios, con update optimista (la UI
+   *  responde al instante; sin esto "se trababa" esperando el refetch). */
   const swap = useMutation({
     mutationFn: async ({
       a,
@@ -304,10 +318,33 @@ export function useRoutineExerciseOps(routineId: string) {
         .update({ position: a.position })
         .eq("id", b.id);
     },
-    onSuccess: invalidate,
+    onMutate: async ({ a, b }) => {
+      await qc.cancelQueries({ queryKey: ["routine", routineId] });
+      const prev = qc.getQueryData<{
+        routine: Routine;
+        exercises: RoutineExerciseWithSets[];
+      }>(["routine", routineId]);
+      if (prev) {
+        const exercises = prev.exercises
+          .map((e) =>
+            e.id === a.id
+              ? { ...e, position: b.position }
+              : e.id === b.id
+                ? { ...e, position: a.position }
+                : e,
+          )
+          .sort((x, y) => x.position - y.position);
+        qc.setQueryData(["routine", routineId], { ...prev, exercises });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["routine", routineId], ctx.prev);
+    },
+    onSettled: invalidate,
   });
 
-  return { add, update, remove, swap, saveSets };
+  return { add, update, remove, replace, swap, saveSets };
 }
 
 /**
