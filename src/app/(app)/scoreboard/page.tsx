@@ -35,7 +35,7 @@ import { formatVolume, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Exercise, Sex, Goal } from "@/lib/types";
 
-type BoardKey = "constancia" | "series" | "1rm" | "reps";
+type BoardKey = "constancia" | "series" | "1rm" | "fuerza_rel" | "reps";
 
 const BOARDS: { key: BoardKey; label: string; caption: string }[] = [
   {
@@ -53,6 +53,12 @@ const BOARDS: { key: BoardKey; label: string; caption: string }[] = [
     key: "1rm",
     label: "1RM",
     caption: "1RM estimado (Epley) del ejercicio elegido.",
+  },
+  {
+    key: "fuerza_rel",
+    label: "Fuerza rel.",
+    caption:
+      "Fuerza relativa general: promedio de tu 1RM estimado por ejercicio ÷ tu peso corporal. No hace falta elegir ejercicio.",
   },
   {
     key: "reps",
@@ -109,9 +115,11 @@ export default function ScoreboardPage() {
         ? "hard_sets"
         : activeBoard === "reps"
           ? "reps"
-          : bwMode
-            ? "strength_bw"
-            : "strength";
+          : activeBoard === "fuerza_rel"
+            ? "strength_rel"
+            : bwMode
+              ? "strength_bw"
+              : "strength";
   const needsExercise = activeBoard === "1rm";
 
   const { data, isLoading, isError } = useScoreboard(
@@ -141,7 +149,8 @@ export default function ScoreboardPage() {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
     if (metric === "hard_sets") return `${v} ${v === 1 ? "set" : "sets"}`;
     if (metric === "reps") return `${v} reps`;
-    if (metric === "strength_bw") return `${Number(v).toFixed(2)}×`;
+    if (metric === "strength_bw" || metric === "strength_rel")
+      return `${Number(v).toFixed(2)}×`;
     return formatWeight(v);
   }
 

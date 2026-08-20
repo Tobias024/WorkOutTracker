@@ -12,6 +12,7 @@ export type Metric =
   | "weight"
   | "strength"
   | "strength_bw"
+  | "strength_rel"
   | "hard_sets"
   | "reps";
 

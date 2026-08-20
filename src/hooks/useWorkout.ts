@@ -109,6 +109,7 @@ export function useStartWorkout() {
 
       qc.invalidateQueries({ queryKey: ["history"] });
       qc.invalidateQueries({ queryKey: ["active-session"] });
+      rememberActiveSession(session.id);
       return session.id;
     },
   });
@@ -134,6 +135,7 @@ export function useStartEmptyWorkout() {
         .select()
         .single();
       if (error) throw error;
+      rememberActiveSession(data.id);
       return data.id;
     },
     onSuccess: () => {
@@ -272,6 +274,19 @@ export function useWorkoutSession(sessionId: string) {
 }
 
 /** Id de la sesión en curso (sin finalizar), o null. Para el candado de sesión. */
+/** Clave del fallback local de sesión activa (para que el candado bloquee aún
+ *  sin red, cuando la query no puede consultar la DB). */
+export const ACTIVE_SESSION_KEY = "wot-active-session";
+
+export function rememberActiveSession(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_SESSION_KEY, id);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  } catch {
+    // localStorage no disponible: no pasa nada, la query sigue siendo la fuente.
+  }
+}
+
 export function useActiveSession() {
   return useQuery({
     queryKey: ["active-session"],
@@ -282,7 +297,7 @@ export function useActiveSession() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("workout_sessions")
         .select("id")
         .eq("user_id", user.id)
@@ -290,7 +305,12 @@ export function useActiveSession() {
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data?.id ?? null;
+      // IMPORTANTE: propagar el error (offline/token) en vez de tragarlo como
+      // "no hay sesión" — así el guard sabe distinguir y usa el fallback local.
+      if (error) throw error;
+      const id = data?.id ?? null;
+      rememberActiveSession(id); // mantiene el fallback en sync cuando hay red
+      return id;
     },
   });
 }

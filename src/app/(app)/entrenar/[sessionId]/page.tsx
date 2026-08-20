@@ -13,6 +13,7 @@ import {
   useWorkoutSession,
   useLastExerciseLogs,
   useDeleteSession,
+  rememberActiveSession,
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
@@ -174,6 +175,7 @@ export default function WorkoutPage() {
     // Ya no es una sesión activa: soltamos el candado (ActiveSessionGuard) sin
     // esperar un refetch, para no rebotar al navegar a /registro.
     qc.setQueryData(["active-session"], null);
+    rememberActiveSession(null);
     // Recién ahora cambió el ranking: dispara los avisos (subiste / te pasaron).
     // Fire-and-forget, pero logueamos el resultado/errores (antes se tragaban).
     fetch("/api/rank/notify", { method: "POST" })
@@ -208,6 +210,7 @@ export default function WorkoutPage() {
   // #1 candado: descartar borra la sesión (con reconfirmación) y libera el candado.
   async function discard() {
     await deleteSession.mutateAsync(sessionId);
+    rememberActiveSession(null);
     setDiscardOpen(false);
     router.replace("/rutinas");
   }

@@ -25,10 +25,23 @@ export default function InvitePage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
+        // Persistimos el code: si la cadena de redirects del registro se corta
+        // (confirmación cross-device, onboarding, etc.), PendingInviteHandler lo
+        // consume al llegar autenticado. Antes se perdía → había que reclickear.
+        try {
+          localStorage.setItem("wot-pending-invite", code);
+        } catch {
+          // localStorage no disponible: seguimos con el flujo por `next`.
+        }
         setState({ kind: "needs-auth" });
         return;
       }
       const { error } = await supabase.rpc("accept_invite", { p_code: code });
+      try {
+        localStorage.removeItem("wot-pending-invite");
+      } catch {
+        // no-op
+      }
       if (error) setState({ kind: "error", message: error.message });
       else setState({ kind: "ok" });
     })();

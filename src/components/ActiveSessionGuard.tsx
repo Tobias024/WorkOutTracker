@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useActiveSession } from "@/hooks/useWorkout";
+import { useActiveSession, ACTIVE_SESSION_KEY } from "@/hooks/useWorkout";
 
 /**
  * Candado de sesión: si hay un entrenamiento en curso (sesión sin finalizar),
@@ -10,16 +10,27 @@ import { useActiveSession } from "@/hooks/useWorkout";
  * ninguna otra parte hasta Finalizar o Descartar. No renderiza nada visible.
  */
 export function ActiveSessionGuard() {
-  const { data: activeId, isLoading } = useActiveSession();
+  const { data: activeId, isLoading, isError } = useActiveSession();
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoading || !activeId) return;
-    const target = `/entrenar/${activeId}`;
+    // Si la query resolvió (no loading, no error), su resultado manda (null = sin
+    // sesión). Si está cargando o FALLÓ (offline/token), caemos al id guardado
+    // localmente → el candado bloquea igual sin red (antes se abría por error).
+    let local: string | null = null;
+    try {
+      local = localStorage.getItem(ACTIVE_SESSION_KEY);
+    } catch {
+      local = null;
+    }
+    const resolved = !isLoading && !isError;
+    const effective = resolved ? (activeId ?? null) : (activeId ?? local);
+    if (!effective) return;
+    const target = `/entrenar/${effective}`;
     if (pathname === target || pathname.startsWith("/onboarding")) return;
     router.replace(target);
-  }, [activeId, isLoading, pathname, router]);
+  }, [activeId, isLoading, isError, pathname, router]);
 
   return null;
 }
