@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import { SectionCard } from "@/components/ui";
 import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
@@ -127,13 +127,22 @@ function ReadyCard({ rows }: { rows: Readiness[] }) {
           <li key={r.muscle} className="flex items-center gap-3">
             <span className="flex-1 font-medium">{muscleEs(r.muscle)}</span>
             <span className="text-xs text-muted shrink-0">hace {r.days}d</span>
-            <div className="w-24 h-2 rounded bg-surface-2 overflow-hidden shrink-0">
-              <div
-                className="h-full bg-primary"
-                style={{ width: `${Math.round(r.lag * 100)}%` }}
-                title={`Rezago de volumen ${Math.round(r.lag * 100)}%`}
-              />
-            </div>
+            {r.lag > 0 ? (
+              <div className="w-24 h-2 rounded bg-surface-2 overflow-hidden shrink-0">
+                <div
+                  className="h-full bg-primary"
+                  style={{ width: `${Math.round(r.lag * 100)}%` }}
+                  title={`Rezago de volumen ${Math.round(r.lag * 100)}%`}
+                />
+              </div>
+            ) : (
+              <span
+                className="w-24 shrink-0 text-right text-xs font-medium text-success"
+                title="El volumen de la semana ya cubre el MEV"
+              >
+                MEV ✓
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -272,9 +281,7 @@ function RirBucketsCard({
           const total = r.total || 1;
           return (
             <div key={r.muscle} className="flex items-center gap-2">
-              <span className="w-16 shrink-0 text-xs text-muted truncate">
-                {muscleEs(r.muscle)}
-              </span>
+              <MuscleLabel name={muscleEs(r.muscle)} />
               <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-surface-2">
                 {r.b01 > 0 && (
                   <div
@@ -300,6 +307,40 @@ function RirBucketsCard({
         })}
       </div>
     </SectionCard>
+  );
+}
+
+/** Label de músculo truncado con popover del nombre completo al mantener
+ *  presionado (long-press en móvil; `title` para hover en desktop). */
+function MuscleLabel({ name }: { name: string }) {
+  const [show, setShow] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const start = () => {
+    timer.current = setTimeout(() => setShow(true), 300);
+  };
+  const end = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setShow(false);
+  };
+  return (
+    <span className="relative w-16 shrink-0">
+      <span
+        className="block text-xs text-muted truncate select-none"
+        title={name}
+        onPointerDown={start}
+        onPointerUp={end}
+        onPointerLeave={end}
+        onPointerCancel={end}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        {name}
+      </span>
+      {show && (
+        <span className="absolute left-0 -top-7 z-20 whitespace-nowrap rounded bg-surface-2 px-2 py-1 text-xs text-fg shadow-lg ring-1 ring-border">
+          {name}
+        </span>
+      )}
+    </span>
   );
 }
 

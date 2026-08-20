@@ -9,7 +9,6 @@ import {
   landmarkFor,
   rirOf,
   muscleContributions,
-  baseToGroup,
 } from "@/lib/metrics";
 
 // Helpers de métricas por objetivo (Fase 2). Todo se calcula desde el historial;
@@ -38,8 +37,12 @@ function ms(s: HistorySession): number {
   return new Date(sessionDate(s)).getTime();
 }
 
-/** Sets efectivos por músculo en una sesión: primario = 1, secundario = 0,5 c/u
- *  (convención estándar, sin repartir el 0,5 entre secundarios). */
+/**
+ * Sets efectivos por músculo en una sesión, usando la MISMA capa de contribución
+ * que el volumen (`muscleContributions`: overrides curados + split de deltoides).
+ * Antes leía `secondary_muscles` crudos, que en los ejercicios custom están
+ * vacíos → un secundario curado (ej. antebrazos en un curl custom) recibía cero.
+ */
 function sessionMuscleSets(
   s: HistorySession,
   exMap: Map<string, Exercise>,
@@ -50,22 +53,15 @@ function sessionMuscleSets(
     if (!ex) continue;
     const n = we.workout_sets.filter(isCountableSet).length;
     if (!n) continue;
-    // Split de deltoides también acá (recovery): shoulders → cabeza concreta.
-    for (const m of ex.primary_muscles) {
-      const g = baseToGroup(m, ex, "primary");
-      per.set(g, (per.get(g) ?? 0) + n);
-    }
-    for (const m of ex.secondary_muscles) {
-      const g = baseToGroup(m, ex, "secondary");
-      per.set(g, (per.get(g) ?? 0) + n * 0.5);
-    }
+    for (const c of muscleContributions(ex))
+      per.set(c.muscle, (per.get(c.muscle) ?? 0) + n * c.weight);
   }
   return per;
 }
 
-/** Umbral de sets efectivos para considerar un músculo "entrenado" ese día
- *  (ignora participación mínima/incidental). */
-const RECOVERY_MIN_SETS = 2;
+/** Umbral de contribución ponderada (≈1 serie efectiva) para considerar un
+ *  músculo "entrenado" ese día e ignorar participación incidental. */
+const RECOVERY_MIN_SETS = 1;
 
 // ── Fuerza / Hipertrofia: e1RM por ejercicio ────────────────────────────────
 
