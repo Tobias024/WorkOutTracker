@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Planificación semanal: qué día de la semana corresponde a cada rutina.
 -- weekday: 0 = domingo ... 6 = sábado (convención de EXTRACT(dow) de Postgres,
 -- para que el cálculo de cumplimiento no necesite traducir índices).

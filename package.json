@@ -2,6 +2,12 @@
   "name": "workouttracker",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
+  "author": "Tobias Traverso <tobitraverso@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tobias024/WorkOutTracker.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

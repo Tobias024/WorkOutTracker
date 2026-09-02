@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {

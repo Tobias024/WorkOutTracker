@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Descanso registrado por serie (segundos), medido con el cronómetro de
 -- descanso: arranca al tildar una serie y se detiene al empezar la siguiente.
 -- Lo escribe el cliente (no un trigger). Hereda la RLS de workout_sets.

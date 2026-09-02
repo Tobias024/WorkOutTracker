@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Fecha desde la cual la meta de "días prometidos" está vigente. Se setea cada
 -- vez que el usuario fija/cambia sus días. Sirve para NO juzgar como fallados
 -- (ni pintar en rojo) los días ANTERIORES a esa fecha, que nunca se prometieron.

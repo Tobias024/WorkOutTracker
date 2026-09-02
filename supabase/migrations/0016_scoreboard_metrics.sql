@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Métricas nuevas en el ranking: series efectivas (hard sets) y fuerza relativa
 -- al peso corporal (e1RM / bodyweight). Redefine scoreboard_stats (mismas
 -- ramas de 0013 + 2 nuevas). Down: re-aplicar 0013.

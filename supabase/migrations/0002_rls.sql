@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- WorkOutTracker — Row Level Security
 -- Cada usuario sólo accede a sus datos. Los flujos cross-user pasan por RPCs (security definer).
 

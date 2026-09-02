@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Soporte para "drop sets": bajadas de peso sin descanso dentro de la misma serie.
 -- drops = null           -> serie simple, usar reps/weight como siempre.
 -- drops = [{reps,weight}, ...] -> cada elemento es una bajada; reps/weight guardan un espejo

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Objetivo de entrenamiento del perfil. Cambia qué métricas se promocionan a
 -- portada en Registro (no qué se calcula). Nullable: perfiles viejos quedan en
 -- "General" (orden actual) hasta elegir. Hereda la RLS de profiles.

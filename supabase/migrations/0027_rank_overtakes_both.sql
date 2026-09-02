@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Notificaciones de ranking en AMBAS direcciones y con la métrica correcta:
 -- (a) usa SERIES EFECTIVAS (hard_sets) en vez de tonelaje; (b) además de avisar
 -- al que fue superado ('overtaken'), avisa al que subió de puesto ('gained') —

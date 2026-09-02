@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Registro de peso corporal por día (espejo de sleep_logs). Permite registrar
 -- el peso a diario, entrenes o no. La tendencia de peso mergea esto con el
 -- body_weight_kg de las sesiones (para no perder historia previa).

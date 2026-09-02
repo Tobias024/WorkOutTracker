@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Excluir series de calentamiento (is_warmup) de todas las métricas server-side:
 -- volumen, e1RM, peso máximo y frecuencia dejan de contar warmups.
 -- Solo redefine funciones (idempotente); no toca datos ni firmas.

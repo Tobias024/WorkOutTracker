@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Planificación por serie: cada serie de un ejercicio de rutina con su
 -- objetivo de reps y peso. Permite planear incrementos/bajadas.
 -- routine_exercises.target_sets/target_reps quedan como valores "flat" de

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import { weekStart } from "@/lib/metrics";
 
 export type Period = "week" | "month" | "all";

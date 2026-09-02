@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Plan semanal global por usuario: qué días de la semana planea entrenar.
 -- 0 = domingo ... 6 = sábado (convención EXTRACT(dow)). La meta semanal es la
 -- cantidad de días elegidos. Reemplaza el enfoque per-rutina (routine_schedule)

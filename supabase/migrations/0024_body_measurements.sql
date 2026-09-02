@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Medidas corporales (circunferencias + % graso), cadencia mensual. Los sitios
 -- son nullable: una entrada puede llenar sólo algunos.
 -- Down: drop table body_measurements;

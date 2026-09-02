@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Ejercicios custom pasan a ser GLOBALES: cualquiera ve todo el catálogo.
 -- Antes `is_custom=true` solo lo veía su creador (RLS), así que un ejercicio
 -- custom (ej. un "Gemelos") no aparecía para otros usuarios buscando lo mismo.

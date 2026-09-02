@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Registro de sueño por noche (para la métrica base "Sueño"). Una fila por día.
 -- Down: drop table sleep_logs;
 create table if not exists sleep_logs (

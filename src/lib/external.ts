@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 /**
  * Abre un enlace externo en una pestaña nueva, pero pide confirmación antes
  * (la app no navega sola fuera del sitio). Se usa para las citas de papers.

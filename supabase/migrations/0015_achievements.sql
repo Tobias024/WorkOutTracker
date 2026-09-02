@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Logros / achievements: PRs de e1RM, hitos de racha y récords de volumen semanal.
 -- Se calculan al finalizar la sesión vía RPC (sin triggers ni matviews).
 -- Down: drop table achievements cascade; drop function record_session_achievements(uuid);

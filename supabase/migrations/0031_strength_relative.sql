@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Agrega la métrica 'strength_rel' a scoreboard_stats: ranking de FUERZA RELATIVA
 -- GENERAL, sin elegir ejercicio. Por usuario = promedio del mejor e1RM por
 -- ejercicio (Epley, sin warmups) dividido por su peso corporal (profiles.weight_kg,

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Más métricas para la comparación head-to-head con amigos.
 -- Se reescribe friend_metrics (base: 0013) agregando 4 claves escalares nuevas
 -- reutilizando fórmulas ya probadas en scoreboard_stats (0016):

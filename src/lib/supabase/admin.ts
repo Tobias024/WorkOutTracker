@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types";
 

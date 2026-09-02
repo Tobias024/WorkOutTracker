@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Modela el objetivo como DOS dimensiones ortogonales, en vez del enum `goal`:
 --   training_profile: fuerza | hipertrofia | resistencia   (qué se prioriza al entrenar)
 --   body_objective:   superavit | mantenimiento | deficit  (modificador de composición)

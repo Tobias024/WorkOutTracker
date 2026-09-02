@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Marca de tiempo de cuándo se completó cada serie, para calcular el descanso
 -- entre series. Se estampa por trigger (no desde el cliente), porque completar
 -- ocurre en dos lugares (SetRow y el auto-complete de la última serie).

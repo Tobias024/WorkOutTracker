@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 

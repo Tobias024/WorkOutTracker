@@ -67,7 +67,7 @@ O bien, copiá y ejecutá manualmente en el **SQL Editor** del dashboard, en ord
 ### 4. Cargar el catálogo de ejercicios
 
 Importa ~870 ejercicios con imágenes desde
-[free-exercise-db](https://github.com/yuhonas/free-exercise-db) (MIT):
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense):
 
 ```bash
 npm run seed
@@ -115,3 +115,18 @@ scripts/seed-exercises.ts
 - Compartir una rutina copia su estructura, **nunca los pesos**.
 - El ranking expone sólo agregados de amigos (volumen, frecuencia, peso máximo),
   no el detalle de cada serie.
+
+## Licencia
+
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
+
+Podés usar, estudiar, modificar y redistribuir este código. La condición es que
+cualquier obra derivada se distribuya bajo la misma licencia. La AGPL agrega a la
+GPL la **cláusula de red (§13)**: si desplegás una versión modificada y la ofrecés
+a través de una red, tenés que poner el código fuente completo a disposición de
+sus usuarios.
+
+Datos de terceros: el catálogo de ejercicios y sus imágenes vienen de
+[free-exercise-db](https://github.com/yuhonas/free-exercise-db), bajo
+[Unlicense](https://unlicense.org) (dominio público). No se redistribuyen en este
+repo — `npm run seed` los descarga en el momento.

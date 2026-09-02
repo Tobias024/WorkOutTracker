@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Alinea el conteo del ranking con el de Registro. Tres desalineaciones:
 --   1. Ventana: el cliente ahora manda períodos CALENDARIO (lunes/día 1) en
 --      vez de ventanas corridas de 7/30 días — ver src/lib/period.ts.

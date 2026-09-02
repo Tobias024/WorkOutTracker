@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- WorkOutTracker — esquema inicial
 -- Tablas, índices, RLS y funciones (RPC). Idempotente donde es razonable.
 

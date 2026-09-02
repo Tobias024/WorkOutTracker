@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- pgcrypto vive en el esquema "extensions" en Supabase, no en "public".
 -- create_invite() necesita ese esquema en el search_path para poder usar gen_random_bytes().
 create or replace function create_invite()

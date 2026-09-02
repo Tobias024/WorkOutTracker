@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Nota fija por ejercicio (por usuario): un comentario que viaja entre TODAS
 -- las rutinas/sesiones del usuario, indexado por exercise_id (identidad estable
 -- del catálogo). Resuelve "guardar por ejercicio y no por rutina".

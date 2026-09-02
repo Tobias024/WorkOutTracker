@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Excepciones por semana al plan semanal. profiles.planned_weekdays sigue
 -- siendo la plantilla default; una fila acá pisa la plantilla para esa
 -- semana puntual. week_start = lunes de esa semana (date, sin hora).

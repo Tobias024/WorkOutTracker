@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Alinea la métrica de detect_rank_overtakes con la del ranking (scoreboard):
 -- usa set_volume(ws) y excluye calentamientos, en vez de reps*weight crudo con
 -- todos los sets completados. Así "quién te pasó" coincide con lo que muestra el

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Notificaciones push: suscripciones del navegador + estado de ranking para
 -- detectar cuándo un amigo te supera. Se vigila el ranking de VOLUMEN SEMANAL
 -- (la vista por defecto del scoreboard).

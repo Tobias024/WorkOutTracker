@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 // Alta/baja de notificaciones push en el cliente. Registra el service worker,

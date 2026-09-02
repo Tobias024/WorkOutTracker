@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Perfiles de amigos: métricas detalladas de un amigo específico, ranking de
 -- ejercicios en común, y filtros nuevos (fuerza, reps, género) en el scoreboard.
 

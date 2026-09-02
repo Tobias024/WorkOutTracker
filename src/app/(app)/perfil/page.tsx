@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useEffect, useState } from "react";
@@ -210,7 +211,40 @@ export default function PerfilPage() {
       <MeasurementsForm />
 
       <ThemeSection />
+
+      <SourceNotice />
     </div>
+  );
+}
+
+/**
+ * Aviso de la AGPL §13 (cláusula de red): al ofrecer el programa a través de una
+ * red hay que dar a sus usuarios acceso al fuente. Un link visible es la forma
+ * estándar de cumplirlo en una webapp.
+ */
+function SourceNotice() {
+  return (
+    <p className="mt-6 text-center text-xs text-muted">
+      Software libre bajo{" "}
+      <a
+        href="https://www.gnu.org/licenses/agpl-3.0.html"
+        target="_blank"
+        rel="noreferrer noopener"
+        className="underline hover:text-fg"
+      >
+        AGPL-3.0
+      </a>
+      .{" "}
+      <a
+        href="https://github.com/Tobias024/WorkOutTracker"
+        target="_blank"
+        rel="noreferrer noopener"
+        className="underline hover:text-fg"
+      >
+        Código fuente
+      </a>
+      .
+    </p>
   );
 }
 

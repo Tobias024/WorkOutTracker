@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Agrega una cota superior (p_until) a scoreboard_stats para poder calcular el
 -- ranking de un período ANTERIOR y así mostrar movimiento (subiste/bajaste
 -- puestos vs la semana pasada). p_until=null ⇒ hasta ahora (comportamiento

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
 -- Altura y peso del perfil, para calcular BMI en el cliente (no se guarda,
 -- se deriva de estos dos valores).
 alter table profiles

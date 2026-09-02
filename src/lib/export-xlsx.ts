@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 export type SheetCell = string | number | null;
 export interface SheetSpec {
   name: string;
