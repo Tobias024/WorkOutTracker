@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { sinceFor, type Period } from "@/lib/period";
+import { sinceFor, localTimeZone, type Period } from "@/lib/period";
 import type { CommonExerciseMax, FriendMetrics } from "@/lib/types";
 
 export function useFriendMetrics(friendId: string | undefined, period: Period) {
@@ -14,6 +14,7 @@ export function useFriendMetrics(friendId: string | undefined, period: Period) {
       const { data, error } = await supabase.rpc("friend_metrics", {
         p_friend_id: friendId as string,
         p_since: sinceFor(period),
+        p_tz: localTimeZone(),
       });
       if (error) throw error;
       return data as FriendMetrics;

@@ -313,6 +313,8 @@ export type Database = {
           p_exercise_id?: string;
           p_sex?: string | null;
           p_until?: string | null;
+          /** Zona IANA para agrupar por día local (default 'UTC' en la RPC). */
+          p_tz?: string;
         };
         Returns: ScoreboardRow[];
       };
@@ -327,7 +329,7 @@ export type Database = {
         }[];
       };
       friend_metrics: {
-        Args: { p_friend_id: string; p_since: string };
+        Args: { p_friend_id: string; p_since: string; p_tz?: string };
         Returns: FriendMetrics;
       };
       common_exercise_maxes: {

@@ -13,15 +13,16 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
-import { Button, Badge, Textarea } from "@/components/ui";
+import { Button, Badge } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
+import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import { SetRow } from "@/components/SetRow";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { totalVolume } from "@/lib/metrics";
 import { formatVolume } from "@/lib/format";
-import { useExerciseNote, useUpsertExerciseNote } from "@/hooks/useExerciseNotes";
+import { useExerciseNote } from "@/hooks/useExerciseNotes";
 import type { Exercise, WorkoutSet } from "@/lib/types";
 import type { SessionExercise, LastExerciseLog } from "@/hooks/useWorkout";
 import { clsx } from "@/lib/clsx";
@@ -326,34 +327,6 @@ export function SessionExerciseCard({
       <ExerciseDetailModal
         exercise={detail ? exercise ?? null : null}
         onClose={() => setDetail(false)}
-      />
-    </div>
-  );
-}
-
-/** Nota fija del ejercicio: se guarda por exercise_id y viaja entre rutinas. */
-function ExerciseNoteEditor({
-  exerciseId,
-  initial,
-}: {
-  exerciseId: string;
-  initial: string;
-}) {
-  const upsert = useUpsertExerciseNote();
-  return (
-    <div className="mt-3">
-      <label className="text-xs text-muted">Nota del ejercicio</label>
-      <Textarea
-        key={initial}
-        defaultValue={initial}
-        rows={2}
-        placeholder="Ej: agarre cerrado, banco a 30°, cuidar el hombro…"
-        onBlur={(e) => {
-          const v = e.target.value;
-          if (v.trim() !== initial.trim())
-            upsert.mutate({ exerciseId, note: v });
-        }}
-        className="mt-1 text-sm"
       />
     </div>
   );

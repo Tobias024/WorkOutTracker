@@ -22,6 +22,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
+import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import {
   useRoutine,
@@ -32,7 +33,12 @@ import {
   type RoutineExerciseWithSets,
   type SetPlan,
 } from "@/hooks/useRoutines";
-import { useStartWorkout } from "@/hooks/useWorkout";
+import {
+  useStartWorkout,
+  useLastExerciseLogs,
+  type LastExerciseLog,
+} from "@/hooks/useWorkout";
+import { useExerciseNote } from "@/hooks/useExerciseNotes";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
@@ -47,6 +53,11 @@ export default function RoutineEditorPage() {
   const del = useDeleteRoutine();
   const share = useShareRoutine();
   const start = useStartWorkout();
+  // Último peso/reps por ejercicio (sesión terminada más reciente). Solo se
+  // muestra como referencia: no pisa el plan de la rutina.
+  const { data: lastLogs } = useLastExerciseLogs(
+    (data?.exercises ?? []).map((r) => r.exercise_id),
+  );
 
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
@@ -147,6 +158,7 @@ export default function RoutineEditorPage() {
               key={rex.id}
               rex={rex}
               exercise={exMap.get(rex.exercise_id)}
+              last={lastLogs?.get(rex.exercise_id)}
               isFirst={i === 0}
               isLast={i === exercises.length - 1}
               onSaveSets={(plans) =>
@@ -227,6 +239,7 @@ export default function RoutineEditorPage() {
 function RoutineExerciseRow({
   rex,
   exercise,
+  last,
   isFirst,
   isLast,
   onSaveSets,
@@ -237,6 +250,7 @@ function RoutineExerciseRow({
 }: {
   rex: RoutineExerciseWithSets;
   exercise?: Exercise;
+  last?: LastExerciseLog;
   isFirst: boolean;
   isLast: boolean;
   onSaveSets: (plans: SetPlan[]) => void;
@@ -247,6 +261,7 @@ function RoutineExerciseRow({
 }) {
   const [detail, setDetail] = useState(false);
   const [replace, setReplace] = useState(false);
+  const { data: note } = useExerciseNote(rex.exercise_id);
 
   return (
     <li className="card p-3">
@@ -295,7 +310,9 @@ function RoutineExerciseRow({
         </button>
       </div>
 
-      <SetPlanner sets={rex.sets} onSave={onSaveSets} />
+      <SetPlanner sets={rex.sets} last={last} onSave={onSaveSets} />
+
+      <ExerciseNoteEditor exerciseId={rex.exercise_id} initial={note ?? ""} />
 
       <ExerciseDetailModal
         exercise={detail ? exercise ?? null : null}
@@ -319,9 +336,11 @@ function RoutineExerciseRow({
 /** Editor de series planeadas: reps + peso por serie, para planear la progresión. */
 function SetPlanner({
   sets,
+  last,
   onSave,
 }: {
   sets: { target_reps: number | null; target_weight: number | null }[];
+  last?: LastExerciseLog;
   onSave: (plans: SetPlan[]) => void;
 }) {
   const [rows, setRows] = useState<SetPlan[]>(
@@ -361,6 +380,19 @@ function SetPlanner({
     });
   }
 
+  /** Peso/reps de la última vez para esta serie (por número de serie; si esa
+   *  serie no existe en el registro anterior, cae a la última que sí). */
+  function lastFor(setNumber: number) {
+    if (!last || last.sets.length === 0) return null;
+    const s =
+      last.sets.find((x) => x.set_number === setNumber) ??
+      last.sets[last.sets.length - 1];
+    if (!s || (s.weight == null && s.reps == null)) return null;
+    const w = s.weight != null ? `${s.weight} kg` : "—";
+    const r = s.reps != null ? ` × ${s.reps}` : "";
+    return `últ. ${w}${r}`;
+  }
+
   return (
     <div className="mt-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-muted">
@@ -369,52 +401,66 @@ function SetPlanner({
         <span className="flex-1 text-center">Peso (kg)</span>
         <span className="w-7" />
       </div>
-      {rows.map((r, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="w-8 text-center text-sm text-muted tabular-nums">
-            {i + 1}
-          </span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            placeholder="—"
-            value={r.target_reps ?? ""}
-            onChange={(e) =>
-              updateRow(i, {
-                target_reps:
-                  e.target.value === "" ? null : Number(e.target.value),
-              })
-            }
-            onBlur={() => onSave(rows)}
-            className="h-9 flex-1 text-center"
-          />
-          <Input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="0.5"
-            placeholder="—"
-            value={r.target_weight ?? ""}
-            onChange={(e) =>
-              updateRow(i, {
-                target_weight:
-                  e.target.value === "" ? null : Number(e.target.value),
-              })
-            }
-            onBlur={() => onSave(rows)}
-            className="h-9 flex-1 text-center"
-          />
-          <button
-            onClick={() => removeRow(i)}
-            disabled={rows.length <= 1}
-            className="w-7 text-muted hover:text-danger disabled:opacity-30"
-            aria-label="Quitar serie"
-          >
-            <X className="size-4 mx-auto" />
-          </button>
-        </div>
-      ))}
+      {rows.map((r, i) => {
+        const hint = lastFor(i + 1);
+        return (
+          <div key={i}>
+            <div className="flex items-center gap-2">
+              <span className="w-8 text-center text-sm text-muted tabular-nums">
+                {i + 1}
+              </span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                placeholder="—"
+                value={r.target_reps ?? ""}
+                onChange={(e) =>
+                  updateRow(i, {
+                    target_reps:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+                onBlur={() => onSave(rows)}
+                className="h-9 flex-1 text-center"
+              />
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.5"
+                placeholder="—"
+                value={r.target_weight ?? ""}
+                onChange={(e) =>
+                  updateRow(i, {
+                    target_weight:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+                onBlur={() => onSave(rows)}
+                className="h-9 flex-1 text-center"
+              />
+              <button
+                onClick={() => removeRow(i)}
+                disabled={rows.length <= 1}
+                className="w-7 text-muted hover:text-danger disabled:opacity-30"
+                aria-label="Quitar serie"
+              >
+                <X className="size-4 mx-auto" />
+              </button>
+            </div>
+            {hint && (
+              <div className="flex gap-2 mt-0.5">
+                <span className="w-8" />
+                <span className="flex-1 text-center text-[11px] text-muted tabular-nums">
+                  {hint}
+                </span>
+                <span className="w-7" />
+              </div>
+            )}
+          </div>
+        );
+      })}
       <button
         type="button"
         onClick={addRow}

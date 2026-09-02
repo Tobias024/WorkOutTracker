@@ -1,26 +1,58 @@
+import { weekStart } from "@/lib/metrics";
+
 export type Period = "week" | "month" | "all";
 
-/** Fecha ISO de inicio para un período relativo a ahora. */
+/**
+ * Zona horaria del dispositivo (IANA, ej. "America/Argentina/Buenos_Aires").
+ * Se manda a las RPC para que agrupen las sesiones por día LOCAL: agrupar en
+ * UTC contaba un entreno de noche en UTC-3 como del día siguiente.
+ */
+export function localTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Inicio del mes calendario en curso (00:00 local). */
+function monthStart(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+/**
+ * Fecha ISO de inicio de un período. Son períodos CALENDARIO (la semana arranca
+ * el lunes, el mes el día 1), no ventanas corridas: así "Semana" en el ranking
+ * cuenta los mismos días que "Días esta semana" en Registro.
+ */
 export function sinceFor(period: Period): string {
-  const now = Date.now();
-  if (period === "week") return new Date(now - 7 * 86400000).toISOString();
-  if (period === "month") return new Date(now - 30 * 86400000).toISOString();
+  const now = new Date();
+  if (period === "week") return weekStart(now).toISOString();
+  if (period === "month") return monthStart(now).toISOString();
   return new Date("1970-01-01").toISOString();
 }
 
 /**
- * Ventana anterior (del mismo largo, terminando donde arranca la actual) para
- * comparar el ranking contra el período previo y mostrar movimiento. Devuelve
- * null para "all" (no hay período anterior con sentido).
+ * Período calendario anterior (semana o mes previo completo) para comparar el
+ * ranking contra el período previo y mostrar movimiento. Devuelve null para
+ * "all" (no hay período anterior con sentido).
  */
 export function prevRangeFor(
   period: Period,
 ): { since: string; until: string } | null {
   if (period === "all") return null;
-  const days = period === "week" ? 7 : 30;
-  const now = Date.now();
-  return {
-    since: new Date(now - 2 * days * 86400000).toISOString(),
-    until: new Date(now - days * 86400000).toISOString(),
-  };
+  const now = new Date();
+  if (period === "week") {
+    const curStart = weekStart(now);
+    const prevStart = new Date(curStart);
+    prevStart.setDate(prevStart.getDate() - 7);
+    return { since: prevStart.toISOString(), until: curStart.toISOString() };
+  }
+  const curStart = monthStart(now);
+  const prevStart = new Date(
+    curStart.getFullYear(),
+    curStart.getMonth() - 1,
+    1,
+  );
+  return { since: prevStart.toISOString(), until: curStart.toISOString() };
 }

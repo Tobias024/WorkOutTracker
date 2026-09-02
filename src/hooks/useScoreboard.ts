@@ -2,7 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { sinceFor, prevRangeFor, type Period } from "@/lib/period";
+import {
+  sinceFor,
+  prevRangeFor,
+  localTimeZone,
+  type Period,
+} from "@/lib/period";
 import type { ScoreboardRow, Sex } from "@/lib/types";
 
 export type { Period };
@@ -37,6 +42,7 @@ export function useScoreboard(
     queryFn: async (): Promise<ScoreboardRowWithMove[]> => {
       const supabase = createClient();
       const prev = prevRangeFor(period);
+      const tz = localTimeZone();
 
       const [cur, prior] = await Promise.all([
         supabase.rpc("scoreboard_stats", {
@@ -44,6 +50,7 @@ export function useScoreboard(
           p_since: sinceFor(period),
           p_exercise_id: exerciseId,
           p_sex: sex ?? null,
+          p_tz: tz,
         }),
         prev
           ? supabase.rpc("scoreboard_stats", {
@@ -52,6 +59,7 @@ export function useScoreboard(
               p_exercise_id: exerciseId,
               p_sex: sex ?? null,
               p_until: prev.until,
+              p_tz: tz,
             })
           : Promise.resolve({ data: null, error: null }),
       ]);
