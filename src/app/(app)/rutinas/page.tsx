@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useRef, useState } from "react";
@@ -28,6 +29,7 @@ import {
   useCreateRoutine,
   useEnsureShareCodes,
   useImportRoutine,
+  type SetPlan,
 } from "@/hooks/useRoutines";
 import { useStartEmptyWorkout } from "@/hooks/useWorkout";
 import { useExercises, useExerciseMap } from "@/hooks/useExercises";
@@ -41,7 +43,7 @@ import { clsx } from "@/lib/clsx";
 
 type ImportPreview = {
   name: string;
-  items: { exerciseId: string; plans: { target_reps: number | null; target_weight: number | null }[] }[];
+  items: { exerciseId: string; plans: SetPlan[] }[];
   unmatched: string[];
   exCount: number;
   setCount: number;
@@ -146,7 +148,7 @@ export default function RoutinesPage() {
       const order: string[] = [];
       const byEx = new Map<
         string,
-        { target_reps: number | null; target_weight: number | null }[]
+        SetPlan[]
       >();
       const unmatched = new Set<string>();
       for (const r of body) {
@@ -167,7 +169,14 @@ export default function RoutinesPage() {
         }
         byEx
           .get(ex.id)!
-          .push({ target_reps: numOrNull(r[3]), target_weight: numOrNull(r[4]) });
+          .push({
+            target_reps: numOrNull(r[3]),
+            target_weight: numOrNull(r[4]),
+            // Columnas agregadas al final: una plantilla vieja no las trae y
+            // `numOrNull(undefined)` da null, así que sigue importando igual.
+            target_duration_seconds: numOrNull(r[5]),
+            target_distance_m: numOrNull(r[6]),
+          });
       }
 
       const items = order.map((id) => ({ exerciseId: id, plans: byEx.get(id)! }));

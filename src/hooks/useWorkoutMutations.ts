@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -67,11 +68,15 @@ export function useSessionMutations(sessionId: string) {
       setNumber,
       reps,
       weight,
+      durationSeconds,
+      distanceM,
     }: {
       workoutExerciseId: string;
       setNumber: number;
       reps?: number | null;
       weight?: number | null;
+      durationSeconds?: number | null;
+      distanceM?: number | null;
     }) => {
       const supabase = createClient();
       const { error } = await supabase.from("workout_sets").insert({
@@ -79,10 +84,19 @@ export function useSessionMutations(sessionId: string) {
         set_number: setNumber,
         reps: reps ?? null,
         weight: weight ?? null,
+        duration_seconds: durationSeconds ?? null,
+        distance_m: distanceM ?? null,
       });
       if (error) throw error;
     },
-    onMutate: async ({ workoutExerciseId, setNumber, reps, weight }) => {
+    onMutate: async ({
+      workoutExerciseId,
+      setNumber,
+      reps,
+      weight,
+      durationSeconds,
+      distanceM,
+    }) => {
       await qc.cancelQueries({ queryKey: sessionKey });
       const tempSet: WorkoutSet = {
         id: `temp-${setNumber}-${workoutExerciseId}`,
@@ -97,6 +111,8 @@ export function useSessionMutations(sessionId: string) {
         completed_at: null,
         rest_seconds: null,
         drops: null,
+        duration_seconds: durationSeconds ?? null,
+        distance_m: distanceM ?? null,
       };
       return optimistic((s) => ({
         ...s,

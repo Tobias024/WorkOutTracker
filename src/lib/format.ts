@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Helpers de formato (es-AR).
 
 export function formatDate(iso: string | null): string {
@@ -37,6 +38,46 @@ export function formatClock(totalSeconds: number): string {
   const mm = String(m).padStart(2, "0");
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * Inverso de `formatClock` para los campos de carga. Acepta "mm:ss", "h:mm:ss"
+ * y un número suelto, que se lee como SEGUNDOS (una plancha se piensa en
+ * segundos; una corrida se escribe con ":"). Devuelve null si no se entiende.
+ */
+export function parseClock(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (!t.includes(":")) {
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  }
+  const parts = t.split(":").map((p) => Number(p.trim() || 0));
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  const [a, b, c] = parts;
+  const total =
+    parts.length === 2 ? a * 60 + b : parts.length === 3 ? a * 3600 + b * 60 + c : NaN;
+  return Number.isFinite(total) ? Math.round(total) : null;
+}
+
+/** Metros → "5,2 km" (o "800 m" por debajo del kilómetro). */
+export function formatDistance(meters: number | null): string {
+  if (meters == null) return "—";
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(2).replace(/\.?0+$/, "")} km`;
+}
+
+/** Ritmo min/km a partir de duración y distancia. null si falta alguno. */
+export function formatPace(
+  seconds: number | null,
+  meters: number | null,
+): string | null {
+  if (!seconds || !meters) return null;
+  const secPerKm = seconds / (meters / 1000);
+  if (!Number.isFinite(secPerKm)) return null;
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}:${String(s).padStart(2, "0")}/km`;
 }
 
 export function formatWeight(kg: number | null): string {

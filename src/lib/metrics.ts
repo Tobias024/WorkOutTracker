@@ -1,12 +1,46 @@
-import type { SetDrop, WorkoutSet } from "@/lib/types";
+// SPDX-License-Identifier: AGPL-3.0-only
+import type { MetricKind, SetDrop, WorkoutSet } from "@/lib/types";
 
 type SetLike = Pick<WorkoutSet, "reps" | "weight" | "drops">;
 
-/** Bajadas efectivas de un set: las suyas propias, o un único par reps/peso si es una serie simple. */
+/**
+ * Bajadas efectivas de un set: las suyas propias, o un único par reps/peso si
+ * es una serie simple. Una serie sin reps NI peso (por tiempo o distancia) no
+ * tiene bajadas: devolver `[{reps: null, weight: null}]` sería un par fantasma
+ * que todos los consumidores recorren — y `export-csv` llegaría a emitir una
+ * fila vacía por él.
+ */
 export function effectiveDrops(s: SetLike): SetDrop[] {
-  return s.drops && s.drops.length > 0
-    ? s.drops
-    : [{ reps: s.reps, weight: s.weight }];
+  if (s.drops && s.drops.length > 0) return s.drops;
+  if (s.reps == null && s.weight == null) return [];
+  return [{ reps: s.reps, weight: s.weight }];
+}
+
+// ── Tipo de medición del ejercicio ──────────────────────────────────────────
+
+/** Lleva carga en kg (el campo `weight` de la serie tiene sentido). */
+export function isLoadTracked(kind: MetricKind): boolean {
+  return kind === "reps_weight" || kind === "time_load";
+}
+
+/**
+ * Cuenta como volumen de fuerza (series efectivas, MEV/MAV/MRV, tonelaje, 1RM).
+ * Solo reps × peso: la evidencia de dosis-respuesta está medida en series de
+ * entrenamiento de resistencia, así que meter minutos de cinta o segundos de
+ * plancha en la misma cuenta compara cosas que no son comparables.
+ */
+export function countsForStrengthVolume(kind: MetricKind): boolean {
+  return kind === "reps_weight";
+}
+
+/**
+ * Estimula un músculo, aunque no sume volumen de fuerza. Los isométricos sí
+ * (una plancha entrena el abdomen); el cardio no — y esto importa: correr tiene
+ * `quadriceps` como primario en free-exercise-db, así que sin este filtro una
+ * corrida resetearía la recencia de cuádriceps.
+ */
+export function trainsMuscle(kind: MetricKind): boolean {
+  return kind !== "distance_time";
 }
 
 /** RIR (reps en reserva) derivado de la columna rpe (rpe = 10 − rir). null si no cargado. */
@@ -25,6 +59,11 @@ export function isCountableSet(s: {
 /**
  * "Hard set" (serie efectiva): set contable, con ≥5 reps y cerca del fallo
  * (RIR ≤ 3, o sin RIR cargado). Es el driver de hipertrofia mejor soportado.
+ *
+ * Una serie por tiempo o distancia no tiene reps, así que queda afuera — y debe
+ * quedar afuera: no es volumen de fuerza (ver countsForStrengthVolume). Se
+ * chequea `reps == null` explícito en vez de dejar que `(null ?? 0) < 5` lo
+ * resuelva de casualidad.
  */
 export function isHardSet(s: {
   completed: boolean;
@@ -33,7 +72,8 @@ export function isHardSet(s: {
   rpe: number | null;
 }): boolean {
   if (!isCountableSet(s)) return false;
-  if ((s.reps ?? 0) < 5) return false;
+  if (s.reps == null) return false;
+  if (s.reps < 5) return false;
   const rir = rirOf(s);
   return rir == null || rir <= 3;
 }
@@ -126,26 +166,6 @@ export function estimate1RM(weight: number, reps: number): number {
   return Math.round(weight * (1 + reps / 30));
 }
 
-export interface SessionSummary {
-  volume: number;
-  sets: number;
-  topWeight: number;
-}
-
-export function summarizeSets(
-  sets: (SetLike & Pick<WorkoutSet, "completed">)[],
-): SessionSummary {
-  const done = sets.filter((s) => s.completed);
-  return {
-    volume: totalVolume(done),
-    sets: done.length,
-    topWeight: done.reduce(
-      (m, s) => Math.max(m, ...effectiveDrops(s).map((d) => d.weight ?? 0)),
-      0,
-    ),
-  };
-}
-
 /** Agrupa por clave de fecha local (YYYY-MM-DD). Usa getters locales, no UTC:
  *  slicear el ISO crudo desalinea el día para usuarios en UTC negativo que
  *  entrenan de noche (el timestamptz ya rodó al día UTC siguiente). */
@@ -159,6 +179,24 @@ export function dateKey(iso: string): string {
  *  que reintroduciría el mismo desfase que dateKey corrige arriba. */
 export function localMidnight(dateOnly: string): Date {
   return new Date(`${dateOnly}T00:00:00`);
+}
+
+/**
+ * Días CALENDARIO entre dos instantes, en zona local. `Math.floor(ms / DAY)`
+ * cuenta períodos de 24 h, que no es lo mismo: entrenaste el lunes 20:00 y mirás
+ * el miércoles 08:00 → 36 h → diría "1 día" cuando pasaron 2. Se comparan
+ * medianoches locales. `round` (y no `floor`) porque un día con cambio de horario
+ * dura 23 o 25 h y arruinaría la división exacta.
+ */
+export function calendarDaysBetween(
+  from: number | string | Date,
+  to: number | string | Date,
+): number {
+  const a = new Date(from);
+  const b = new Date(to);
+  a.setHours(0, 0, 0, 0);
+  b.setHours(0, 0, 0, 0);
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
 /** Inicio de semana (lunes) para una fecha dada. */

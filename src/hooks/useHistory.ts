@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +14,8 @@ export interface HistorySet {
   completed_at: string | null;
   rest_seconds: number | null;
   drops: SetDrop[] | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
 }
 export interface HistoryExercise {
   exercise_id: string;
@@ -41,7 +44,7 @@ export function useHistory() {
       const { data, error } = await supabase
         .from("workout_sessions")
         .select(
-          "id, name, routine_id, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, rest_seconds, drops))",
+          "id, name, routine_id, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, rest_seconds, drops, duration_seconds, distance_m))",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;

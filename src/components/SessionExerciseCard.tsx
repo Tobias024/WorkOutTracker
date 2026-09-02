@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
@@ -20,10 +21,10 @@ import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import { SetRow } from "@/components/SetRow";
 import { muscleEs } from "@/lib/i18n-exercise";
-import { totalVolume } from "@/lib/metrics";
-import { formatVolume } from "@/lib/format";
+import { countsForStrengthVolume, totalVolume } from "@/lib/metrics";
+import { formatDistance, formatDuration, formatVolume } from "@/lib/format";
 import { useExerciseNote } from "@/hooks/useExerciseNotes";
-import type { Exercise, WorkoutSet } from "@/lib/types";
+import type { Exercise, MetricKind, WorkoutSet } from "@/lib/types";
 import type { SessionExercise, LastExerciseLog } from "@/hooks/useWorkout";
 import { clsx } from "@/lib/clsx";
 
@@ -45,6 +46,7 @@ export function SessionExerciseCard({
   onEndMove,
   onMove,
   onSetCompleted,
+  onSetStarted,
 }: {
   we: SessionExercise;
   exercise?: Exercise;
@@ -67,6 +69,8 @@ export function SessionExerciseCard({
   onMove?: (dir: "up" | "down") => void;
   /** El usuario tildó una serie (para arrancar el cronómetro de descanso). */
   onSetCompleted?: (setId: string) => void;
+  /** El usuario empezó a cargar una serie sin tildar → cierra el descanso vivo. */
+  onSetStarted?: (setId: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [replace, setReplace] = useState(false);
@@ -78,7 +82,18 @@ export function SessionExerciseCard({
   const hasNote = !!note?.trim();
 
   const completedSets = we.sets.filter((s) => s.completed);
-  const volume = totalVolume(completedSets);
+  const kind: MetricKind = exercise?.metric_kind ?? "reps_weight";
+  const volume = countsForStrengthVolume(kind) ? totalVolume(completedSets) : 0;
+  // Un ejercicio por tiempo o distancia no tiene tonelaje: el resumen util es
+  // cuanto tiempo estuvo bajo tension o cuantos km hizo.
+  const doneSeconds = completedSets.reduce(
+    (acc, x) => acc + (x.duration_seconds ?? 0),
+    0,
+  );
+  const doneMeters = completedSets.reduce(
+    (acc, x) => acc + (x.distance_m ?? 0),
+    0,
+  );
 
   /** Peso/reps + bajadas de la última vez para esta serie (por número de serie). */
   function ghostFor(setNumber: number) {
@@ -86,7 +101,15 @@ export function SessionExerciseCard({
     const s =
       lastLog.sets.find((x) => x.set_number === setNumber) ??
       lastLog.sets[lastLog.sets.length - 1];
-    return s ? { weight: s.weight, reps: s.reps, drops: s.drops } : null;
+    return s
+      ? {
+          weight: s.weight,
+          reps: s.reps,
+          drops: s.drops,
+          duration_seconds: s.duration_seconds,
+          distance_m: s.distance_m,
+        }
+      : null;
   }
 
   /** Al completar una serie vacía, adopta el ghost (repetir = no tocar nada). */
@@ -117,6 +140,20 @@ export function SessionExerciseCard({
       next.weight = g.weight;
     if (set.reps == null && next.reps == null && g.reps != null)
       next.reps = g.reps;
+    // Mismo criterio para las series por tiempo y por distancia: tildar una
+    // serie vacia repite lo de la ultima vez.
+    if (
+      set.duration_seconds == null &&
+      next.duration_seconds == null &&
+      g.duration_seconds != null
+    )
+      next.duration_seconds = g.duration_seconds;
+    if (
+      set.distance_m == null &&
+      next.distance_m == null &&
+      g.distance_m != null
+    )
+      next.distance_m = g.distance_m;
     return next;
   }
 
@@ -214,6 +251,12 @@ export function SessionExerciseCard({
                 </Badge>
               )}
               {volume > 0 && <Badge>{formatVolume(volume)}</Badge>}
+              {kind === "distance_time" && doneMeters > 0 && (
+                <Badge>{formatDistance(doneMeters)}</Badge>
+              )}
+              {kind !== "reps_weight" && doneSeconds > 0 && (
+                <Badge>{formatDuration(doneSeconds)}</Badge>
+              )}
               {collapsed && (
                 <Badge>
                   {completedSets.length}/{we.sets.length} series
@@ -296,9 +339,13 @@ export function SessionExerciseCard({
               <SetRow
                 key={set.id}
                 set={set}
+                kind={exercise?.metric_kind ?? "reps_weight"}
                 ghost={ghostFor(set.set_number)}
                 onChange={(patch) => handleSetChange(set, patch)}
                 onDelete={() => onDeleteSet(set.id)}
+                onStart={
+                  set.completed ? undefined : () => onSetStarted?.(set.id)
+                }
               />
             ))}
           </div>

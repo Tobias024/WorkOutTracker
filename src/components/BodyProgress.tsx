@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
@@ -48,7 +49,12 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
     <SectionCard
       title="Peso corporal"
       subtitle="Registrá tu peso · media móvil 7 días"
-      info="La línea es el promedio móvil de 7 días (los puntos tenues son las mediciones crudas, que tienen ruido de agua/glucógeno de ±1-2 kg). El número accionable es la tasa de cambio por semana, no el peso de un día. Registralo a diario, entrenes o no."
+      info={
+        "La línea es el promedio móvil de 7 días (los puntos tenues son las mediciones crudas, que tienen ruido de agua/glucógeno de ±1-2 kg). El número accionable es la tasa de cambio por semana, no el peso de un día.\n\n" +
+        "Cómo se calcula esa tasa: es la pendiente (mínimos cuadrados) de la línea de promedio móvil sobre los últimos 28 días, expresada como % del nivel actual por semana. O sea, la inclinación de la línea que estás viendo — no la diferencia entre dos pesadas sueltas, que son justo el dato ruidoso.\n\n" +
+        "Si no hay al menos 4 mediciones en esos 28 días, ni 10 días entre la primera y la última, no se muestra tasa: con menos que eso la pendiente es ruido.\n\n" +
+        "Registralo a diario, entrenes o no."
+      }
     >
       <p className="text-2xl font-bold tracking-tight mb-1">
         {bw.last != null ? `${bw.last} kg` : "—"}

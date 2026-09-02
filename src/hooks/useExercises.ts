@@ -1,16 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/client";
-import type { Exercise } from "@/lib/types";
+import type { Exercise, MetricKind } from "@/lib/types";
 
 // Catálogo sin el array `instructions` (el más pesado y sólo lo usa el modal de
 // detalle, que lo trae on-demand con useExerciseInstructions). Aliviana el fetch
 // que alimenta a useExerciseMap, usado en muchas pantallas.
 const LIST_COLUMNS =
-  "id, slug, name, category, equipment, primary_muscles, secondary_muscles, mechanic, level, force, images, is_custom, created_by, created_at";
+  "id, slug, name, metric_kind, category, equipment, primary_muscles, secondary_muscles, mechanic, level, force, images, is_custom, created_by, created_at";
 
 /** Catálogo completo (cacheado largo: cambia poco). Sin `instructions`. */
 export function useExercises() {
@@ -32,6 +33,7 @@ export function useExercises() {
 /** Datos mínimos para crear un ejercicio custom (los que alimentan los cálculos). */
 export type NewExercise = {
   name: string;
+  metric_kind: MetricKind;
   primary_muscles: string[]; // ≥1
   secondary_muscles: string[];
   mechanic: string; // compound | isolation
@@ -67,7 +69,10 @@ export function useCreateExercise() {
       const row = {
         slug: `${slugify(ex.name)}-${nanoid(6)}`,
         name: ex.name.trim(),
-        category: "strength",
+        metric_kind: ex.metric_kind,
+        // La categoría se deriva del tipo de medición: antes estaba clavada en
+        // "strength", así que era imposible crear un ejercicio de cardio.
+        category: ex.metric_kind === "distance_time" ? "cardio" : "strength",
         equipment: ex.equipment,
         primary_muscles: ex.primary_muscles,
         secondary_muscles: ex.secondary_muscles,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import type { HistorySession } from "@/hooks/useHistory";
 import type { Exercise, SleepLog, BodyWeightLog, BodyMeasurement } from "@/lib/types";
 import {
@@ -9,6 +10,8 @@ import {
   landmarkFor,
   rirOf,
   muscleContributions,
+  calendarDaysBetween,
+  trainsMuscle,
 } from "@/lib/metrics";
 
 // Helpers de métricas por objetivo (Fase 2). Todo se calcula desde el historial;
@@ -51,6 +54,11 @@ function sessionMuscleSets(
   for (const we of s.workout_exercises) {
     const ex = exMap.get(we.exercise_id);
     if (!ex) continue;
+    // El cardio no cuenta como trabajo muscular: correr tiene `quadriceps` de
+    // primario en el dataset, así que sin esto una corrida resetearía la
+    // recencia de cuádriceps. Los isométricos sí cuentan (una plancha entrena
+    // el abdomen), aunque no sumen volumen de fuerza.
+    if (!trainsMuscle(ex.metric_kind)) continue;
     const n = we.workout_sets.filter(isCountableSet).length;
     if (!n) continue;
     for (const c of muscleContributions(ex))
@@ -62,6 +70,29 @@ function sessionMuscleSets(
 /** Umbral de contribución ponderada (≈1 serie efectiva) para considerar un
  *  músculo "entrenado" ese día e ignorar participación incidental. */
 const RECOVERY_MIN_SETS = 1;
+
+/**
+ * Los pesos son 1.0 / 0.5, así que las sumas caen en binarios exactos y el
+ * épsilon es defensivo, no obligatorio. Se deja igual: la versión anterior usaba
+ * 0.3 y `3 * 0.3` da 0.8999999999999999, o sea que un umbral de 0.9 tampoco
+ * habría alcanzado. Comparar flotantes acumulados contra un entero sin margen es
+ * la clase de bug que ya mordió una vez.
+ */
+const EPSILON = 1e-9;
+
+/**
+ * Grupos que la card de recencia siembra siempre, aunque nunca se hayan
+ * entrenado — un grupo en cero es justamente lo que más conviene ver, y antes
+ * simplemente no aparecía. Se dejan afuera `neck`, `abductors` y `adductors`
+ * (especialidad, no parte de un programa de hipertrofia típico) y `shoulders`
+ * (inalcanzable: `baseToGroup` siempre lo reescribe a una cabeza del deltoides).
+ */
+const RECENCY_GROUPS = [
+  "chest", "lats", "middle back", "lower back", "traps",
+  "front delts", "side delts", "rear delts",
+  "biceps", "triceps", "forearms",
+  "quadriceps", "hamstrings", "glutes", "calves", "abdominals",
+];
 
 // ── Fuerza / Hipertrofia: e1RM por ejercicio ────────────────────────────────
 
@@ -312,28 +343,34 @@ export function rirBucketsByMuscle(
 
 export interface MuscleDays {
   muscle: string;
-  days: number;
+  /** null = nunca registró trabajo. NO es lo mismo que "hace mucho". */
+  days: number | null;
 }
 
 export function daysSinceLastByMuscle(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
+  now: number = Date.now(),
 ): MuscleDays[] {
   const last = new Map<string, number>();
   for (const s of sessions) {
     const t = ms(s);
-    // Cuenta el músculo (primario o secundario) solo si superó el umbral de
-    // sets efectivos ese día — así el trabajo compuesto real cuenta, pero la
-    // participación incidental no.
+    // Cuenta el músculo (directo o indirecto) solo si superó el umbral de sets
+    // ponderados ese día — así el trabajo compuesto real cuenta (2 series
+    // indirectas ya llegan a 1.0), pero la participación incidental no.
     for (const [m, sets] of sessionMuscleSets(s, exMap)) {
-      if (sets >= RECOVERY_MIN_SETS) last.set(m, Math.max(last.get(m) ?? 0, t));
+      if (sets >= RECOVERY_MIN_SETS - EPSILON)
+        last.set(m, Math.max(last.get(m) ?? 0, t));
     }
   }
-  const now = Date.now();
-  return [...last.entries()]
-    .map(([muscle, t]) => ({ muscle, days: Math.floor((now - t) / DAY) }))
-    .sort((a, b) => b.days - a.days)
-    .slice(0, 12);
+  return RECENCY_GROUPS.map((muscle) => {
+    const t = last.get(muscle);
+    return { muscle, days: t == null ? null : calendarDaysBetween(t, now) };
+  }).sort((a, b) => {
+    // Los que nunca se entrenaron van primero: son la señal más fuerte.
+    if (a.days == null || b.days == null) return (b.days == null ? 1 : 0) - (a.days == null ? 1 : 0);
+    return b.days - a.days;
+  });
 }
 
 // ── Resistencia: reps por serie / densidad / test de reps ───────────────────
@@ -376,12 +413,21 @@ export function sessionDensityWeekly(
     if (t < cutoff || !s.duration_seconds) continue;
     const wk = weekStart(new Date(t)).getTime();
     let reps = 0;
+    // Tiempo de las series que no aportan reps (cardio e isométricos). Se
+    // descuenta del denominador: si no, una corrida de 20' infla los minutos con
+    // numerador cero y la densidad se desploma sin que hayas entrenado peor.
+    let noRepSeconds = 0;
     for (const we of s.workout_exercises)
-      for (const set of we.workout_sets)
-        if (isCountableSet(set) && set.reps) reps += set.reps;
+      for (const set of we.workout_sets) {
+        if (!isCountableSet(set)) continue;
+        if (set.reps) reps += set.reps;
+        else if (set.duration_seconds) noRepSeconds += set.duration_seconds;
+      }
+    const minutes = Math.max(0, s.duration_seconds - noRepSeconds) / 60;
+    if (!minutes) continue;
     const a = agg.get(wk) ?? { reps: 0, min: 0 };
     a.reps += reps;
-    a.min += s.duration_seconds / 60;
+    a.min += minutes;
     agg.set(wk, a);
   }
   const m = new Map<number, number>();
@@ -445,25 +491,77 @@ export interface BwSeries {
   last: number | null;
 }
 
+/** Ventana y mínimos de la tasa de cambio de peso (regresión sobre la media móvil). */
+const RATE_WINDOW_DAYS = 28;
+const RATE_MIN_POINTS = 4;
+const RATE_MIN_SPAN_DAYS = 10;
+
+/**
+ * Tasa de cambio en %/semana = pendiente OLS de la media móvil de 7 días sobre
+ * los últimos 28 días, dividida por el nivel actual de esa media.
+ *
+ * Antes se calculaba con el primer y el último punto CRUDO de toda la ventana
+ * (120 días): dos mediciones sueltas — justo las que la card declara ruidosas
+ * (±1-2 kg de agua/glucógeno) — y encima promediadas sobre 4 meses, o sea una
+ * tasa histórica presentada como si fuera la actual. La pendiente de la línea
+ * que se dibuja es lo que el usuario está mirando y lo que se puede accionar.
+ *
+ * null si no hay suficientes mediciones recientes o el tramo es muy corto: sin
+ * eso la pendiente es ruido, y es preferible no mostrar número.
+ */
+function trendRatePctPerWeek(
+  ma: { t: number; v: number }[],
+  ref: number,
+): number | null {
+  const win = ma.filter((p) => p.t >= ref - RATE_WINDOW_DAYS * DAY);
+  if (win.length < RATE_MIN_POINTS) return null;
+  const spanDays = (win[win.length - 1].t - win[0].t) / DAY;
+  if (spanDays < RATE_MIN_SPAN_DAYS) return null;
+
+  // x en días desde el primer punto de la ventana; y en kg de la media móvil.
+  const n = win.length;
+  const xs = win.map((p) => (p.t - win[0].t) / DAY);
+  const ys = win.map((p) => p.v);
+  const mx = xs.reduce((a, x) => a + x, 0) / n;
+  const my = ys.reduce((a, y) => a + y, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    den += (xs[i] - mx) ** 2;
+  }
+  if (den === 0) return null;
+  const level = ys[n - 1]; // nivel actual de la media móvil
+  if (!level) return null;
+  const pctPerWeek = ((num / den) * 7 * 100) / level;
+  return Math.round(pctPerWeek * 100) / 100;
+}
+
 /** Media móvil de 7 días + tasa %/semana a partir de puntos {t, w} ordenados. */
-function weightTrendFromRaw(raw: { t: number; w: number }[]): BwSeries {
+function weightTrendFromRaw(
+  raw: { t: number; w: number }[],
+  ref: number = Date.now(),
+): BwSeries {
   if (raw.length === 0)
     return { points: [], ma: [], ratePctPerWeek: null, last: null };
   const points = raw.map((r) => ({ label: weekLabel(r.t), value: r.w }));
-  const ma = raw.map((r) => {
+  // Media móvil trailing de 7 días en cada medición (con su timestamp, que la
+  // regresión necesita: los registros son irregulares, no una serie diaria).
+  const maRaw = raw.map((r) => {
     const from = r.t - 7 * DAY;
     const win = raw.filter((x) => x.t >= from && x.t <= r.t);
-    const avg = win.reduce((a, x) => a + x.w, 0) / win.length;
-    return { label: weekLabel(r.t), value: Math.round(avg * 10) / 10 };
+    return { t: r.t, v: win.reduce((a, x) => a + x.w, 0) / win.length };
   });
-  const first = raw[0];
-  const lastp = raw[raw.length - 1];
-  const spanWeeks = (lastp.t - first.t) / WEEK;
-  const ratePctPerWeek =
-    spanWeeks > 0.5 && first.w
-      ? Math.round((((lastp.w - first.w) / first.w) * 100) / spanWeeks * 100) / 100
-      : null;
-  return { points, ma, ratePctPerWeek, last: lastp.w };
+  const ma = maRaw.map((p) => ({
+    label: weekLabel(p.t),
+    value: Math.round(p.v * 10) / 10,
+  }));
+  return {
+    points,
+    ma,
+    ratePctPerWeek: trendRatePctPerWeek(maRaw, ref),
+    last: raw[raw.length - 1].w,
+  };
 }
 
 /** Peso corporal (solo sesiones): puntos crudos + media móvil + tasa %/semana. */
@@ -611,13 +709,14 @@ export interface Readiness {
 export function readinessByMuscle(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
+  now: number = Date.now(),
 ): Readiness[] {
-  const now = Date.now();
   const lastAt = new Map<string, number>();
   for (const s of sessions) {
     const t = ms(s);
     for (const [mu, sets] of sessionMuscleSets(s, exMap)) {
-      if (sets >= RECOVERY_MIN_SETS) lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
+      if (sets >= RECOVERY_MIN_SETS - EPSILON)
+        lastAt.set(mu, Math.max(lastAt.get(mu) ?? 0, t));
     }
   }
   const cutoff = now - 7 * DAY;
@@ -637,7 +736,7 @@ export function readinessByMuscle(
   }
   const out: Readiness[] = [];
   for (const [mu, t] of lastAt) {
-    const days = Math.floor((now - t) / DAY);
+    const days = calendarDaysBetween(t, now);
     const mev = landmarkFor(mu).mev;
     const sets = hard.get(mu) ?? 0;
     // MEV 0 (ej. deltoide anterior, que se nutre de los press) → sin déficit.
@@ -648,19 +747,35 @@ export function readinessByMuscle(
   return out.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
+/** Descansos mínimos en la ventana para que el promedio signifique algo. */
+const REST_MIN_SAMPLES = 5;
+
 /**
  * Descanso medio entre series (segundos), MEDIDO: promedia el `rest_seconds`
  * que guarda el cronómetro de descanso por serie. Se ignoran nulos y outliers
  * (> cap minutos).
+ *
+ * Ventana móvil de `days` (no todo el historial): el promedio de por vida se
+ * congela a los pocos meses y deja de responder a cualquier cambio de conducta.
+ * Además ese corte deja afuera los `rest_seconds` viejos, medidos con la regla
+ * anterior (se cerraban al COMPLETAR la serie siguiente, así que incluían su
+ * ejecución y sobreestimaban el descanso ~20-45 s).
+ *
+ * avgSec = null con menos de REST_MIN_SAMPLES muestras: el descanso sólo se
+ * guarda cuando hubo señal real de arranque de la serie siguiente, así que un
+ * usuario puede tener pocas y un promedio de 2 no es un promedio.
  */
 export function avgRestBetweenSets(
   sessions: HistorySession[],
   maxMin = 10,
+  days = 30,
 ): { avgSec: number | null; samples: number } {
   let sum = 0;
   let n = 0;
   const capS = maxMin * 60;
+  const cutoff = Date.now() - days * DAY;
   for (const s of sessions) {
+    if (ms(s) < cutoff) continue;
     for (const we of s.workout_exercises) {
       for (const set of we.workout_sets) {
         const r = set.rest_seconds;
@@ -670,6 +785,9 @@ export function avgRestBetweenSets(
       }
     }
   }
-  return { avgSec: n ? Math.round(sum / n) : null, samples: n };
+  return {
+    avgSec: n >= REST_MIN_SAMPLES ? Math.round(sum / n) : null,
+    samples: n,
+  };
 }
 

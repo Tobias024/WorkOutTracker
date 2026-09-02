@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -216,21 +217,38 @@ export default function WorkoutPage() {
   }
 
   // Cronómetro de descanso: guarda el descanso en la serie que lo arrancó.
+  //
+  // El descanso termina cuando ARRANCA la serie siguiente, no cuando se la
+  // completa: cerrarlo al completarla metía la ejecución entera de esa serie
+  // adentro del "descanso" (~20-45 s de sobreestimación sistemática, del mismo
+  // orden que la banda objetivo de 30-60 s del perfil de resistencia).
+  //
+  // Señales válidas de arranque: el botón "Empecé" del banner, o la primera
+  // edición de peso/reps de una serie sin tildar (estás en la máquina cargándola).
+  // Si la siguiente se tilda sin ninguna de las dos, el intervalo medido está
+  // contaminado y se DESCARTA en vez de inflar el promedio.
   function saveRest(setId: string, sec: number) {
     if (sec > 0) m.updateSet.mutate({ id: setId, patch: { rest_seconds: sec } });
   }
-  function onSetCompleted(setId: string) {
-    const t = Date.now();
-    setRestFor((prev) => {
-      if (prev) saveRest(prev.setId, Math.round((t - prev.startMs) / 1000));
-      return { setId, startMs: t };
-    });
+  const restElapsed = (startMs: number) => Math.round((Date.now() - startMs) / 1000);
+
+  /** Arrancó la serie `setId` → cierra y guarda el descanso vivo. */
+  function onSetStarted(setId: string) {
+    if (!restFor || restFor.setId === setId) return;
+    saveRest(restFor.setId, restElapsed(restFor.startMs));
+    setRestFor(null);
   }
+
+  /** Se tildó una serie: arranca su descanso (el previo, si sigue vivo, se descarta). */
+  function onSetCompleted(setId: string) {
+    setRestFor({ setId, startMs: Date.now() });
+  }
+
+  /** Botón del banner: es la señal explícita de que arrancó la serie siguiente. */
   function stopRest() {
-    setRestFor((prev) => {
-      if (prev) saveRest(prev.setId, Math.round((Date.now() - prev.startMs) / 1000));
-      return null;
-    });
+    if (!restFor) return;
+    saveRest(restFor.setId, restElapsed(restFor.startMs));
+    setRestFor(null);
   }
 
   return (
@@ -345,6 +363,7 @@ export default function WorkoutPage() {
             isFirst={i === 0}
             isLast={i === exercises.length - 1}
             onSetCompleted={ended ? undefined : onSetCompleted}
+            onSetStarted={ended ? undefined : onSetStarted}
             onStartMove={() => setMovingId(we.id)}
             onEndMove={() => setMovingId(null)}
             onMove={(dir) => {
@@ -364,6 +383,8 @@ export default function WorkoutPage() {
                 setNumber: we.sets.length + 1,
                 reps: we.sets.at(-1)?.reps ?? null,
                 weight: we.sets.at(-1)?.weight ?? null,
+                durationSeconds: we.sets.at(-1)?.duration_seconds ?? null,
+                distanceM: we.sets.at(-1)?.distance_m ?? null,
               })
             }
             onDeleteSet={(id) => m.deleteSet.mutate(id)}
@@ -401,7 +422,7 @@ export default function WorkoutPage() {
                 </p>
               </div>
               <Button size="sm" onClick={stopRest}>
-                Detener
+                Empecé
               </Button>
             </div>
           </div>

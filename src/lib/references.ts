@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 /**
  * Referencias de papers usadas en los tooltips ⓘ de métricas. IDs = numeración
  * del spec Asset/spec-metricas-por-objetivo.md (sección Referencias).
@@ -81,6 +82,21 @@ export const REFERENCES: Record<
     short: "ACSM 2021 (descanso)",
     cite: "ACSM 2021 — recomendaciones de descanso por objetivo",
     url: "https://www.frontiersin.org/journals/physiology/articles/10.3389/fphys.2025.1549609/full",
+  },
+  "16": {
+    short: "Pelland 2026 (dosis-respuesta)",
+    cite: "Pelland, Remmert, Robinson, Hinson, Zourdos 2026 — meta-regresión de volumen y frecuencia (67 estudios): las series indirectas cuentan 0,5",
+    url: "https://doi.org/10.1007/s40279-025-02344-w",
+  },
+  "17": {
+    short: "Vigotsky 2022 (EMG)",
+    cite: "Vigotsky, Halperin, Trajano, Vieira 2022 — la amplitud de EMG no es un predictor validado de hipertrofia",
+    url: "https://doi.org/10.1007/s40279-021-01619-2",
+  },
+  "18": {
+    short: "MacDougall 1995 (SPM)",
+    cite: "MacDougall et al. 1995 — curso temporal de la síntesis proteica muscular tras entrenamiento de fuerza",
+    url: "https://doi.org/10.1139/h95-038",
   },
   rp: {
     short: "Renaissance Periodization",

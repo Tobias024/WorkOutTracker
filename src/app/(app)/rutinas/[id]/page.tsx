@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
@@ -24,6 +25,8 @@ import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
+import { formatClock, parseClock } from "@/lib/format";
+import type { MetricKind } from "@/lib/types";
 import {
   useRoutine,
   useUpdateRoutine,
@@ -310,7 +313,12 @@ function RoutineExerciseRow({
         </button>
       </div>
 
-      <SetPlanner sets={rex.sets} last={last} onSave={onSaveSets} />
+      <SetPlanner
+        sets={rex.sets}
+        kind={exercise?.metric_kind ?? "reps_weight"}
+        last={last}
+        onSave={onSaveSets}
+      />
 
       <ExerciseNoteEditor exerciseId={rex.exercise_id} initial={note ?? ""} />
 
@@ -336,20 +344,41 @@ function RoutineExerciseRow({
 /** Editor de series planeadas: reps + peso por serie, para planear la progresión. */
 function SetPlanner({
   sets,
+  kind,
   last,
   onSave,
 }: {
-  sets: { target_reps: number | null; target_weight: number | null }[];
+  sets: {
+    target_reps: number | null;
+    target_weight: number | null;
+    target_duration_seconds?: number | null;
+    target_distance_m?: number | null;
+  }[];
+  /** Mismo criterio que SetRow: el tipo del ejercicio decide qué se planifica. */
+  kind: MetricKind;
   last?: LastExerciseLog;
   onSave: (plans: SetPlan[]) => void;
 }) {
+  const showsLoad = kind === "reps_weight" || kind === "time_load";
+  const showsReps = kind === "reps_weight";
+  const showsDuration = kind !== "reps_weight";
+  const showsDistance = kind === "distance_time";
   const [rows, setRows] = useState<SetPlan[]>(
     sets.length
       ? sets.map((s) => ({
           target_reps: s.target_reps,
           target_weight: s.target_weight,
+          target_duration_seconds: s.target_duration_seconds ?? null,
+          target_distance_m: s.target_distance_m ?? null,
         }))
-      : [{ target_reps: 10, target_weight: null }],
+      : [
+          {
+            target_reps: showsReps ? 10 : null,
+            target_weight: null,
+            target_duration_seconds: null,
+            target_distance_m: null,
+          },
+        ],
   );
 
   function updateRow(i: number, patch: Partial<SetPlan>) {
@@ -362,8 +391,10 @@ function SetPlanner({
       const next = [
         ...rs,
         {
-          target_reps: last?.target_reps ?? 10,
+          target_reps: last?.target_reps ?? (showsReps ? 10 : null),
           target_weight: last?.target_weight ?? null,
+          target_duration_seconds: last?.target_duration_seconds ?? null,
+          target_distance_m: last?.target_distance_m ?? null,
         },
       ];
       onSave(next);
@@ -397,8 +428,10 @@ function SetPlanner({
     <div className="mt-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-muted">
         <span className="w-8">Serie</span>
-        <span className="flex-1 text-center">Reps</span>
-        <span className="flex-1 text-center">Peso (kg)</span>
+        {showsReps && <span className="flex-1 text-center">Reps</span>}
+        {showsDistance && <span className="flex-1 text-center">km</span>}
+        {showsDuration && <span className="flex-1 text-center">mm:ss</span>}
+        {showsLoad && <span className="flex-1 text-center">Peso (kg)</span>}
         <span className="w-7" />
       </div>
       {rows.map((r, i) => {
@@ -409,37 +442,83 @@ function SetPlanner({
               <span className="w-8 text-center text-sm text-muted tabular-nums">
                 {i + 1}
               </span>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                placeholder="—"
-                value={r.target_reps ?? ""}
-                onChange={(e) =>
-                  updateRow(i, {
-                    target_reps:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-                onBlur={() => onSave(rows)}
-                className="h-9 flex-1 text-center"
-              />
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="0.5"
-                placeholder="—"
-                value={r.target_weight ?? ""}
-                onChange={(e) =>
-                  updateRow(i, {
-                    target_weight:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-                onBlur={() => onSave(rows)}
-                className="h-9 flex-1 text-center"
-              />
+              {showsReps && (
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  placeholder="—"
+                  value={r.target_reps ?? ""}
+                  onChange={(e) =>
+                    updateRow(i, {
+                      target_reps:
+                        e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                  onBlur={() => onSave(rows)}
+                  className="h-9 flex-1 text-center"
+                />
+              )}
+              {showsDistance && (
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.1"
+                  placeholder="—"
+                  value={
+                    r.target_distance_m == null ? "" : r.target_distance_m / 1000
+                  }
+                  onChange={(e) =>
+                    updateRow(i, {
+                      target_distance_m:
+                        e.target.value === ""
+                          ? null
+                          : Math.round(Number(e.target.value) * 1000),
+                    })
+                  }
+                  onBlur={() => onSave(rows)}
+                  className="h-9 flex-1 text-center"
+                />
+              )}
+              {showsDuration && (
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="mm:ss"
+                  defaultValue={
+                    r.target_duration_seconds == null
+                      ? ""
+                      : formatClock(r.target_duration_seconds)
+                  }
+                  key={r.target_duration_seconds ?? "empty"}
+                  onBlur={(e) => {
+                    updateRow(i, {
+                      target_duration_seconds: parseClock(e.target.value),
+                    });
+                    onSave(rows);
+                  }}
+                  className="h-9 flex-1 text-center"
+                />
+              )}
+              {showsLoad && (
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.5"
+                  placeholder="—"
+                  value={r.target_weight ?? ""}
+                  onChange={(e) =>
+                    updateRow(i, {
+                      target_weight:
+                        e.target.value === "" ? null : Number(e.target.value),
+                    })
+                  }
+                  onBlur={() => onSave(rows)}
+                  className="h-9 flex-1 text-center"
+                />
+              )}
               <button
                 onClick={() => removeRow(i)}
                 disabled={rows.length <= 1}

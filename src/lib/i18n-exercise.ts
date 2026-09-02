@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Traducción del vocabulario controlado de free-exercise-db a español.
 // Los nombres de ejercicio quedan en inglés (del dataset).
 
@@ -36,6 +37,14 @@ export const MUSCLE_FILTERS: string[] = [
   "forearms", "glutes", "hamstrings", "lats", "lower back", "middle back",
   "neck", "quadriceps", "shoulders", "traps", "triceps",
 ];
+
+/** Cómo se mide una serie. Ver `MetricKind` en types.ts y la migración 0033. */
+export const METRIC_KIND_ES: Record<string, string> = {
+  reps_weight: "Reps × peso",
+  time: "Tiempo",
+  time_load: "Tiempo + carga",
+  distance_time: "Distancia + tiempo",
+};
 
 export const EQUIPMENT_ES: Record<string, string> = {
   "body only": "Peso corporal",

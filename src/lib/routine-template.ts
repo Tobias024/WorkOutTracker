@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import type { HistorySession } from "@/hooks/useHistory";
 import type { Exercise } from "@/lib/types";
 import type { SheetSpec, SheetCell } from "@/lib/export-xlsx";
@@ -78,10 +79,12 @@ export function buildRoutineTemplate(
   ];
 
   const rutinaRows: SheetCell[][] = [
-    ["slug", "ejercicio", "serie", "reps", "peso_kg"],
-    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 1, 8, 60],
-    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 2, 8, 60],
-    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 3, 6, 65],
+    // Las columnas nuevas van AL FINAL a propósito: el parser lee por índice,
+    // así que intercalarlas rompería las plantillas ya descargadas.
+    ["slug", "ejercicio", "serie", "reps", "peso_kg", "duracion_seg", "distancia_m"],
+    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 1, 8, 60, "", ""],
+    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 2, 8, 60, "", ""],
+    ["Barbell_Bench_Press", "Press de banca con barra (ejemplo)", 3, 6, 65, "", ""],
   ];
 
   const instrucciones: SheetCell[][] = [
@@ -91,6 +94,7 @@ export function buildRoutineTemplate(
     ["2) 'slug' es la clave que matchea el ejercicio (obligatoria). Copiala de la hoja 'Ejercicios'."],
     ["3) 'ejercicio' es solo tu referencia; el import matchea por slug (si falta, intenta por nombre)."],
     ["4) 'serie' es el número (1,2,3...). 'reps' y 'peso_kg' son objetivos (el peso es opcional)."],
+    ["4b) Para ejercicios por tiempo o distancia, usá 'duracion_seg' (en segundos) y 'distancia_m' (en metros) en vez de reps/peso."],
     ["5) Repetí el mismo slug en varias filas (una por serie). El orden de aparición define el orden en la rutina."],
     ["6) Borrá las filas de ejemplo antes de importar."],
     [""],

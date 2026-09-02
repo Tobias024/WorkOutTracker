@@ -1,7 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { Loader2, X, ArrowUp, ArrowDown, Info } from "lucide-react";
 import { clsx } from "@/lib/clsx";
+import { useVisualViewport } from "@/hooks/useVisualViewport";
 import { useEffect, useState } from "react";
 
 export function Button({
@@ -136,6 +138,8 @@ export function Modal({
   /** Centrado (diálogo) en vez de hoja pegada abajo. Para tooltips de info. */
   center?: boolean;
 }) {
+  const vp = useVisualViewport();
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -151,14 +155,24 @@ export function Modal({
   return (
     <div
       className={clsx(
-        "fixed inset-0 z-50 flex justify-center bg-black/60 backdrop-blur-sm",
+        "fixed inset-x-0 z-50 flex justify-center bg-black/60 backdrop-blur-sm",
+        // Sin visualViewport (SSR o navegador viejo): pantalla completa, como antes.
+        vp ? "" : "inset-y-0",
         center ? "items-center p-4" : "items-end sm:items-center",
       )}
+      // La capa se ancla a la zona VISIBLE, no al layout viewport: con el
+      // teclado abierto una hoja `items-end` sobre `inset-0` queda atrás del
+      // teclado (el layout viewport no se achica). Se usa top/height y no
+      // transform a propósito: transform crearía un containing block para
+      // cualquier `position: fixed` que se meta adentro del modal.
+      style={vp ? { top: vp.offsetTop, height: vp.height } : undefined}
       onClick={onClose}
     >
       <div
         className={clsx(
-          "card max-h-[85dvh] flex flex-col",
+          // 85% de la capa (que ya es la zona visible), no 85dvh: dvh ignora
+          // el teclado. El 15% libre es el área para cerrar tocando afuera.
+          "card max-h-[85%] flex flex-col",
           center
             ? "w-full max-w-md rounded-lg"
             : "w-full sm:max-w-lg rounded-b-none sm:rounded-lg",

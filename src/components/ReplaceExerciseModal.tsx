@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
@@ -59,26 +60,31 @@ export function ReplaceExerciseModal({
           </label>
         )}
 
-        <div className="relative">
-          <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input
-            autoFocus
-            placeholder="Buscar reemplazo…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
+        {/* Búsqueda + filtro pegados arriba, igual que en el picker: con el
+            teclado abierto la hoja se achica y esto tiene que quedar visible
+            mientras se scrollea la lista. */}
+        <div className="sticky top-0 z-10 bg-surface -mx-4 px-4 pb-2 flex flex-col gap-3 border-b border-border">
+          <div className="relative">
+            <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              autoFocus
+              placeholder="Buscar reemplazo…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <Tabs
+            scroll
+            value={muscle}
+            onChange={setMuscle}
+            options={[
+              { value: "", label: "Todos" },
+              ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+            ]}
           />
         </div>
-
-        <Tabs
-          scroll
-          value={muscle}
-          onChange={setMuscle}
-          options={[
-            { value: "", label: "Todos" },
-            ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
-          ]}
-        />
 
         {isLoading ? (
           <div className="grid place-items-center py-10">

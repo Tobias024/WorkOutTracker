@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 /**
- * Carga el catálogo de ejercicios desde free-exercise-db (licencia MIT).
+ * Carga el catálogo de ejercicios desde free-exercise-db, que está bajo
+ * Unlicense (dedicación al dominio público) — no MIT, como decía antes este
+ * comentario. Las imágenes se traen de raw.githubusercontent en tiempo de seed
+ * y quedan cubiertas por la misma dedicación.
  *
  * Requiere en .env.local:
  *   NEXT_PUBLIC_SUPABASE_URL
@@ -53,6 +57,15 @@ async function main() {
   const rows = raw.map((e) => ({
     slug: e.id,
     name: e.name,
+    // Mismo criterio que el backfill de la migración 0033: el dataset no trae
+    // un campo de "cómo se mide", así que se deriva de category/force. Si no se
+    // pusiera acá, un re-seed dejaría todo el cardio como reps × peso.
+    metric_kind:
+      e.category === "cardio"
+        ? "distance_time"
+        : e.force === "static"
+          ? "time"
+          : "reps_weight",
     category: e.category,
     equipment: e.equipment,
     primary_muscles: e.primaryMuscles ?? [],

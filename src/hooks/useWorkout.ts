@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -86,6 +87,8 @@ export function useStartWorkout() {
               set_number: number;
               target_reps: number | null;
               target_weight: number | null;
+              target_duration_seconds: number | null;
+              target_distance_m: number | null;
             }[];
           }).routine_sets ?? []
         ).sort((a, b) => a.set_number - b.set_number);
@@ -97,12 +100,16 @@ export function useStartWorkout() {
                 set_number: i + 1,
                 reps: p.target_reps,
                 weight: p.target_weight,
+                duration_seconds: p.target_duration_seconds,
+                distance_m: p.target_distance_m,
               }))
             : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, (_, i) => ({
                 workout_exercise_id: we!.id,
                 set_number: i + 1,
                 reps: rex.target_reps,
                 weight: null,
+                duration_seconds: null,
+                distance_m: null,
               }));
         await supabase.from("workout_sets").insert(sets);
       }
@@ -170,6 +177,8 @@ export interface LastExerciseLog {
     weight: number | null;
     reps: number | null;
     drops: SetDrop[] | null;
+    duration_seconds: number | null;
+    distance_m: number | null;
   }[];
 }
 
@@ -193,7 +202,7 @@ export function useLastExerciseLogs(
       const { data } = await supabase
         .from("workout_exercises")
         .select(
-          "exercise_id, session_id, workout_sessions!inner(started_at, ended_at), workout_sets(set_number, weight, reps, is_warmup, drops)",
+          "exercise_id, session_id, workout_sessions!inner(started_at, ended_at), workout_sets(set_number, weight, reps, is_warmup, drops, duration_seconds, distance_m)",
         )
         .in("exercise_id", ids);
 
@@ -207,6 +216,8 @@ export function useLastExerciseLogs(
           reps: number | null;
           is_warmup: boolean;
           drops: SetDrop[] | null;
+          duration_seconds: number | null;
+          distance_m: number | null;
         }[];
       };
       const rows = (data ?? []) as unknown as Row[];
@@ -223,13 +234,24 @@ export function useLastExerciseLogs(
         if (!r.workout_sessions?.ended_at) continue; // sólo sesiones terminadas
         if (excludeSessionId && r.session_id === excludeSessionId) continue;
         const sets = (r.workout_sets ?? [])
-          .filter((s) => !s.is_warmup && (s.weight != null || s.reps != null))
+          // Sin duración/distancia acá, una serie por tiempo o por km quedaba
+          // descartada y el ejercicio nunca mostraba fantasma.
+          .filter(
+            (s) =>
+              !s.is_warmup &&
+              (s.weight != null ||
+                s.reps != null ||
+                s.duration_seconds != null ||
+                s.distance_m != null),
+          )
           .sort((a, b) => a.set_number - b.set_number)
           .map((s) => ({
             set_number: s.set_number,
             weight: s.weight,
             reps: s.reps,
             drops: s.drops,
+            duration_seconds: s.duration_seconds,
+            distance_m: s.distance_m,
           }));
         if (sets.length === 0) continue;
         out.set(r.exercise_id, { sets });

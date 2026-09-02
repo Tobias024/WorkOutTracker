@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
@@ -55,7 +56,6 @@ import {
   isCountableSet,
   isHardSet,
   muscleContributions,
-  baseToGroup,
   landmarkFor,
   weeklyMetricStats,
   type PlanResolver,
@@ -64,7 +64,7 @@ import { buildSessionsRows } from "@/lib/export-csv";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
-import { PaperLink, Ref } from "@/components/PaperLink";
+import { Ref } from "@/components/PaperLink";
 import { useTrainingProfile } from "@/hooks/useGoal";
 import { GoalMetrics, SparklineGridCard, RetentionCard } from "@/components/GoalMetrics";
 import { BodyProgress } from "@/components/BodyProgress";
@@ -268,17 +268,21 @@ export default function RegistroPage() {
       for (const we of s.workout_exercises) {
         const ex = exMap.get(we.exercise_id);
         if (!ex) continue;
-        const m0 = ex.primary_muscles[0];
-        if (!m0) continue;
-        // Split de deltoides también en el donut: shoulders → cabeza concreta.
-        const g = baseToGroup(m0, ex, "primary");
         const done = we.workout_sets.filter(isCountableSet).length;
-        muscleSets30.set(g, (muscleSets30.get(g) ?? 0) + done);
+        if (!done) continue;
+        // Misma capa de contribución que el resto de las métricas (1 directo /
+        // 0,5 indirecto). Antes el donut usaba solo `primary_muscles[0]` y le
+        // daba la serie entera a un músculo, así que la app mostraba dos
+        // distribuciones musculares distintas en dos pantallas distintas.
+        for (const c of muscleContributions(ex))
+          muscleSets30.set(c.muscle, (muscleSets30.get(c.muscle) ?? 0) + done * c.weight);
       }
     }
-    const muscleDonut: MusclePoint[] = [...muscleSets30.entries()].map(
-      ([m, v]) => ({ label: muscleEs(m), value: v }),
-    );
+    const muscleDonut: MusclePoint[] = [...muscleSets30.entries()]
+      // Los pesos 0,5 dejan medias series; se redondea a 1 decimal para mostrar.
+      .map(([m, v]) => ({ label: muscleEs(m), value: Math.round(v * 10) / 10 }))
+      .filter((p) => p.value > 0)
+      .sort((a, b) => b.value - a.value);
 
     // Métricas mes a mes (últimos 6 meses con datos).
     const monthMap = new Map<string, { workouts: number; volume: number }>();
@@ -339,11 +343,18 @@ export default function RegistroPage() {
       }
     }
 
-    // Heatmap de constancia: 12 semanas × 7 días, volumen por día.
+    // Heatmap de constancia: 12 semanas × 7 días, SERIES completadas por día.
+    // Antes usaba el tonelaje, y una sesión sin tonelaje (solo cardio o solo
+    // isométricos) daba 0 → la celda quedaba en blanco y el día se leía como
+    // descanso. La constancia es "¿entrenaste?", no "¿cuánto levantaste?".
     const dayVol = new Map<string, number>();
     for (const s of sessions) {
       const k = dateKey(sessionDate(s));
-      dayVol.set(k, (dayVol.get(k) ?? 0) + sessionVolume(s));
+      const done = s.workout_exercises.reduce(
+        (acc, we) => acc + we.workout_sets.filter(isCountableSet).length,
+        0,
+      );
+      dayVol.set(k, (dayVol.get(k) ?? 0) + done);
     }
     const monday = weekStart(now);
     const heatWeeks: HeatCell[][] = [];
@@ -714,32 +725,34 @@ export default function RegistroPage() {
           {hardWindow === "7d"
             ? "Series de trabajo (≥5 reps y cerca del fallo) por músculo, contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
             : "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días. "}
-          Cada ejercicio reparte sus series entre sus músculos (primarios
-          enteros, secundarios a la mitad).{"\n\n"}
-          Las marcas verticales son las series por semana de referencia (
-          <PaperLink
-            label="Schoenfeld"
-            url="https://pubmed.ncbi.nlm.nih.gov/27433992/"
-          />
-          {" / "}
-          <PaperLink
-            label="Renaissance Periodization"
-            url="https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth"
-          />
-          ):{"\n"}
-          • MEV (Mínimo Volumen Efectivo): el piso para que un músculo
+          Cada serie se reparte entre los músculos del ejercicio con un peso
+          fraccional: 1 para el motor primario y entre 0,2 y 0,5 para cada
+          secundario (0,35 cuando el ejercicio no tiene un reparto curado).
+          {"\n\n"}
+          Una serie sin RIR cargado también cuenta como efectiva: si no
+          registrás la proximidad al fallo, estas barras son un techo, no una
+          medición.{"\n\n"}
+          Las marcas verticales son referencias de series por semana:{"\n"}
+          • MEV (Mínimo Volumen Efectivo): piso propuesto para que un músculo
           crezca.{"\n"}
-          • MAV (Máximo Volumen Adaptativo): el rango donde más rendís.
-          {"\n"}
-          • MRV (Máximo Volumen Recuperable): el techo; pasarte acumula
-          fatiga sin más ganancia.{"\n\n"}
-          Color: bajo MEV = ámbar (te falta), entre MEV y MRV = verde
-          (óptimo), sobre MRV = rojo (demasiado).{"\n\n"}
+          • MAV (Máximo Volumen Adaptativo): rango donde rendirías mejor.{"\n"}
+          • MRV (Máximo Volumen Recuperable): techo; pasarte acumularía fatiga
+          sin más ganancia.{"\n\n"}
+          <span className="text-fg">De dónde salen:</span> son heurísticas de
+          campo de <Ref id="rp" />, no umbrales validados en la literatura, y
+          los valores por músculo son estimaciones nuestras. Lo que sí está
+          respaldado es lo de abajo: hay relación dosis-respuesta entre el
+          volumen semanal y la hipertrofia (~0,4% más por serie semanal, con un
+          umbral orientativo cerca de 10 series por músculo) — <Ref id="1" /> —
+          y contar series totales es un método válido de cuantificar volumen —{" "}
+          <Ref id="7" />. Nada de eso define un MEV o un MRV por músculo. Tomá
+          las marcas como punto de partida para ajustar, no como diagnóstico.
+          {"\n\n"}
+          Color: bajo MEV = ámbar (por debajo de la referencia), entre MEV y
+          MRV = verde, sobre MRV = rojo.{"\n\n"}
           Ojo: "volumen" acá es el <span className="text-fg">conteo de
-          series</span> cerca del fallo, que es lo que impulsa la
-          hipertrofia (<PaperLink label="Baz-Valle 2021" url="https://doi.org/10.1519/JSC.0000000000002776" />)
-          — no el tonelaje (series×reps×peso), que no moderó la hipertrofia
-          (<PaperLink label="Refalo 2023" url="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9935748/" />).
+          series</span> cerca del fallo, no el tonelaje (series×reps×peso), que
+          sube con más trabajo y no con mejor trabajo.
         </>
       }
     >
@@ -753,7 +766,7 @@ export default function RegistroPage() {
     <SectionCard
       title="Constancia"
       subtitle="Últimas 12 semanas"
-      info="Cada celda es un día; más dorado = más volumen ese día. Las columnas son semanas (izquierda = más antigua) y las filas los días (lunes arriba)."
+      info="Cada celda es un día; más dorado = más series completadas ese día. Se cuentan las series, no el tonelaje, para que un día de solo cardio o de solo isométricos también figure como entrenado. Las columnas son semanas (izquierda = más antigua) y las filas los días (lunes arriba)."
     >
       <ConsistencyHeatmap weeks={metrics.heatWeeks} max={metrics.heatMax} />
     </SectionCard>
@@ -1042,7 +1055,7 @@ export default function RegistroPage() {
                 <SectionCard
                   title="Músculos entrenados"
                   subtitle="Sets · últimos 30 días"
-                  info="Distribución de las series por grupo muscular en los últimos 30 días. Cada ejercicio reparte sus series entre sus músculos (primarios enteros, secundarios a la mitad)."
+                  info="Distribución de las series por grupo muscular en los últimos 30 días, con la misma capa de contribución que el resto de las métricas: cada serie cuenta 1 para el motor principal del ejercicio y 0,5 para cada secundario. Por eso los totales son fraccionales y suman más que la cantidad de series hechas — un compuesto alimenta varios grupos a la vez. A diferencia de 'Series efectivas por grupo', acá no se filtra por RIR: es en qué gastás las series, no cuánto volumen efectivo acumulaste."
                 >
                   <MuscleDonut data={metrics.muscleDonut} />
                 </SectionCard>

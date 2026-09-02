@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,7 +9,12 @@ import type { Routine, RoutineExercise, RoutineSet } from "@/lib/types";
 export type RoutineExerciseWithSets = RoutineExercise & { sets: RoutineSet[] };
 
 /** Objetivo planeado de una serie (sin id). */
-export type SetPlan = { target_reps: number | null; target_weight: number | null };
+export type SetPlan = {
+  target_reps: number | null;
+  target_weight: number | null;
+  target_duration_seconds?: number | null;
+  target_distance_m?: number | null;
+};
 
 export function useRoutines() {
   return useQuery({
@@ -234,6 +240,8 @@ export function useRoutineExerciseOps(routineId: string) {
           set_number: i + 1,
           target_reps: p.target_reps,
           target_weight: p.target_weight,
+          target_duration_seconds: p.target_duration_seconds ?? null,
+          target_distance_m: p.target_distance_m ?? null,
         })),
         { onConflict: "routine_exercise_id,set_number" },
       );

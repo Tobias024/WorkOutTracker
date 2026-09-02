@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
 import { Check, MessageSquare, Plus, X } from "lucide-react";
 import { clsx } from "@/lib/clsx";
+import { formatClock, formatPace, parseClock } from "@/lib/format";
 import { rirOf } from "@/lib/metrics";
-import type { SetDrop, WorkoutSet } from "@/lib/types";
+import type { MetricKind, SetDrop, WorkoutSet } from "@/lib/types";
 
 const RIR_OPTS = [0, 1, 2, 3, 4, 5];
 
@@ -18,8 +20,10 @@ function rirZone(rir: number): "danger" | "success" | "muted" {
 export function SetRow({
   set,
   ghost,
+  kind = "reps_weight",
   onChange,
   onDelete,
+  onStart,
 }: {
   set: WorkoutSet;
   /** Peso/reps + bajadas de la última vez (placeholder tenue si el campo está vacío). */
@@ -27,9 +31,18 @@ export function SetRow({
     weight: number | null;
     reps: number | null;
     drops?: SetDrop[] | null;
+    duration_seconds?: number | null;
+    distance_m?: number | null;
   } | null;
+  /** Cómo se mide este ejercicio; decide qué campos se piden. */
+  kind?: MetricKind;
   onChange: (patch: Partial<WorkoutSet>) => void;
   onDelete: () => void;
+  /**
+   * Empezó a cargarse esta serie (foco en peso/reps): es la señal de que el
+   * descanso anterior terminó. Sólo se pasa en series sin tildar.
+   */
+  onStart?: () => void;
 }) {
   const [showComment, setShowComment] = useState(!!set.comment);
 
@@ -39,6 +52,17 @@ export function SetRow({
       : [{ reps: set.reps, weight: set.weight }];
 
   const rir = rirOf(set);
+
+  const showsLoad = kind === "reps_weight" || kind === "time_load";
+  const showsReps = kind === "reps_weight";
+  const showsDuration = kind !== "reps_weight";
+  const showsDistance = kind === "distance_time";
+  // Las bajadas son un recurso de series con carga y reps; en tiempo o
+  // distancia no significan nada.
+  const showsDrops = kind === "reps_weight";
+  const pace = showsDistance
+    ? formatPace(set.duration_seconds, set.distance_m)
+    : null;
 
   function commitDrops(next: SetDrop[]) {
     const first = next[0] ?? { reps: null, weight: null };
@@ -79,19 +103,53 @@ export function SetRow({
           {set.set_number}
         </span>
 
-        <NumberField
-          value={drops[0].weight}
-          placeholder={ghost?.weight != null ? String(ghost.weight) : "kg"}
-          step={2.5}
-          onCommit={(v) => updateDrop(0, { weight: v })}
-        />
-        <span className="text-muted text-xs">×</span>
-        <NumberField
-          value={drops[0].reps}
-          placeholder={ghost?.reps != null ? String(ghost.reps) : "reps"}
-          step={1}
-          onCommit={(v) => updateDrop(0, { reps: v })}
-        />
+        {showsLoad && (
+          <NumberField
+            value={drops[0].weight}
+            placeholder={ghost?.weight != null ? String(ghost.weight) : "kg"}
+            step={2.5}
+            onCommit={(v) => updateDrop(0, { weight: v })}
+            onFocus={onStart}
+          />
+        )}
+        {showsLoad && showsReps && <span className="text-muted text-xs">×</span>}
+        {showsReps && (
+          <NumberField
+            value={drops[0].reps}
+            placeholder={ghost?.reps != null ? String(ghost.reps) : "reps"}
+            step={1}
+            onCommit={(v) => updateDrop(0, { reps: v })}
+            onFocus={onStart}
+          />
+        )}
+        {showsDistance && (
+          <NumberField
+            value={set.distance_m == null ? null : set.distance_m / 1000}
+            placeholder={
+              ghost?.distance_m != null ? String(ghost.distance_m / 1000) : "km"
+            }
+            step={0.1}
+            onCommit={(v) =>
+              onChange({ distance_m: v == null ? null : Math.round(v * 1000) })
+            }
+            onFocus={onStart}
+          />
+        )}
+        {showsLoad && showsDuration && (
+          <span className="text-muted text-xs">×</span>
+        )}
+        {showsDuration && (
+          <ClockField
+            value={set.duration_seconds}
+            placeholder={
+              ghost?.duration_seconds != null
+                ? formatClock(ghost.duration_seconds)
+                : "mm:ss"
+            }
+            onCommit={(v) => onChange({ duration_seconds: v })}
+            onFocus={onStart}
+          />
+        )}
 
         <button
           onClick={() => onChange({ is_warmup: !set.is_warmup })}
@@ -166,7 +224,11 @@ export function SetRow({
         </div>
       )}
 
-      {drops.slice(1).map((d, i) => {
+      {pace && (
+        <div className="mt-1 pl-8 text-xs text-muted">Ritmo {pace}</div>
+      )}
+
+      {showsDrops && drops.slice(1).map((d, i) => {
         const gd = ghost?.drops?.[i + 1];
         return (
         <div key={i + 1} className="flex items-center gap-2 mt-1.5 pl-8">
@@ -176,6 +238,7 @@ export function SetRow({
             placeholder={gd?.weight != null ? String(gd.weight) : "kg"}
             step={2.5}
             onCommit={(v) => updateDrop(i + 1, { weight: v })}
+            onFocus={onStart}
           />
           <span className="text-muted text-xs">×</span>
           <NumberField
@@ -183,6 +246,7 @@ export function SetRow({
             placeholder={gd?.reps != null ? String(gd.reps) : "reps"}
             step={1}
             onCommit={(v) => updateDrop(i + 1, { reps: v })}
+            onFocus={onStart}
           />
           <button
             onClick={() => removeDrop(i + 1)}
@@ -194,12 +258,14 @@ export function SetRow({
         );
       })}
 
-      <button
-        onClick={addDrop}
-        className="flex items-center gap-1 mt-1.5 ml-8 text-xs text-muted hover:text-fg"
-      >
-        <Plus className="size-3.5" /> Agregar bajada
-      </button>
+      {showsDrops && (
+        <button
+          onClick={addDrop}
+          className="flex items-center gap-1 mt-1.5 ml-8 text-xs text-muted hover:text-fg"
+        >
+          <Plus className="size-3.5" /> Agregar bajada
+        </button>
+      )}
 
       {showComment && (
         <input
@@ -218,11 +284,13 @@ function NumberField({
   placeholder,
   step,
   onCommit,
+  onFocus,
 }: {
   value: number | null;
   placeholder: string;
   step: number;
   onCommit: (v: number | null) => void;
+  onFocus?: () => void;
 }) {
   return (
     <input
@@ -232,8 +300,43 @@ function NumberField({
       defaultValue={value ?? ""}
       key={value ?? "empty"}
       placeholder={placeholder}
+      onFocus={onFocus}
       onBlur={(e) => {
         const v = e.target.value === "" ? null : Number(e.target.value);
+        if (v !== value) onCommit(v);
+      }}
+      className="h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"
+    />
+  );
+}
+
+/**
+ * Campo de duración en mm:ss. Mismo contrato que `NumberField` (no controlado,
+ * `key` para remontar cuando cambia el valor de afuera, commit en blur) para no
+ * romper el patrón del resto de la fila. `type="text"` con `inputMode="numeric"`
+ * porque un `type="number"` no acepta los dos puntos.
+ */
+function ClockField({
+  value,
+  placeholder,
+  onCommit,
+  onFocus,
+}: {
+  value: number | null;
+  placeholder: string;
+  onCommit: (v: number | null) => void;
+  onFocus?: () => void;
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      defaultValue={value == null ? "" : formatClock(value)}
+      key={value ?? "empty"}
+      placeholder={placeholder}
+      onFocus={onFocus}
+      onBlur={(e) => {
+        const v = parseClock(e.target.value);
         if (v !== value) onCommit(v);
       }}
       className="h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"

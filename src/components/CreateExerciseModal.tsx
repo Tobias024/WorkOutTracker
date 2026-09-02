@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
 import { useState } from "react";
@@ -8,10 +9,11 @@ import {
   FORCE_ES,
   MECHANIC_ES,
   EQUIPMENT_ES,
+  METRIC_KIND_ES,
 } from "@/lib/i18n-exercise";
 import { useCreateExercise } from "@/hooks/useExercises";
 import { clsx } from "@/lib/clsx";
-import type { Exercise } from "@/lib/types";
+import { METRIC_KINDS, type Exercise, type MetricKind } from "@/lib/types";
 
 function Chip({
   active,
@@ -65,6 +67,7 @@ export function CreateExerciseModal({
 }) {
   const create = useCreateExercise();
   const [name, setName] = useState(initialName);
+  const [metricKind, setMetricKind] = useState<MetricKind>("reps_weight");
   const [primary, setPrimary] = useState("");
   const [secondary, setSecondary] = useState<string[]>([]);
   const [mechanic, setMechanic] = useState("");
@@ -77,6 +80,7 @@ export function CreateExerciseModal({
   const valid = name.trim().length >= 2 && !!primary && !!mechanic && !!force;
 
   function reset() {
+    setMetricKind("reps_weight");
     setName("");
     setPrimary("");
     setSecondary([]);
@@ -96,6 +100,7 @@ export function CreateExerciseModal({
     try {
       const ex = await create.mutateAsync({
         name,
+        metric_kind: metricKind,
         primary_muscles: [primary],
         secondary_muscles: secondary.filter((m) => m !== primary),
         mechanic,
@@ -144,6 +149,23 @@ export function CreateExerciseModal({
                 onClick={() => toggleSecondary(m)}
               >
                 {MUSCLES_ES[m]}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+
+        <Field
+          label="Cómo se mide"
+          hint="define qué campos vas a cargar en cada serie"
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {METRIC_KINDS.map((k) => (
+              <Chip
+                key={k}
+                active={metricKind === k}
+                onClick={() => setMetricKind(k)}
+              >
+                {METRIC_KIND_ES[k]}
               </Chip>
             ))}
           </div>

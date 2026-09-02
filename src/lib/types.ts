@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // Tipos de la base de datos (alineados con supabase/migrations).
 // Se usan `type` (no `interface`) para que sean asignables a Record<string, unknown>,
 // requisito de los genéricos de supabase-js.
@@ -35,10 +36,25 @@ export type Profile = {
   created_at: string;
 };
 
+/**
+ * Cómo se mide una serie de este ejercicio. Vive en el ejercicio y no en la
+ * serie porque es una propiedad del movimiento: una plancha siempre se mide en
+ * tiempo. Ver la migración 0033.
+ */
+export type MetricKind = "reps_weight" | "time" | "time_load" | "distance_time";
+
+export const METRIC_KINDS: MetricKind[] = [
+  "reps_weight",
+  "time",
+  "time_load",
+  "distance_time",
+];
+
 export type Exercise = {
   id: string;
   slug: string;
   name: string;
+  metric_kind: MetricKind;
   category: string | null;
   equipment: string | null;
   primary_muscles: string[];
@@ -80,6 +96,8 @@ export type RoutineSet = {
   set_number: number;
   target_reps: number | null;
   target_weight: number | null;
+  target_duration_seconds: number | null;
+  target_distance_m: number | null;
 };
 
 export type WorkoutSession = {
@@ -126,6 +144,10 @@ export type WorkoutSet = {
   rest_seconds: number | null;
   /** Bajadas de peso sin descanso dentro de la misma serie. null = serie simple (usar reps/weight). */
   drops: SetDrop[] | null;
+  /** Duración del trabajo (metric_kind 'time' | 'time_load' | 'distance_time'). */
+  duration_seconds: number | null;
+  /** Distancia en METROS (metric_kind 'distance_time'); se muestra en km. */
+  distance_m: number | null;
 };
 
 export type SleepLog = {

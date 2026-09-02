@@ -1,6 +1,14 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { SectionCard } from "@/components/ui";
 import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
@@ -42,6 +50,24 @@ export function GoalMetrics({
   /** Series efectivas por grupo (MEV/MAV/MRV): a portada en Hipertrofia. */
   muscleSetsBar?: ReactNode;
 }) {
+  // Las cards de recencia cuentan DÍAS. Antes tomaban `Date.now()` dentro del
+  // useMemo, así que el número quedaba congelado en el momento del montaje: en
+  // una PWA que queda abierta, "hace 2d" no avanzaba nunca. Se refresca al
+  // volver a la pestaña y una vez por hora — alcanza para detectar el cambio de
+  // fecha. Queda `undefined` en el primer render (las funciones tienen su propio
+  // default) para no llamar a Date.now() durante el render.
+  const [now, setNow] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 60 * 60 * 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+
   const m = useMemo(
     () => ({
       e1rm: e1rmSeriesByExercise(sessions, exMap, 12),
@@ -49,14 +75,14 @@ export function GoalMetrics({
       heavyRir: heavyRirTrend(sessions, 12),
       patterns: patternFrequency(sessions, exMap, 8),
       rirBuckets: rirBucketsByMuscle(sessions, exMap, 30),
-      recency: daysSinceLastByMuscle(sessions, exMap),
+      recency: daysSinceLastByMuscle(sessions, exMap, now),
       reps: repsPerSetWeekly(sessions, 12),
       density: sessionDensityWeekly(sessions, 12),
       maxReps: maxRepsTest(sessions, exMap, 6),
       rest: avgRestBetweenSets(sessions),
-      ready: readinessByMuscle(sessions, exMap),
+      ready: readinessByMuscle(sessions, exMap, now),
     }),
-    [sessions, exMap],
+    [sessions, exMap, now],
   );
 
   const cards: ReactNode[] = [];
@@ -71,7 +97,13 @@ export function GoalMetrics({
       cards.push(<PatternCard rows={m.patterns} />);
     if (m.heavyRir.length) cards.push(<HeavyRirCard data={m.heavyRir} />);
     if (m.rest.avgSec != null)
-      cards.push(<RestCard avgSec={m.rest.avgSec} band="2-5 min" />);
+      cards.push(
+        <RestCard
+          avgSec={m.rest.avgSec}
+          band="2-5 min"
+          samples={m.rest.samples}
+        />,
+      );
   } else if (trainingProfile === "hipertrofia") {
     // Series efectivas por grupo (MEV/MAV/MRV) es LA métrica del perfil → arriba.
     if (muscleSetsBar) cards.push(muscleSetsBar);
@@ -83,7 +115,13 @@ export function GoalMetrics({
     if (m.reps.length) cards.push(<RepsCard data={m.reps} />);
     if (m.density.length) cards.push(<DensityCard data={m.density} />);
     if (m.rest.avgSec != null)
-      cards.push(<RestCard avgSec={m.rest.avgSec} band="30-60 s" />);
+      cards.push(
+        <RestCard
+          avgSec={m.rest.avgSec}
+          band="30-60 s"
+          samples={m.rest.samples}
+        />,
+      );
   }
 
   if (cards.length === 0) return null;
@@ -392,13 +430,21 @@ function RecencyCard({
       info={
         <>
           Filtro de recuperación: cuántos días pasaron desde que entrenaste cada
-          músculo. Un músculo cuenta como entrenado ese día si acumuló ≥2 sets
-          efectivos, contando el trabajo compuesto (primario = 1 set, secundario
-          = 0,5 c/u) — así el tríceps en un press cuenta, pero la participación
-          incidental no.{"\n\n"}
-          Con volumen igualado, la frecuencia por sí sola casi no cambia la
-          hipertrofia — esto es para gestionar recuperación. <Ref id="11" />{" "}
-          <Ref id="12" />
+          músculo. Un músculo cuenta como entrenado ese día si acumuló al menos
+          1 serie ponderada: se toman las series completadas (sin calentamiento,
+          sin filtrar por RIR) y cada una cuenta 1 si el músculo es el motor
+          principal del ejercicio y 0,5 si es secundario. Así dos series de un
+          compuesto ya alcanzan el umbral, pero una participación suelta no.
+          {"\n\n"}
+          Ese 0,5 no es una estimación: es el único esquema de conteo que se puso
+          a prueba contra los datos y ganó. <Ref id="16" /> Afinarlo más por
+          ejercicio (0,3 acá, 0,4 allá) implicaría inferir reclutamiento por EMG,
+          que no predice hipertrofia. <Ref id="17" />
+          {"\n\n"}
+          En gris, los grupos sin trabajo registrado. Con volumen igualado la
+          frecuencia por sí sola casi no cambia la hipertrofia, así que esto sirve
+          para repartir el volumen y no olvidarse un grupo, más que para medir
+          recuperación. <Ref id="16" /> <Ref id="11" />
         </>
       }
     >
@@ -408,14 +454,17 @@ function RecencyCard({
             key={r.muscle}
             className={clsx(
               "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ring-1",
-              r.days <= 3
-                ? "bg-success/15 text-success ring-success/30"
-                : r.days <= 6
-                  ? "bg-warning/15 text-warning ring-warning/30"
-                  : "bg-danger/15 text-danger ring-danger/30",
+              r.days == null
+                ? "bg-muted/10 text-muted ring-border"
+                : r.days <= 2
+                  ? "bg-success/15 text-success ring-success/30"
+                  : r.days <= 4
+                    ? "bg-warning/15 text-warning ring-warning/30"
+                    : "bg-danger/15 text-danger ring-danger/30",
             )}
           >
-            {muscleEs(r.muscle)} · {r.days}d
+            {muscleEs(r.muscle)} ·{" "}
+            {r.days == null ? "sin trabajo" : `${r.days}d`}
           </span>
         ))}
       </div>
@@ -508,18 +557,36 @@ function MaxRepsCard({
   );
 }
 
-function RestCard({ avgSec, band }: { avgSec: number; band: string }) {
+function RestCard({
+  avgSec,
+  band,
+  samples,
+}: {
+  avgSec: number;
+  band: string;
+  samples: number;
+}) {
   const min = Math.floor(avgSec / 60);
   const sec = avgSec % 60;
   return (
     <SectionCard
       title="Descanso medio entre series"
-      subtitle={`Objetivo ${band}`}
+      subtitle={`Referencia ${band} · ${samples} descansos medidos (30 días)`}
       info={
         <>
-          Medido con el cronómetro de descanso: arranca cuando tildás una serie
-          y se detiene cuando empezás la siguiente. Promedia el descanso real de
-          tus series (se ignoran huecos &gt; 10 min). <Ref id="5" />
+          Medido con el cronómetro: arranca cuando tildás una serie y se cierra
+          cuando <span className="text-fg">arranca la siguiente</span> — o sea
+          cuando tocás &ldquo;Empecé&rdquo; en el banner, o cuando empezás a
+          cargar el peso/reps de la próxima serie.{"\n\n"}
+          Si tildás la serie siguiente sin ninguna de esas dos señales, ese
+          descanso <span className="text-fg">no se guarda</span>: el intervalo
+          medido incluiría la ejecución de la serie y sobreestimaría el descanso
+          20-45 s. Por eso el promedio usa menos series de las que hiciste, y el
+          subtítulo dice cuántas. Se ignoran huecos &gt; 10 min.{"\n\n"}
+          Ojo con leer la referencia como un objetivo: el descanso autoseleccionado
+          rindió igual que uno fijo para hipertrofia, así que la banda es
+          orientativa (tiene más sentido en fuerza que en hipertrofia).{" "}
+          <Ref id="5" /> <Ref id="15" />
         </>
       }
     >

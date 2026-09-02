@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import type { HistorySession } from "@/hooks/useHistory";
 import { effectiveDrops, sessionDate, dateKey, rirOf } from "@/lib/metrics";
 import { muscleEs } from "@/lib/i18n-exercise";
@@ -30,6 +31,8 @@ export function buildSessionsRows(
       "reps",
       "peso_kg",
       "volumen_kg",
+      "duracion_s",
+      "distancia_m",
       "rir",
       "descanso_s",
       "completado",
@@ -47,18 +50,29 @@ export function buildSessionsRows(
       const muscle = ex?.primary_muscles[0] ? muscleEs(ex.primary_muscles[0]) : "";
       we.workout_sets.forEach((set, si) => {
         const rir = rirOf(set);
+        // Una serie por tiempo o distancia no tiene bajadas (effectiveDrops
+        // devuelve []), pero igual tiene que salir en el export: se emite una
+        // fila con reps/peso vacíos y la duración/distancia cargadas.
         const drops = effectiveDrops(set);
-        drops.forEach((d) => {
-          const vol = d.reps && d.weight ? d.reps * d.weight : 0;
+        const cells = drops.length
+          ? drops.map((d) => ({
+              reps: d.reps,
+              weight: d.weight,
+              vol: d.reps && d.weight ? d.reps * d.weight : 0,
+            }))
+          : [{ reps: null, weight: null, vol: 0 }];
+        cells.forEach((c) => {
           rows.push([
             fecha,
             s.name,
             exName,
             muscle,
             si + 1,
-            d.reps ?? "",
-            d.weight ?? "",
-            vol,
+            c.reps ?? "",
+            c.weight ?? "",
+            c.vol,
+            set.duration_seconds ?? "",
+            set.distance_m ?? "",
             rir ?? "",
             set.rest_seconds ?? "",
             set.completed ? "si" : "no",
