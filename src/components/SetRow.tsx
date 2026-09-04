@@ -2,11 +2,25 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Check, MessageSquare, Plus, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Info,
+  MessageSquare,
+  Plus,
+  X,
+} from "lucide-react";
 import { clsx } from "@/lib/clsx";
 import { formatClock, formatPace, formatWeight, parseClock } from "@/lib/format";
 import { rirOf } from "@/lib/metrics";
-import { repDeviation, rirProductiveLabel, rirZone } from "@/lib/goal-params";
+import {
+  goalParams,
+  repDeviation,
+  rirProductiveLabel,
+  rirTooFar,
+  rirZone,
+} from "@/lib/goal-params";
 import type {
   MetricKind,
   SetDrop,
@@ -65,6 +79,9 @@ export function SetRow({
   onStart?: () => void;
 }) {
   const [showComment, setShowComment] = useState(!!set.comment);
+  // El plan arranca oculto: es una referencia para consultar, no algo que
+  // tenga que ocupar una linea fija debajo de cada serie.
+  const [showPlan, setShowPlan] = useState(false);
 
   const drops: SetDrop[] =
     set.drops && set.drops.length > 0
@@ -89,7 +106,12 @@ export function SetRow({
   // quedan afuera porque no tienen plan que cumplir.
   const deviation =
     !set.is_warmup && showsReps && (set.completed || drops[0].reps != null)
-      ? repDeviation(drops[0].reps, planned?.reps ?? null, profile)
+      ? repDeviation(
+          drops[0].reps,
+          planned?.reps ?? null,
+          profile,
+          drops.length > 1,
+        )
       : null;
 
   // El plan se muestra en el chip ⓘ, y como placeholder sólo si nunca hiciste
@@ -101,6 +123,18 @@ export function SetRow({
       ghost?.duration_seconds ?? planned?.duration_seconds ?? null,
     distance_m: ghost?.distance_m ?? planned?.distance_m ?? null,
   };
+
+  // Piso de reps del objetivo: si se cayo por debajo, el mensaje dice POR QUE,
+  // porque "baja el peso" solo no explica que la serie dejo de contar.
+  const minReps = goalParams(profile).hardSetMinReps;
+  const belowFloorLabel =
+    deviation?.level === "far" && (drops[0].reps ?? 0) < minReps
+      ? `bajá el peso · menos de ${minReps} reps no suma`
+      : "bajá el peso";
+
+  // RIR por encima del maximo que el objetivo tolera: la serie no suma volumen
+  // efectivo. Se avisa igual que el desvio de reps, porque es accionable.
+  const rirFar = !set.is_warmup && showsReps && rirTooFar(rir, profile);
 
   const plannedLabel = planned
     ? [
@@ -241,7 +275,16 @@ export function SetRow({
       {/* RIR segmentado (oculto en warmups, que no llevan proximidad al fallo) */}
       {!set.is_warmup && (
         <div className="flex items-center gap-2 mt-1.5 pl-8">
-          <span className="text-muted text-xs shrink-0">RIR</span>
+          {/* Con las zonas por objetivo, en hipertrofia RIR 0-3 pintan todos
+              igual: el color casi no distingue. La etiqueta pasa a llevar el
+              peso — nombre más grande y el rango productivo al lado — y las
+              barras dejan de ocupar todo el ancho sin decir nada. */}
+          <span className="shrink-0 leading-tight">
+            <span className="block text-sm font-medium text-fg">RIR</span>
+            <span className="block text-[10px] text-muted tabular-nums">
+              {rirProductiveLabel(profile)}
+            </span>
+          </span>
           <div className="flex gap-1">
             {RIR_OPTS.map((v) => {
               const active = rir === v;
@@ -281,12 +324,32 @@ export function SetRow({
       {/* Plan de la serie. Es un chip fijo, no un placeholder: el placeholder
           desaparece al primer tecleo y era justamente lo que hacía perder la
           referencia apenas empezabas el ejercicio. */}
-      {!set.is_warmup && plannedLabel && (
+      {!set.is_warmup && (plannedLabel || deviation?.direction || rirFar) && (
         <div className="flex items-center gap-1.5 mt-1 pl-8 text-[11px] tabular-nums">
-          <span className="text-muted">
-            ⓘ plan {plannedLabel}
-            {showsReps && ` · RIR ${rirProductiveLabel(profile)}`}
-          </span>
+          {plannedLabel && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowPlan((s) => !s)}
+                aria-expanded={showPlan}
+                aria-label={showPlan ? "Ocultar el plan" : "Ver el plan"}
+                className={clsx(
+                  "size-5 grid place-items-center rounded-full shrink-0 ring-1 transition",
+                  showPlan
+                    ? "bg-accent/15 text-accent ring-accent/40"
+                    : "text-muted ring-border hover:text-fg",
+                )}
+              >
+                <Info className="size-3" />
+              </button>
+              {showPlan && (
+                <span className="text-muted">
+                  plan {plannedLabel}
+                  {showsReps && ` · RIR ${rirProductiveLabel(profile)}`}
+                </span>
+              )}
+            </>
+          )}
           {deviation?.direction && (
             <span
               className={clsx(
@@ -296,13 +359,20 @@ export function SetRow({
             >
               {deviation.direction === "under" ? (
                 <>
-                  <ArrowDown className="size-3" /> bajá el peso
+                  <ArrowDown className="size-3" /> {belowFloorLabel}
                 </>
               ) : (
                 <>
                   <ArrowUp className="size-3" /> subí el peso
                 </>
               )}
+            </span>
+          )}
+          {/* RIR más alto de lo que el objetivo aprovecha: no es un matiz de
+              color, es que la serie no suma volumen efectivo. */}
+          {rirFar && !deviation?.direction && (
+            <span className="flex items-center gap-0.5 font-medium text-warning">
+              <ArrowUp className="size-3" /> subí el peso o las reps
             </span>
           )}
         </div>

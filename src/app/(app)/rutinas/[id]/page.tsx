@@ -428,10 +428,13 @@ function SetPlanner({
     <div className="mt-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-muted">
         <span className="w-8">Serie</span>
-        {showsReps && <span className="flex-1 text-center">Reps</span>}
+        {/* Peso primero: es el orden que usa el resto de la app ("75 kg x 10"),
+            el chip del plan y el "ult." de abajo. Aca estaba al reves, asi que
+            plan y ultimo logrado se leian en ordenes distintos. */}
+        {showsLoad && <span className="flex-1 text-center">Peso (kg)</span>}
         {showsDistance && <span className="flex-1 text-center">km</span>}
         {showsDuration && <span className="flex-1 text-center">mm:ss</span>}
-        {showsLoad && <span className="flex-1 text-center">Peso (kg)</span>}
+        {showsReps && <span className="flex-1 text-center">Reps</span>}
         <span className="w-7" />
       </div>
       {rows.map((r, i) => {
@@ -442,16 +445,17 @@ function SetPlanner({
               <span className="w-8 text-center text-sm text-muted tabular-nums">
                 {i + 1}
               </span>
-              {showsReps && (
+              {showsLoad && (
                 <Input
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   min={0}
+                  step="0.5"
                   placeholder="—"
-                  value={r.target_reps ?? ""}
+                  value={r.target_weight ?? ""}
                   onChange={(e) =>
                     updateRow(i, {
-                      target_reps:
+                      target_weight:
                         e.target.value === "" ? null : Number(e.target.value),
                     })
                   }
@@ -501,17 +505,16 @@ function SetPlanner({
                   className="h-9 flex-1 text-center"
                 />
               )}
-              {showsLoad && (
+              {showsReps && (
                 <Input
                   type="number"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   min={0}
-                  step="0.5"
                   placeholder="—"
-                  value={r.target_weight ?? ""}
+                  value={r.target_reps ?? ""}
                   onChange={(e) =>
                     updateRow(i, {
-                      target_weight:
+                      target_reps:
                         e.target.value === "" ? null : Number(e.target.value),
                     })
                   }

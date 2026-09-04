@@ -14,7 +14,14 @@ export const MUSCLES_ES: Record<string, string> = {
   hamstrings: "Isquiotibiales",
   lats: "Dorsales",
   "lower back": "Espalda baja",
-  "middle back": "Espalda media",
+  // El vocabulario de free-exercise-db parte la espalda alta en dos: `traps`
+  // es SOLO el trapecio superior (sus 15 ejercicios primarios son shrugs,
+  // cleans, snatches y remo al mentón) y el trapecio medio/bajo cae dentro de
+  // `middle back` junto a los romboides. Con las etiquetas genéricas de antes
+  // ("Trapecios" / "Espalda media") la app parecía decir que no entrenabas nada
+  // de trapecio cuando en realidad el remo sí trabaja el medio — solo que
+  // contado en la otra fila.
+  "middle back": "Espalda media y trapecio medio",
   neck: "Cuello",
   quadriceps: "Cuádriceps",
   shoulders: "Hombros",
@@ -22,7 +29,7 @@ export const MUSCLES_ES: Record<string, string> = {
   "front delts": "Deltoides anterior",
   "side delts": "Deltoides lateral",
   "rear delts": "Deltoides posterior",
-  traps: "Trapecios",
+  traps: "Trapecio superior",
   triceps: "Tríceps",
 };
 

@@ -606,7 +606,7 @@ export default function RegistroPage() {
     const w = weekMetrics;
     const hasPlan = plannedWeekdays.length > 0;
     const statusOf = (r: { sets: number; mev: number; mrv: number }) =>
-      r.sets < r.mev ? "Bajo MEV" : r.sets > r.mrv ? "Excede MRV" : "Óptimo";
+      r.sets < r.mev ? "Bajo MEV" : r.sets > r.mrv ? "Alto volumen" : "Óptimo";
     const rows: SheetCell[][] = [
       ["WOLF — Métricas (estado actual)"],
       [],
@@ -750,25 +750,29 @@ export default function RegistroPage() {
           • MAV (Máximo Volumen Adaptativo): rango donde rendirías mejor.{"\n"}
           • MRV (Máximo Volumen Recuperable): techo; pasarte acumularía fatiga
           sin más ganancia.{"\n\n"}
-          <span className="text-fg">De dónde salen:</span> MEV y MAV están
-          medidos, y en la misma unidad que estas barras (series fraccionales).
-          Para hipertrofia, ~4 series semanales es el mínimo con crecimiento
-          detectable y cerca de 11 arrancan los rendimientos decrecientes.{" "}
-          <Ref id="16" /> Para fuerza, las bandas de volumen son baja ≤5, media
-          5-9 y alta ≥10, con la baja claramente peor. <Ref id="20" />{"\n\n"}
+          <span className="text-fg">De dónde salen:</span> para hipertrofia, de
+          las bandas de volumen semanal por grupo muscular: menos de 9 series
+          rinde 5,4%, entre 10 y 19 rinde 6,6%, y 20 o más rinde 9,8%.{" "}
+          <Ref id="1" /> De ahí MEV 10 (piso de la banda productiva), MAV 16 (su
+          centro) y MRV 20. Los rendimientos decrecientes cerca de 11 coinciden.{" "}
+          <Ref id="16" />{"\n\n"}
+          Para fuerza las marcas son más bajas, porque su meseta llega antes{" "}
+          <Ref id="16" /> y las bandas de volumen por ejercicio topan alrededor
+          de 10. <Ref id="20" /> Esos tres valores están interpolados, así que
+          son los menos firmes.{"\n\n"}
           No varían por músculo a propósito: las meta-regresiones agrupan todos
           los músculos y no respaldan un valor distinto para pecho que para
-          glúteos. Antes esta app mostraba uno por músculo, con heurísticas de
-          campo de <Ref id="rp" /> que además cuentan series DIRECTAS, no
-          fraccionales — o sea que se comparaban dos escalas distintas.{"\n\n"}
-          <span className="text-fg">El MRV es la excepción:</span> no es una
-          cantidad medida. La curva de hipertrofia no se aplana — más volumen
-          sigue rindiendo, con más costo de recuperación — así que no hay un
-          máximo recuperable que salga de esos datos. Tomalo como bandera de
-          fatiga, no como diagnóstico.
+          glúteos. Antes esta app mostraba uno por músculo con heurísticas de
+          campo de <Ref id="rp" />.{"\n\n"}
+          <span className="text-fg">Pasarse del MRV no es hacer algo mal:</span>{" "}
+          la banda de 20+ es justamente la que más rinde. Lo que sube es el costo
+          de recuperación, no el error. Tomalo como bandera de fatiga, no como
+          diagnóstico.
           {"\n\n"}
           Color: bajo MEV = ámbar (por debajo de la referencia), entre MEV y
-          MRV = celeste, sobre MRV = rojo.{"\n\n"}
+          MRV = celeste, sobre MRV = rojo. El rojo marca costo de recuperación,
+          no un error: ahí el rendimiento por serie es el más alto, pero también
+          lo es la fatiga acumulada.{"\n\n"}
           Ojo: "volumen" acá es el <span className="text-fg">conteo de
           series</span> cerca del fallo, no el tonelaje (series×reps×peso), que
           sube con más trabajo y no con mejor trabajo.

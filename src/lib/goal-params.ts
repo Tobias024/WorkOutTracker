@@ -93,6 +93,24 @@ export function rirProductiveLabel(
   return `${lo}-${p.rirProductiveMax}`;
 }
 
+/**
+ * ¿El RIR cargado se quedó tan lejos del fallo que la serie no cuenta como
+ * efectiva para el objetivo? Mismo umbral que `isHardSet` (`hardSetMaxRir`), así
+ * que la UI y el conteo de volumen dicen lo mismo.
+ *
+ * Es el espejo del piso de reps de `repDeviation`: en hipertrofia una serie con
+ * RIR 4 no suma volumen efectivo, y dejarla en gris "neutro" no comunicaba que
+ * hay algo que corregir. Robinson et al. 2024 (ref "19") es lo que lo sostiene:
+ * la hipertrofia mejora cuanto más cerca del fallo. Para fuerza el umbral es
+ * más alto (RIR ≤ 4) justamente porque ahí la pendiente del RIR es nula.
+ */
+export function rirTooFar(
+  rir: number | null,
+  profile: TrainingProfile | null | undefined,
+): boolean {
+  return rir != null && rir > goalParams(profile).hardSetMaxRir;
+}
+
 export type RirZone = "danger" | "success" | "muted";
 
 /**
@@ -127,9 +145,30 @@ export function repDeviation(
   actual: number | null,
   planned: number | null,
   profile: TrainingProfile | null | undefined,
+  /** La serie tiene bajadas: las reps del tope no son toda la serie. */
+  hasDrops = false,
 ): RepDeviation | null {
-  if (actual == null || planned == null) return null;
-  const t = goalParams(profile).repTolerance;
+  if (actual == null) return null;
+  const p = goalParams(profile);
+
+  // Piso absoluto, independiente del plan. Por debajo de `hardSetMinReps` la
+  // serie deja de contar como efectiva para el objetivo (mismo umbral que usa
+  // isHardSet), así que la carga está alta para lo que buscás — aunque el plan
+  // pidiera pocas reps y la desviación entre en la tolerancia.
+  //
+  // El piso es 5 para hipertrofia, no 8. Schoenfeld et al. 2021 (ref "4")
+  // rehizo el continuo de repeticiones y encontró hipertrofia equivalente
+  // entre ~5 y ~30 reps con volumen igualado y series cerca del fallo: una
+  // serie de 6 está dentro del rango, no es un error de carga. Marcarla sería
+  // contradecir el mismo paper que la app cita para elegir cargas.
+  //
+  // Con bajadas no aplica: el tope es la primera parte de una serie más larga,
+  // así que sus reps sueltas no dicen si la carga estuvo bien.
+  if (!hasDrops && actual < p.hardSetMinReps)
+    return { level: "far", direction: "under" };
+
+  if (planned == null) return null;
+  const t = p.repTolerance;
   const diff = actual - planned;
   const d = Math.abs(diff);
   if (d <= t) return { level: "ok", direction: null };
@@ -167,14 +206,29 @@ export interface Landmark {
  *
  * De dónde sale cada número:
  *
- * - **hipertrofia** — Pelland 2026 (ref "16"): ~4 series fraccionales semanales
- *   es el mínimo para crecimiento detectable, y los rendimientos decrecientes
- *   arrancan alrededor de 11.
- * - **fuerza** — Ralston et al. 2017 (ref "20", *Sports Med* 47:2585-2601)
- *   partió el volumen en bandas por ejercicio: baja ≤5, media 5-9, alta ≥10,
- *   con la baja claramente peor (ES 0.82 vs 1.01). De ahí MEV 5 y MAV 10.
- *   Pelland además encuentra para fuerza una meseta funcional que hipertrofia
- *   no tiene, por eso el techo queda más abajo.
+ * - **hipertrofia 10 / 16 / 20** — Schoenfeld, Ogborn y Krieger 2017 (ref "1")
+ *   agrupó el volumen semanal POR GRUPO MUSCULAR en tres bandas: <9 series →
+ *   5,4% de hipertrofia, 10-19 → 6,6%, 20+ → 9,8%, con ~0,37% por serie
+ *   semanal. MEV 10 es el piso de la banda productiva, MAV 16 su centro y
+ *   MRV 20 donde arranca la banda de alto volumen. Pelland (ref "16") coincide
+ *   en que los rendimientos decrecientes empiezan cerca de 11.
+ *
+ *   OJO con una lectura equivocada que estuvo en este archivo: el "~4 series"
+ *   de Pelland NO es un mínimo de entrenamiento. Es el volumen donde el efecto
+ *   supera el *smallest detectable effect size*, o sea un piso de DETECCIÓN
+ *   ESTADÍSTICA: por debajo hay crecimiento, sólo que demasiado chico para
+ *   medirlo con confianza en un meta-análisis. Usarlo como MEV subestima el
+ *   volumen necesario por más de la mitad.
+ *
+ * - **fuerza 6 / 12 / 18** — más bajo que hipertrofia porque Pelland encuentra
+ *   para fuerza una meseta funcional que hipertrofia no tiene: los rendimientos
+ *   decrecientes son "considerablemente más pronunciados". Ralston et al. 2017
+ *   (ref "20") apoya la dirección — bandas baja ≤5, media 5-9, alta ≥10, con la
+ *   baja claramente peor (ES 0,82 vs 1,01) — pero sus bandas son POR EJERCICIO
+ *   y acá se mide por grupo muscular, así que la traducción es aproximada.
+ *   Estos tres valores están interpolados entre ese resultado y la banda de
+ *   hipertrofia; son los menos firmes de la tabla.
+ *
  * - **resistencia** — NO hay landmarks de volumen semanal para resistencia
  *   local con respaldo comparable. Los papers que sostienen ese perfil en la
  *   app (refs "13"/"14") hablan de reps por serie, no de series por semana.
@@ -182,16 +236,15 @@ export interface Landmark {
  *   en vez de inventar tres números que parezcan medidos.
  *
  * **El MRV no es una cantidad medida.** Pelland encuentra que la curva de
- * hipertrofia nunca se aplana: más volumen sigue produciendo crecimiento, con
- * costo de recuperación creciente. O sea que no existe un "máximo recuperable"
- * derivable de esos datos. Se mantiene como bandera de costo, ubicada donde el
- * rendimiento por serie ya cayó claramente, y la UI no debe presentarlo con el
- * mismo respaldo que MEV y MAV.
+ * hipertrofia nunca se aplana, y en Schoenfeld la banda de 20+ es justamente la
+ * que más rinde (9,8%). O sea que "pasarse del MRV" no es hacer algo mal: es
+ * entrar en la zona de mayor rendimiento y mayor costo de recuperación. Se
+ * mantiene como bandera de costo y la UI lo dice así.
  */
 export const GOAL_LANDMARKS: Record<TrainingProfile, Landmark> = {
-  hipertrofia: { mev: 4, mav: 11, mrv: 19 },
-  fuerza: { mev: 5, mav: 10, mrv: 16 },
-  resistencia: { mev: 4, mav: 11, mrv: 19 },
+  hipertrofia: { mev: 10, mav: 16, mrv: 20 },
+  fuerza: { mev: 6, mav: 12, mrv: 18 },
+  resistencia: { mev: 10, mav: 16, mrv: 20 },
 };
 
 export function landmarkFor(
