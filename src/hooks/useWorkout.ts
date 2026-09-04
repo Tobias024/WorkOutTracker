@@ -93,23 +93,35 @@ export function useStartWorkout() {
           }).routine_sets ?? []
         ).sort((a, b) => a.set_number - b.set_number);
 
+        // El plan va a las columnas planned_*, NO a reps/weight: la serie nace
+        // vacía y lo que quede en reps/weight es siempre lo que el usuario
+        // registró. Así el plan sigue disponible como referencia toda la sesión
+        // (antes se pisaba al primer tecleo) y se puede comparar contra él.
         const sets =
           planned.length > 0
             ? planned.map((p, i) => ({
                 workout_exercise_id: we!.id,
                 set_number: i + 1,
-                reps: p.target_reps,
-                weight: p.target_weight,
-                duration_seconds: p.target_duration_seconds,
-                distance_m: p.target_distance_m,
+                reps: null,
+                weight: null,
+                duration_seconds: null,
+                distance_m: null,
+                planned_reps: p.target_reps,
+                planned_weight: p.target_weight,
+                planned_duration_seconds: p.target_duration_seconds,
+                planned_distance_m: p.target_distance_m,
               }))
             : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, (_, i) => ({
                 workout_exercise_id: we!.id,
                 set_number: i + 1,
-                reps: rex.target_reps,
+                reps: null,
                 weight: null,
                 duration_seconds: null,
                 distance_m: null,
+                planned_reps: rex.target_reps,
+                planned_weight: null,
+                planned_duration_seconds: null,
+                planned_distance_m: null,
               }));
         await supabase.from("workout_sets").insert(sets);
       }

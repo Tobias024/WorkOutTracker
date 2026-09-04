@@ -148,6 +148,16 @@ export type WorkoutSet = {
   duration_seconds: number | null;
   /** Distancia en METROS (metric_kind 'distance_time'); se muestra en km. */
   distance_m: number | null;
+  /**
+   * Snapshot del plan al arrancar la sesión (de routine_sets.target_*). Vive
+   * aparte de reps/weight para que el plan siga disponible como referencia
+   * después de que el usuario registre lo que realmente hizo.
+   * null = serie agregada a mano durante el entreno, sin plan que comparar.
+   */
+  planned_reps: number | null;
+  planned_weight: number | null;
+  planned_duration_seconds: number | null;
+  planned_distance_m: number | null;
 };
 
 export type SleepLog = {

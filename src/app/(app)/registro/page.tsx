@@ -70,7 +70,7 @@ import { GoalMetrics, SparklineGridCard, RetentionCard } from "@/components/Goal
 import { BodyProgress } from "@/components/BodyProgress";
 import { e1rmSeriesByExercise, strengthRetentionIndex } from "@/lib/metrics-goal";
 import { clsx } from "@/lib/clsx";
-import type { Achievement, Exercise } from "@/lib/types";
+import type { Achievement, Exercise, TrainingProfile } from "@/lib/types";
 
 const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
 const HISTORY_PREVIEW = 8;
@@ -133,6 +133,7 @@ function computeHardSets(
   windowDays: number,
   first: Date | null,
   now: Date,
+  profile: TrainingProfile | null,
 ): MuscleSetRow[] {
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - windowDays);
@@ -144,7 +145,7 @@ function computeHardSets(
       if (!ex) continue;
       const contribs = muscleContributions(ex);
       for (const set of we.workout_sets) {
-        if (!isHardSet(set)) continue;
+        if (!isHardSet(set, profile)) continue;
         for (const c of contribs) {
           byMuscle.set(c.muscle, (byMuscle.get(c.muscle) ?? 0) + c.weight);
         }
@@ -323,8 +324,12 @@ export default function RegistroPage() {
     // contra las marcas MEV/MAV/MRV (que son semanales). Se calculan dos ventanas:
     // 7 días (conteo directo de la última semana, el default correcto) y 30 días
     // (promedio semanal, más suave). Ver computeHardSets.
-    const hardSets7 = computeHardSets(sessions, exMap, 7, first ?? null, now);
-    const hardSets30 = computeHardSets(sessions, exMap, 30, first ?? null, now);
+    const hardSets7 = computeHardSets(
+      sessions, exMap, 7, first ?? null, now, trainingProfile,
+    );
+    const hardSets30 = computeHardSets(
+      sessions, exMap, 30, first ?? null, now, trainingProfile,
+    );
 
     // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
     const cutoff30 = new Date(now);
@@ -404,7 +409,8 @@ export default function RegistroPage() {
       let n = 0;
       for (const s of ws)
         for (const we of s.workout_exercises)
-          for (const set of we.workout_sets) if (isHardSet(set)) n++;
+          for (const set of we.workout_sets)
+            if (isHardSet(set, trainingProfile)) n++;
       return n;
     });
     const workoutStats = weeklyMetricStats(sessions, (ws) =>
@@ -412,7 +418,7 @@ export default function RegistroPage() {
     );
     return { volStats, hardStats, workoutStats };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, todayKey]);
+  }, [data, todayKey, trainingProfile]);
 
   // Racha semanal + calendario de cumplimiento (dependen del plan, resuelto
   // por semana: excepción puntual si existe, si no la plantilla global).
@@ -536,7 +542,7 @@ export default function RegistroPage() {
       ...sessions.map((s): SheetCell[] => {
         const hard = s.workout_exercises
           .flatMap((we) => we.workout_sets)
-          .filter(isHardSet).length;
+          .filter((x) => isHardSet(x, trainingProfile)).length;
         return [
           dateKey(sessionDate(s)),
           s.started_at ?? "",
@@ -749,7 +755,7 @@ export default function RegistroPage() {
           las marcas como punto de partida para ajustar, no como diagnóstico.
           {"\n\n"}
           Color: bajo MEV = ámbar (por debajo de la referencia), entre MEV y
-          MRV = verde, sobre MRV = rojo.{"\n\n"}
+          MRV = celeste, sobre MRV = rojo.{"\n\n"}
           Ojo: "volumen" acá es el <span className="text-fg">conteo de
           series</span> cerca del fallo, no el tonelaje (series×reps×peso), que
           sube con más trabajo y no con mejor trabajo.

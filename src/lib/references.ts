@@ -98,6 +98,11 @@ export const REFERENCES: Record<
     cite: "MacDougall et al. 1995 — curso temporal de la síntesis proteica muscular tras entrenamiento de fuerza",
     url: "https://doi.org/10.1139/h95-038",
   },
+  "19": {
+    short: "Robinson 2024",
+    cite: "Robinson, Pelland, Remmert, Refalo, Jukic, Steele, Zourdos 2024 — meta-regresión de proximidad al fallo: la hipertrofia mejora al acercarse, pero para fuerza la pendiente del RIR es nula",
+    url: "https://doi.org/10.1007/s40279-024-02069-2",
+  },
   rp: {
     short: "Renaissance Periodization",
     cite: "Renaissance Periodization — volume landmarks",

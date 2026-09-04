@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { HistorySession } from "@/hooks/useHistory";
-import type { Exercise, SleepLog, BodyWeightLog, BodyMeasurement } from "@/lib/types";
+import type {
+  Exercise,
+  SleepLog,
+  BodyWeightLog,
+  BodyMeasurement,
+  TrainingProfile,
+} from "@/lib/types";
+import { goalParams } from "@/lib/goal-params";
 import {
   estimate1RM,
   sessionDate,
@@ -14,8 +21,10 @@ import {
   trainsMuscle,
 } from "@/lib/metrics";
 
-// Helpers de métricas por objetivo (Fase 2). Todo se calcula desde el historial;
-// el objetivo sólo decide qué se muestra. Ver Asset/spec-metricas-por-objetivo.md.
+// Helpers de métricas por objetivo (Fase 2). Todo se calcula desde el historial.
+// El objetivo ya no sólo decide QUÉ se muestra: también los umbrales con los que
+// se cuenta (serie efectiva, zonas de RIR) — ver goal-params.ts.
+// Ver Asset/spec-metricas-por-objetivo.md.
 
 const WEEK = 7 * 86400000;
 const DAY = 86400000;
@@ -310,7 +319,9 @@ export function rirBucketsByMuscle(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
   days = 30,
+  profile?: TrainingProfile | null,
 ): MuscleBuckets[] {
+  const gp = goalParams(profile);
   const cutoff = Date.now() - days * DAY;
   const acc = new Map<string, { b01: number; b23: number; b4: number }>();
   for (const s of sessions) {
@@ -323,7 +334,14 @@ export function rirBucketsByMuscle(
         if (!isCountableSet(set)) continue;
         const rir = rirOf(set);
         if (rir == null) continue;
-        const key = rir <= 1 ? "b01" : rir <= 3 ? "b23" : "b4";
+        // Los cortes son los del objetivo: para fuerza un RIR 4 es zona
+        // productiva y no "lejos del fallo" (Robinson 2024, ref "19").
+        const key =
+          gp.rirTooCloseBelow != null && rir < gp.rirTooCloseBelow
+            ? "b01"
+            : rir <= gp.rirProductiveMax
+              ? "b23"
+              : "b4";
         for (const c of contribs) {
           const a = acc.get(c.muscle) ?? { b01: 0, b23: 0, b4: 0 };
           a[key] += c.weight;
@@ -710,6 +728,7 @@ export function readinessByMuscle(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
   now: number = Date.now(),
+  profile?: TrainingProfile | null,
 ): Readiness[] {
   const lastAt = new Map<string, number>();
   for (const s of sessions) {
@@ -728,7 +747,7 @@ export function readinessByMuscle(
       if (!ex) continue;
       const contribs = muscleContributions(ex);
       for (const set of we.workout_sets) {
-        if (!isHardSet(set)) continue;
+        if (!isHardSet(set, profile)) continue;
         for (const c of contribs)
           hard.set(c.muscle, (hard.get(c.muscle) ?? 0) + c.weight);
       }

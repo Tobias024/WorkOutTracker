@@ -19,12 +19,13 @@ import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
-import { SetRow } from "@/components/SetRow";
+import { SetRow, type PlannedSet } from "@/components/SetRow";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { countsForStrengthVolume, totalVolume } from "@/lib/metrics";
 import { formatDistance, formatDuration, formatVolume } from "@/lib/format";
 import { useExerciseNote } from "@/hooks/useExerciseNotes";
-import type { Exercise, MetricKind, WorkoutSet } from "@/lib/types";
+import { useTrainingProfile } from "@/hooks/useGoal";
+import type { Exercise, MetricKind, SetDrop, WorkoutSet } from "@/lib/types";
 import type { SessionExercise, LastExerciseLog } from "@/hooks/useWorkout";
 import { clsx } from "@/lib/clsx";
 
@@ -80,6 +81,10 @@ export function SessionExerciseCard({
 
   const { data: note } = useExerciseNote(we.exercise_id);
   const hasNote = !!note?.trim();
+  // Una sola query por card (clave estable, la cachea TanStack): decide las
+  // zonas de RIR y la tolerancia de reps de todas las series de este ejercicio.
+  const { data: prefs } = useTrainingProfile();
+  const profile = prefs?.trainingProfile ?? null;
 
   const completedSets = we.sets.filter((s) => s.completed);
   const kind: MetricKind = exercise?.metric_kind ?? "reps_weight";
@@ -112,13 +117,67 @@ export function SessionExerciseCard({
       : null;
   }
 
-  /** Al completar una serie vacía, adopta el ghost (repetir = no tocar nada). */
+  /** Lo que la rutina pedía para esta serie (snapshot guardado al arrancar). */
+  function plannedFor(set: WorkoutSet): PlannedSet | null {
+    if (
+      set.planned_reps == null &&
+      set.planned_weight == null &&
+      set.planned_duration_seconds == null &&
+      set.planned_distance_m == null
+    )
+      return null;
+    return {
+      reps: set.planned_reps,
+      weight: set.planned_weight,
+      duration_seconds: set.planned_duration_seconds,
+      distance_m: set.planned_distance_m,
+    };
+  }
+
+  /**
+   * ¿Superaste lo de la última vez en este ejercicio? Alguna serie completada
+   * tiene que DOMINAR a la misma serie de la sesión anterior: mismo peso y más
+   * reps, o más peso y las mismas reps. No se persiste nada — se recalcula
+   * contra `lastLog` en cada render, así que la marca no se arrastra a sesiones
+   * futuras: la semana que viene la base de comparación se mueve sola.
+   */
+  function improvedVsLast(): boolean {
+    return we.sets.some((s) => {
+      if (!s.completed || s.is_warmup) return false;
+      const g = ghostFor(s.set_number);
+      if (!g) return false;
+      if (
+        s.weight == null ||
+        s.reps == null ||
+        g.weight == null ||
+        g.reps == null
+      )
+        return false;
+      return (
+        s.weight >= g.weight &&
+        s.reps >= g.reps &&
+        (s.weight > g.weight || s.reps > g.reps)
+      );
+    });
+  }
+  const improved = countsForStrengthVolume(kind) && improvedVsLast();
+
+  /**
+   * Al completar una serie vacía, adopta lo de la última vez (repetir = no
+   * tocar nada). Si nunca hiciste el ejercicio, adopta el plan: es la única
+   * referencia que hay, y ahora que los campos nacen vacíos es la que evita
+   * tener que tipear una serie que se cumplió tal cual estaba escrita.
+   */
   function adopt(
     set: WorkoutSet,
     patch: Partial<WorkoutSet>,
   ): Partial<WorkoutSet> {
     if (!patch.completed) return patch;
-    const g = ghostFor(set.set_number);
+    const fallback = plannedFor(set);
+    // El plan no tiene bajadas (la rutina no las planifica), sólo el ghost.
+    const g =
+      ghostFor(set.set_number) ??
+      (fallback ? { ...fallback, drops: null as SetDrop[] | null } : null);
     if (!g) return patch;
     const next = { ...patch };
     // Si la serie está vacía y la última vez tuvo bajadas, adoptar el array
@@ -218,6 +277,9 @@ export function SessionExerciseCard({
       className={clsx(
         "card p-3",
         moveMode && "opacity-50 pointer-events-none",
+        // Dorado suave cuando superaste lo de la última vez. Va en la card y no
+        // en la fila para que se lea plegado, que es como se recorre la lista.
+        improved && "ring-1 ring-accent/40 bg-accent/5",
       )}
     >
       <div className="flex items-center gap-3">
@@ -242,6 +304,11 @@ export function SessionExerciseCard({
           <div className="min-w-0 flex-1">
             <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+              {improved && (
+                <Badge className="gap-1 bg-accent/15 text-accent ring-accent/30">
+                  <ArrowUp className="size-3" /> mejoraste
+                </Badge>
+              )}
               {exercise?.primary_muscles[0] && (
                 <Badge>{muscleEs(exercise.primary_muscles[0])}</Badge>
               )}
@@ -341,6 +408,8 @@ export function SessionExerciseCard({
                 set={set}
                 kind={exercise?.metric_kind ?? "reps_weight"}
                 ghost={ghostFor(set.set_number)}
+                planned={plannedFor(set)}
+                profile={profile}
                 onChange={(patch) => handleSetChange(set, patch)}
                 onDelete={() => onDeleteSet(set.id)}
                 onStart={

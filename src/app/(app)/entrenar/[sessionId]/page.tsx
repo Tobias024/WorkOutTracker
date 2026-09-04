@@ -20,6 +20,7 @@ import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
 import { useBodyWeight } from "@/hooks/useBodyData";
+import { useTrainingProfile } from "@/hooks/useGoal";
 import { createClient } from "@/lib/supabase/client";
 import { formatClock, formatVolume, formatDuration } from "@/lib/format";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
@@ -48,6 +49,8 @@ export default function WorkoutPage() {
   );
   const exMap = useExerciseMap();
   const { data: history } = useHistory();
+  const { data: prefs } = useTrainingProfile();
+  const profile = prefs?.trainingProfile ?? null;
   const m = useSessionMutations(sessionId);
   const deleteSession = useDeleteSession();
   const qc = useQueryClient();
@@ -58,7 +61,7 @@ export default function WorkoutPage() {
     if (!data) return null;
     const sets = data.exercises.flatMap((e) => e.sets);
     const tonnage = totalVolume(sets.filter(isCountableSet));
-    const hardSets = sets.filter(isHardSet).length;
+    const hardSets = sets.filter((s) => isHardSet(s, profile)).length;
     let prevTonnage: number | null = null;
     const rid = data.session.routine_id;
     if (rid && history) {
@@ -73,7 +76,7 @@ export default function WorkoutPage() {
         );
     }
     return { tonnage, hardSets, prevTonnage };
-  }, [data, history, sessionId]);
+  }, [data, history, sessionId, profile]);
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(0);
   const [prModal, setPrModal] = useState<SessionPr | null>(null);
@@ -381,10 +384,13 @@ export default function WorkoutPage() {
               m.addSet.mutate({
                 workoutExerciseId: we.id,
                 setNumber: we.sets.length + 1,
-                reps: we.sets.at(-1)?.reps ?? null,
-                weight: we.sets.at(-1)?.weight ?? null,
-                durationSeconds: we.sets.at(-1)?.duration_seconds ?? null,
-                distanceM: we.sets.at(-1)?.distance_m ?? null,
+                // Serie extra agregada a mano: no tiene plan contra el cual
+                // comparar, así que nace vacía y sin planned_*. El ghost de la
+                // última vez sigue apareciendo como placeholder.
+                reps: null,
+                weight: null,
+                durationSeconds: null,
+                distanceM: null,
               })
             }
             onDeleteSet={(id) => m.deleteSet.mutate(id)}

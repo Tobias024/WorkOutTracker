@@ -113,6 +113,12 @@ export function useSessionMutations(sessionId: string) {
         drops: null,
         duration_seconds: durationSeconds ?? null,
         distance_m: distanceM ?? null,
+        // Una serie agregada durante el entreno no sale de la rutina: no tiene
+        // plan contra el cual compararse, y por eso no se colorea.
+        planned_reps: null,
+        planned_weight: null,
+        planned_duration_seconds: null,
+        planned_distance_m: null,
       };
       return optimistic((s) => ({
         ...s,

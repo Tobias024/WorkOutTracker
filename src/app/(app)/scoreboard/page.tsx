@@ -48,7 +48,7 @@ const BOARDS: { key: BoardKey; label: string; caption: string }[] = [
     key: "series",
     label: "Series",
     caption:
-      "Series efectivas (≥5 reps, cerca del fallo): el volumen que impulsa la hipertrofia (no el tonelaje).",
+      "Series efectivas: el volumen que impulsa el progreso (no el tonelaje). Cada uno se mide contra su propio objetivo, así que el mínimo de reps y de cercanía al fallo cambia entre personas.",
   },
   {
     key: "1rm",

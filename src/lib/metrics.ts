@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { MetricKind, SetDrop, WorkoutSet } from "@/lib/types";
+import type {
+  MetricKind,
+  SetDrop,
+  TrainingProfile,
+  WorkoutSet,
+} from "@/lib/types";
+import { goalParams } from "@/lib/goal-params";
 
 type SetLike = Pick<WorkoutSet, "reps" | "weight" | "drops">;
 
@@ -57,25 +63,33 @@ export function isCountableSet(s: {
 }
 
 /**
- * "Hard set" (serie efectiva): set contable, con ≥5 reps y cerca del fallo
- * (RIR ≤ 3, o sin RIR cargado). Es el driver de hipertrofia mejor soportado.
+ * "Hard set" (serie efectiva): set contable, con suficientes reps y suficiente
+ * cercanía al fallo. Los dos umbrales dependen del objetivo (ver goal-params.ts):
+ * una serie de 3 reps pesadas es volumen efectivo para fuerza y no para
+ * hipertrofia, y un RIR 4 rinde para fuerza pero se queda corto para crecer.
+ * Sin perfil cargado se usa hipertrofia, que son los valores históricos
+ * (reps ≥ 5, RIR ≤ 3) — así quien nunca eligió objetivo no ve cambiar sus números.
  *
  * Una serie por tiempo o distancia no tiene reps, así que queda afuera — y debe
  * quedar afuera: no es volumen de fuerza (ver countsForStrengthVolume). Se
- * chequea `reps == null` explícito en vez de dejar que `(null ?? 0) < 5` lo
+ * chequea `reps == null` explícito en vez de dejar que `(null ?? 0) < min` lo
  * resuelva de casualidad.
  */
-export function isHardSet(s: {
-  completed: boolean;
-  is_warmup?: boolean | null;
-  reps: number | null;
-  rpe: number | null;
-}): boolean {
+export function isHardSet(
+  s: {
+    completed: boolean;
+    is_warmup?: boolean | null;
+    reps: number | null;
+    rpe: number | null;
+  },
+  profile?: TrainingProfile | null,
+): boolean {
   if (!isCountableSet(s)) return false;
   if (s.reps == null) return false;
-  if (s.reps < 5) return false;
+  const p = goalParams(profile);
+  if (s.reps < p.hardSetMinReps) return false;
   const rir = rirOf(s);
-  return rir == null || rir <= 3;
+  return rir == null || rir <= p.hardSetMaxRir;
 }
 
 // El reparto fraccional por músculo vive ahora en la capa de contribución

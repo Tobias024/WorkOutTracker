@@ -15,6 +15,7 @@ import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
 import type { TrainingProfile, Exercise } from "@/lib/types";
+import { goalParams } from "@/lib/goal-params";
 import type { HistorySession } from "@/hooks/useHistory";
 import {
   e1rmSeriesByExercise,
@@ -74,15 +75,15 @@ export function GoalMetrics({
       intensity: intensityZones(sessions, 28),
       heavyRir: heavyRirTrend(sessions, 12),
       patterns: patternFrequency(sessions, exMap, 8),
-      rirBuckets: rirBucketsByMuscle(sessions, exMap, 30),
+      rirBuckets: rirBucketsByMuscle(sessions, exMap, 30, trainingProfile),
       recency: daysSinceLastByMuscle(sessions, exMap, now),
       reps: repsPerSetWeekly(sessions, 12),
       density: sessionDensityWeekly(sessions, 12),
       maxReps: maxRepsTest(sessions, exMap, 6),
       rest: avgRestBetweenSets(sessions),
-      ready: readinessByMuscle(sessions, exMap, now),
+      ready: readinessByMuscle(sessions, exMap, now, trainingProfile),
     }),
-    [sessions, exMap, now],
+    [sessions, exMap, now, trainingProfile],
   );
 
   const cards: ReactNode[] = [];
@@ -107,7 +108,10 @@ export function GoalMetrics({
   } else if (trainingProfile === "hipertrofia") {
     // Series efectivas por grupo (MEV/MAV/MRV) es LA métrica del perfil → arriba.
     if (muscleSetsBar) cards.push(muscleSetsBar);
-    if (m.rirBuckets.length) cards.push(<RirBucketsCard rows={m.rirBuckets} />);
+    if (m.rirBuckets.length)
+      cards.push(
+        <RirBucketsCard rows={m.rirBuckets} profile={trainingProfile} />,
+      );
     if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
     if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
   } else if (trainingProfile === "resistencia") {
@@ -284,34 +288,44 @@ function HeavyRirCard({ data }: { data: { label: string; value: number }[] }) {
 
 function RirBucketsCard({
   rows,
+  profile,
 }: {
   rows: ReturnType<typeof rirBucketsByMuscle>;
+  profile: TrainingProfile | null;
 }) {
+  // Los cortes de las barras salen del objetivo, así que la leyenda también:
+  // dejarla fija en 0-1 / 2-3 / 4+ mentía para fuerza y resistencia.
+  const gp = goalParams(profile);
+  const tooClose = gp.rirTooCloseBelow;
   return (
     <SectionCard
       title="Proximidad al fallo"
       subtitle="Reparto de series por RIR, por músculo · 30 días"
       info={
         <>
-          Para hipertrofia la serie tiene que estar cerca del fallo (ventaja
-          pequeña del fallo vs no-fallo). Las series con RIR 4+ inflan el conteo
-          sin estimular. Ojo: se subpredicen las reps al fallo; mejora con
-          experiencia. <Ref id="8" /> <Ref id="9" /> <Ref id="10" />
+          La proximidad al fallo que conviene depende del objetivo: la
+          hipertrofia mejora cuanto más cerca del fallo, pero para fuerza las
+          ganancias son iguales en un rango amplio de RIR, así que acercarse
+          suma fatiga sin rédito. Ojo: se subpredicen las reps al fallo; mejora
+          con experiencia. <Ref id="19" /> <Ref id="8" /> <Ref id="9" />{" "}
+          <Ref id="10" />
         </>
       }
     >
       <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-danger" />
-          RIR 0-1
-        </span>
+        {tooClose != null && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-2 rounded-full bg-danger" />
+            RIR {tooClose === 1 ? "0" : `0-${tooClose - 1}`}
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2 rounded-full bg-success" />
-          RIR 2-3
+          RIR {tooClose ?? 0}-{gp.rirProductiveMax}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="size-2 rounded-full bg-muted" />
-          RIR 4+
+          RIR {gp.rirProductiveMax + 1}+
         </span>
       </div>
       <div className="flex flex-col gap-1.5">

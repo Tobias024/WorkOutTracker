@@ -2,24 +2,40 @@
 "use client";
 
 import { useState } from "react";
-import { Check, MessageSquare, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, MessageSquare, Plus, X } from "lucide-react";
 import { clsx } from "@/lib/clsx";
-import { formatClock, formatPace, parseClock } from "@/lib/format";
+import { formatClock, formatPace, formatWeight, parseClock } from "@/lib/format";
 import { rirOf } from "@/lib/metrics";
-import type { MetricKind, SetDrop, WorkoutSet } from "@/lib/types";
+import { repDeviation, rirProductiveLabel, rirZone } from "@/lib/goal-params";
+import type {
+  MetricKind,
+  SetDrop,
+  TrainingProfile,
+  WorkoutSet,
+} from "@/lib/types";
 
 const RIR_OPTS = [0, 1, 2, 3, 4, 5];
 
-/** Color de zona del RIR: 0–1 al fallo (danger), 2–3 productivo (success), 4–5+ lejos (muted). */
-function rirZone(rir: number): "danger" | "success" | "muted" {
-  if (rir <= 1) return "danger";
-  if (rir <= 3) return "success";
-  return "muted";
+/** Plan de la serie: snapshot de la rutina, guardado al arrancar la sesión. */
+export interface PlannedSet {
+  reps: number | null;
+  weight: number | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
 }
+
+/** Ring de la caja del peso según cuánto se desvían las reps del plan. */
+const DEVIATION_RING: Record<"ok" | "off" | "far", string> = {
+  ok: "ring-1 ring-success/50",
+  off: "ring-2 ring-warning",
+  far: "ring-2 ring-danger",
+};
 
 export function SetRow({
   set,
   ghost,
+  planned,
+  profile,
   kind = "reps_weight",
   onChange,
   onDelete,
@@ -34,6 +50,10 @@ export function SetRow({
     duration_seconds?: number | null;
     distance_m?: number | null;
   } | null;
+  /** Lo que la rutina pedía para esta serie. Queda visible toda la sesión. */
+  planned?: PlannedSet | null;
+  /** Objetivo del usuario: decide zonas de RIR y tolerancia de reps. */
+  profile?: TrainingProfile | null;
   /** Cómo se mide este ejercicio; decide qué campos se piden. */
   kind?: MetricKind;
   onChange: (patch: Partial<WorkoutSet>) => void;
@@ -63,6 +83,37 @@ export function SetRow({
   const pace = showsDistance
     ? formatPace(set.duration_seconds, set.distance_m)
     : null;
+
+  // Desvío de reps vs. plan. Sólo se evalúa con reps ya cargadas (o la serie
+  // tildada): si no, cada fila vacía arrancaría pintada de ámbar. Los warmups
+  // quedan afuera porque no tienen plan que cumplir.
+  const deviation =
+    !set.is_warmup && showsReps && (set.completed || drops[0].reps != null)
+      ? repDeviation(drops[0].reps, planned?.reps ?? null, profile)
+      : null;
+
+  // El plan se muestra en el chip ⓘ, y como placeholder sólo si nunca hiciste
+  // el ejercicio (sin ghost): ahí es la mejor pista gris disponible.
+  const hint = {
+    weight: ghost?.weight ?? planned?.weight ?? null,
+    reps: ghost?.reps ?? planned?.reps ?? null,
+    duration_seconds:
+      ghost?.duration_seconds ?? planned?.duration_seconds ?? null,
+    distance_m: ghost?.distance_m ?? planned?.distance_m ?? null,
+  };
+
+  const plannedLabel = planned
+    ? [
+        planned.weight != null ? formatWeight(planned.weight) : null,
+        planned.reps != null ? `${planned.reps} reps` : null,
+        planned.duration_seconds != null
+          ? formatClock(planned.duration_seconds)
+          : null,
+        planned.distance_m != null ? `${planned.distance_m / 1000} km` : null,
+      ]
+        .filter(Boolean)
+        .join(" × ")
+    : "";
 
   function commitDrops(next: SetDrop[]) {
     const first = next[0] ?? { reps: null, weight: null };
@@ -106,8 +157,11 @@ export function SetRow({
         {showsLoad && (
           <NumberField
             value={drops[0].weight}
-            placeholder={ghost?.weight != null ? String(ghost.weight) : "kg"}
+            placeholder={hint.weight != null ? String(hint.weight) : "kg"}
             step={2.5}
+            // El color va en la caja del PESO aunque lo dispare el desvío de
+            // reps: la corrección que se sugiere es sobre la carga.
+            ring={deviation ? DEVIATION_RING[deviation.level] : undefined}
             onCommit={(v) => updateDrop(0, { weight: v })}
             onFocus={onStart}
           />
@@ -116,7 +170,7 @@ export function SetRow({
         {showsReps && (
           <NumberField
             value={drops[0].reps}
-            placeholder={ghost?.reps != null ? String(ghost.reps) : "reps"}
+            placeholder={hint.reps != null ? String(hint.reps) : "reps"}
             step={1}
             onCommit={(v) => updateDrop(0, { reps: v })}
             onFocus={onStart}
@@ -126,7 +180,7 @@ export function SetRow({
           <NumberField
             value={set.distance_m == null ? null : set.distance_m / 1000}
             placeholder={
-              ghost?.distance_m != null ? String(ghost.distance_m / 1000) : "km"
+              hint.distance_m != null ? String(hint.distance_m / 1000) : "km"
             }
             step={0.1}
             onCommit={(v) =>
@@ -142,8 +196,8 @@ export function SetRow({
           <ClockField
             value={set.duration_seconds}
             placeholder={
-              ghost?.duration_seconds != null
-                ? formatClock(ghost.duration_seconds)
+              hint.duration_seconds != null
+                ? formatClock(hint.duration_seconds)
                 : "mm:ss"
             }
             onCommit={(v) => onChange({ duration_seconds: v })}
@@ -191,7 +245,7 @@ export function SetRow({
           <div className="flex gap-1">
             {RIR_OPTS.map((v) => {
               const active = rir === v;
-              const zone = rirZone(v);
+              const zone = rirZone(v, profile);
               return (
                 <button
                   key={v}
@@ -221,6 +275,36 @@ export function SetRow({
           >
             <MessageSquare className="size-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Plan de la serie. Es un chip fijo, no un placeholder: el placeholder
+          desaparece al primer tecleo y era justamente lo que hacía perder la
+          referencia apenas empezabas el ejercicio. */}
+      {!set.is_warmup && plannedLabel && (
+        <div className="flex items-center gap-1.5 mt-1 pl-8 text-[11px] tabular-nums">
+          <span className="text-muted">
+            ⓘ plan {plannedLabel}
+            {showsReps && ` · RIR ${rirProductiveLabel(profile)}`}
+          </span>
+          {deviation?.direction && (
+            <span
+              className={clsx(
+                "flex items-center gap-0.5 font-medium",
+                deviation.level === "far" ? "text-danger" : "text-warning",
+              )}
+            >
+              {deviation.direction === "under" ? (
+                <>
+                  <ArrowDown className="size-3" /> bajá el peso
+                </>
+              ) : (
+                <>
+                  <ArrowUp className="size-3" /> subí el peso
+                </>
+              )}
+            </span>
+          )}
         </div>
       )}
 
@@ -283,12 +367,15 @@ function NumberField({
   value,
   placeholder,
   step,
+  ring,
   onCommit,
   onFocus,
 }: {
   value: number | null;
   placeholder: string;
   step: number;
+  /** Ring de estado (desvío vs. plan). Por defecto, el borde neutro. */
+  ring?: string;
   onCommit: (v: number | null) => void;
   onFocus?: () => void;
 }) {
@@ -305,7 +392,10 @@ function NumberField({
         const v = e.target.value === "" ? null : Number(e.target.value);
         if (v !== value) onCommit(v);
       }}
-      className="h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"
+      className={clsx(
+        "h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none focus:ring-primary",
+        ring ?? "ring-1 ring-border",
+      )}
     />
   );
 }

@@ -10,7 +10,7 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "WOLF",
+  title: "WOLF — WorkOut, Logs & Friends",
   description: "Creá rutinas, registrá tus entrenamientos y competí con amigos.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
