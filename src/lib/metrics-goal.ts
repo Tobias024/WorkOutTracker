@@ -720,9 +720,26 @@ export interface Readiness {
 }
 
 /**
- * Ranking de grupos musculares "listos": combina recuperación (días desde la
- * última vez) y rezago de volumen (series efectivas de la última semana por
- * debajo del MEV). Responde "qué conviene entrenar hoy". Diseño propio.
+ * Peso de cada término del score de "listo para entrenar".
+ *
+ * El rezago de volumen manda. Estaban al revés (recuperación 0.6 / rezago 0.4),
+ * y eso contradecía la evidencia que el resto del módulo ya usa: Pelland et al.
+ * 2026 (ref "16") encuentra que, con volumen igualado, la frecuencia por sí sola
+ * tiene un efecto despreciable sobre la hipertrofia — el intervalo creíble de su
+ * pendiente incluye el cero. El volumen, en cambio, sí tiene una relación
+ * dosis-respuesta clara. Priorizar "hace mucho que no lo tocás" por sobre "te
+ * falta volumen" ordenaba la lista por la variable que menos importa.
+ *
+ * La recuperación no se elimina: sigue sirviendo como desempate y evita sugerir
+ * un grupo entrenado ayer. Sólo deja de ser el criterio principal.
+ */
+const LAG_WEIGHT = 0.6;
+const RECOVERY_WEIGHT = 0.4;
+
+/**
+ * Ranking de grupos musculares "listos": combina rezago de volumen (series
+ * efectivas de la última semana por debajo del MEV del objetivo) y recuperación
+ * (días desde la última vez). Responde "qué conviene entrenar hoy".
  */
 export function readinessByMuscle(
   sessions: HistorySession[],
@@ -754,14 +771,18 @@ export function readinessByMuscle(
     }
   }
   const out: Readiness[] = [];
+  const mev = landmarkFor(profile).mev;
   for (const [mu, t] of lastAt) {
     const days = calendarDaysBetween(t, now);
-    const mev = landmarkFor(mu).mev;
     const sets = hard.get(mu) ?? 0;
-    // MEV 0 (ej. deltoide anterior, que se nutre de los press) → sin déficit.
     const lag = mev > 0 ? Math.max(0, Math.min(1, (mev - sets) / mev)) : 0;
     const recovery = Math.min(1, days / 3);
-    out.push({ muscle: mu, days, lag, score: recovery * 0.6 + lag * 0.4 });
+    out.push({
+      muscle: mu,
+      days,
+      lag,
+      score: lag * LAG_WEIGHT + recovery * RECOVERY_WEIGHT,
+    });
   }
   return out.sort((a, b) => b.score - a.score).slice(0, 3);
 }

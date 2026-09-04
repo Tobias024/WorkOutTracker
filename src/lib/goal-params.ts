@@ -136,3 +136,66 @@ export function repDeviation(
   const direction = diff < 0 ? "under" : "over";
   return { level: d > t * 2 ? "far" : "off", direction };
 }
+
+// ── Landmarks de volumen semanal ────────────────────────────────────────────
+
+export interface Landmark {
+  /** Mínimo para que el volumen produzca algo medible. */
+  mev: number;
+  /** Donde arrancan los rendimientos decrecientes. */
+  mav: number;
+  /** Bandera de costo de recuperación. NO es una cantidad medida — ver abajo. */
+  mrv: number;
+}
+
+/**
+ * Volumen semanal por grupo muscular, en SERIES FRACCIONALES: la unidad que
+ * produce `muscleContributions` (1.0 directo / 0.5 indirecto).
+ *
+ * Esa unidad es el punto. Los valores anteriores venían de Renaissance
+ * Periodization, que cuenta SERIES DIRECTAS, y se comparaban contra el conteo
+ * fraccional de la app: dos escalas distintas en la misma división. Las anclas
+ * de Pelland et al. 2026 (ref "16") están medidas en series fraccionales, o sea
+ * exactamente lo que la app calcula, así que ahora numerador y denominador
+ * hablan el mismo idioma.
+ *
+ * Tampoco varían por músculo, y eso también es deliberado: la meta-regresión
+ * agrupa todos los músculos, no los desagrega. La tabla vieja daba `chest: 10`
+ * y `glutes: 4` como si esa diferencia estuviera medida — no lo está. Un solo
+ * par de anclas para todos es menos preciso en apariencia y más honesto, y de
+ * paso hace comparables las barras entre grupos.
+ *
+ * De dónde sale cada número:
+ *
+ * - **hipertrofia** — Pelland 2026 (ref "16"): ~4 series fraccionales semanales
+ *   es el mínimo para crecimiento detectable, y los rendimientos decrecientes
+ *   arrancan alrededor de 11.
+ * - **fuerza** — Ralston et al. 2017 (ref "20", *Sports Med* 47:2585-2601)
+ *   partió el volumen en bandas por ejercicio: baja ≤5, media 5-9, alta ≥10,
+ *   con la baja claramente peor (ES 0.82 vs 1.01). De ahí MEV 5 y MAV 10.
+ *   Pelland además encuentra para fuerza una meseta funcional que hipertrofia
+ *   no tiene, por eso el techo queda más abajo.
+ * - **resistencia** — NO hay landmarks de volumen semanal para resistencia
+ *   local con respaldo comparable. Los papers que sostienen ese perfil en la
+ *   app (refs "13"/"14") hablan de reps por serie, no de series por semana.
+ *   Se reusan las anclas de hipertrofia como aproximación, y esto se dice acá
+ *   en vez de inventar tres números que parezcan medidos.
+ *
+ * **El MRV no es una cantidad medida.** Pelland encuentra que la curva de
+ * hipertrofia nunca se aplana: más volumen sigue produciendo crecimiento, con
+ * costo de recuperación creciente. O sea que no existe un "máximo recuperable"
+ * derivable de esos datos. Se mantiene como bandera de costo, ubicada donde el
+ * rendimiento por serie ya cayó claramente, y la UI no debe presentarlo con el
+ * mismo respaldo que MEV y MAV.
+ */
+export const GOAL_LANDMARKS: Record<TrainingProfile, Landmark> = {
+  hipertrofia: { mev: 4, mav: 11, mrv: 19 },
+  fuerza: { mev: 5, mav: 10, mrv: 16 },
+  resistencia: { mev: 4, mav: 11, mrv: 19 },
+};
+
+export function landmarkFor(
+  profile?: TrainingProfile | null,
+): Landmark {
+  return GOAL_LANDMARKS[profile ?? DEFAULT_TRAINING_PROFILE];
+}

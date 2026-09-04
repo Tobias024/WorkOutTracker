@@ -121,7 +121,8 @@ function sessionSets(s: HistorySession): number {
 
 /**
  * Series efectivas por músculo expresadas como series/semana, para compararlas
- * contra las marcas MEV/MAV/MRV (que son semanales: Schoenfeld / RP).
+ * contra las marcas MEV/MAV/MRV, que son semanales y dependen del objetivo
+ * (ver GOAL_LANDMARKS en goal-params.ts).
  * - windowDays=7: conteo directo de la última semana (sin dilución) → es la
  *   medida correcta contra marcas semanales, y el default.
  * - windowDays=30: promedio semanal sobre las semanas con datos (mín. 1), que
@@ -157,11 +158,15 @@ function computeHardSets(
     first?.getTime() ?? cutoff.getTime(),
   );
   const weeks = Math.max(1, (now.getTime() - windowStart) / (7 * 86400000));
+  // Mismo objetivo que decide qué cuenta como serie efectiva decide contra qué
+  // se compara: antes el conteo era por objetivo y el MEV era fijo (y de
+  // hipertrofia), así que numerador y denominador no eran la misma escala.
+  const landmark = landmarkFor(profile);
   return [...byMuscle.entries()]
     .map(([muscle, sets]) => ({
       muscle,
       sets: sets / weeks,
-      ...landmarkFor(muscle),
+      ...landmark,
     }))
     .sort((a, b) => b.sets - a.sets)
     .slice(0, 8);
@@ -729,11 +734,12 @@ export default function RegistroPage() {
       info={
         <>
           {hardWindow === "7d"
-            ? "Series de trabajo (≥5 reps y cerca del fallo) por músculo, contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
-            : "Series de trabajo (≥5 reps y cerca del fallo) por músculo, promediadas por semana sobre los últimos 30 días. "}
-          Cada serie se reparte entre los músculos del ejercicio con un peso
-          fraccional: 1 para el motor primario y entre 0,2 y 0,5 para cada
-          secundario (0,35 cuando el ejercicio no tiene un reparto curado).
+            ? "Series efectivas por músculo (el piso de reps y la proximidad al fallo salen de tu objetivo), contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
+            : "Series efectivas por músculo (el piso de reps y la proximidad al fallo salen de tu objetivo), promediadas por semana sobre los últimos 30 días. "}
+          Cada serie se reparte entre los músculos del ejercicio: 1 para el
+          motor principal y 0,5 para cada secundario. Ese 0,5 es el esquema de
+          conteo que mejor explicó los datos entre los tres que se pusieron a
+          prueba (1, 0,5 y 0). <Ref id="16" />
           {"\n\n"}
           Una serie sin RIR cargado también cuenta como efectiva: si no
           registrás la proximidad al fallo, estas barras son un techo, no una
@@ -744,15 +750,22 @@ export default function RegistroPage() {
           • MAV (Máximo Volumen Adaptativo): rango donde rendirías mejor.{"\n"}
           • MRV (Máximo Volumen Recuperable): techo; pasarte acumularía fatiga
           sin más ganancia.{"\n\n"}
-          <span className="text-fg">De dónde salen:</span> son heurísticas de
-          campo de <Ref id="rp" />, no umbrales validados en la literatura, y
-          los valores por músculo son estimaciones nuestras. Lo que sí está
-          respaldado es lo de abajo: hay relación dosis-respuesta entre el
-          volumen semanal y la hipertrofia (~0,4% más por serie semanal, con un
-          umbral orientativo cerca de 10 series por músculo) — <Ref id="1" /> —
-          y contar series totales es un método válido de cuantificar volumen —{" "}
-          <Ref id="7" />. Nada de eso define un MEV o un MRV por músculo. Tomá
-          las marcas como punto de partida para ajustar, no como diagnóstico.
+          <span className="text-fg">De dónde salen:</span> MEV y MAV están
+          medidos, y en la misma unidad que estas barras (series fraccionales).
+          Para hipertrofia, ~4 series semanales es el mínimo con crecimiento
+          detectable y cerca de 11 arrancan los rendimientos decrecientes.{" "}
+          <Ref id="16" /> Para fuerza, las bandas de volumen son baja ≤5, media
+          5-9 y alta ≥10, con la baja claramente peor. <Ref id="20" />{"\n\n"}
+          No varían por músculo a propósito: las meta-regresiones agrupan todos
+          los músculos y no respaldan un valor distinto para pecho que para
+          glúteos. Antes esta app mostraba uno por músculo, con heurísticas de
+          campo de <Ref id="rp" /> que además cuentan series DIRECTAS, no
+          fraccionales — o sea que se comparaban dos escalas distintas.{"\n\n"}
+          <span className="text-fg">El MRV es la excepción:</span> no es una
+          cantidad medida. La curva de hipertrofia no se aplana — más volumen
+          sigue rindiendo, con más costo de recuperación — así que no hay un
+          máximo recuperable que salga de esos datos. Tomalo como bandera de
+          fatiga, no como diagnóstico.
           {"\n\n"}
           Color: bajo MEV = ámbar (por debajo de la referencia), entre MEV y
           MRV = celeste, sobre MRV = rojo.{"\n\n"}

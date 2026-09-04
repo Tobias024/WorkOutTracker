@@ -103,9 +103,17 @@ export const REFERENCES: Record<
     cite: "Robinson, Pelland, Remmert, Refalo, Jukic, Steele, Zourdos 2024 — meta-regresión de proximidad al fallo: la hipertrofia mejora al acercarse, pero para fuerza la pendiente del RIR es nula",
     url: "https://doi.org/10.1007/s40279-024-02069-2",
   },
+  "20": {
+    short: "Ralston 2017 (volumen y fuerza)",
+    cite: "Ralston, Kilgore, Wyatt, Baker 2017 — meta-análisis de series semanales y ganancia de fuerza: bandas baja ≤5, media 5-9, alta ≥10 series/semana",
+    url: "https://doi.org/10.1007/s40279-017-0762-7",
+  },
+  // Se mantiene aunque ya no define ningún número de la app: los landmarks
+  // pasaron a las anclas de Pelland (ref "16") y Ralston (ref "20"). Queda para
+  // poder nombrar de dónde venía el modelo anterior.
   rp: {
     short: "Renaissance Periodization",
-    cite: "Renaissance Periodization — volume landmarks",
+    cite: "Renaissance Periodization — volume landmarks (heurística de campo; ya no se usa para los valores de la app)",
     url: "https://rpstrength.com/expert-advice/training-volume-landmarks-muscle-growth",
   },
 };

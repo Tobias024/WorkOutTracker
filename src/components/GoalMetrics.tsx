@@ -149,18 +149,23 @@ function ReadyCard({ rows }: { rows: Readiness[] }) {
         <>
           Ranking propio de &ldquo;qué conviene entrenar hoy&rdquo; por grupo
           muscular. Combina dos señales en un puntaje:{"\n\n"}
-          • <span className="text-fg">Recuperación</span> = días desde la última
-          vez que lo entrenaste, escalado 0–1 (min(1, días/3): 3+ días = del
-          todo recuperado).{"\n"}
           • <span className="text-fg">Rezago de volumen</span> = cuánto te falta
           para el MEV esta semana: (MEV − series efectivas de los últimos 7
-          días) / MEV, 0–1. Es lo que muestra la barra.{"\n\n"}
-          Puntaje = 0,6 × recuperación + 0,4 × rezago; se muestran los 3 más
+          días) / MEV, 0–1. Es lo que muestra la barra.{"\n"}
+          • <span className="text-fg">Recuperación</span> = días desde la última
+          vez que lo entrenaste, escalado 0–1 (min(1, días/3): 3+ días = del
+          todo recuperado).{"\n\n"}
+          Puntaje = 0,6 × rezago + 0,4 × recuperación; se muestran los 3 más
           altos.{"\n\n"}
-          Los insumos tienen respaldo — recuperación/frecuencia (<Ref id="11" />,{" "}
-          <Ref id="12" />) y volumen medido por conteo de series vs MEV
-          (<Ref id="1" />, <Ref id="7" />). El compuesto y los pesos 0,6/0,4 son
-          una heurística de producto, no un resultado de paper.
+          El rezago pesa más a propósito. Con volumen igualado, la frecuencia
+          por sí sola tiene un efecto despreciable sobre la hipertrofia — el
+          intervalo creíble de su pendiente incluye el cero — mientras que el
+          volumen sí tiene una relación dosis-respuesta clara. <Ref id="16" />{" "}
+          Antes los pesos estaban al revés, o sea que la lista se ordenaba por
+          la variable que menos incide. La recuperación queda como desempate,
+          para no sugerirte un grupo que entrenaste ayer.{"\n\n"}
+          El compuesto en sí sigue siendo una heurística de producto: lo que
+          está respaldado son los insumos, no la forma de combinarlos.
         </>
       }
     >

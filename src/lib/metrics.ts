@@ -97,38 +97,10 @@ export function isHardSet(
 // no cambiar los imports existentes.
 export { muscleContributions, baseToGroup } from "./muscle-contributions";
 
-/** Volume landmarks aproximados (sets/semana) por músculo, estilo Schoenfeld/RP. */
-export interface Landmark {
-  mev: number;
-  mav: number;
-  mrv: number;
-}
-const DEFAULT_LANDMARK: Landmark = { mev: 8, mav: 14, mrv: 20 };
-export const MUSCLE_LANDMARKS: Record<string, Landmark> = {
-  chest: { mev: 10, mav: 16, mrv: 22 },
-  lats: { mev: 10, mav: 16, mrv: 22 },
-  "middle back": { mev: 10, mav: 16, mrv: 22 },
-  "lower back": { mev: 6, mav: 10, mrv: 16 },
-  traps: { mev: 6, mav: 12, mrv: 20 },
-  shoulders: { mev: 8, mav: 18, mrv: 26 }, // legacy: el split usa las 3 cabezas
-  "front delts": { mev: 0, mav: 8, mrv: 12 }, // recibe mucho de los press → MEV 0
-  "side delts": { mev: 8, mav: 18, mrv: 26 },
-  "rear delts": { mev: 6, mav: 14, mrv: 20 },
-  biceps: { mev: 8, mav: 14, mrv: 20 },
-  triceps: { mev: 6, mav: 12, mrv: 18 },
-  forearms: { mev: 6, mav: 12, mrv: 16 },
-  quadriceps: { mev: 8, mav: 14, mrv: 20 },
-  hamstrings: { mev: 6, mav: 12, mrv: 16 },
-  glutes: { mev: 4, mav: 12, mrv: 16 },
-  calves: { mev: 8, mav: 14, mrv: 20 },
-  abdominals: { mev: 6, mav: 16, mrv: 25 },
-  abductors: { mev: 6, mav: 12, mrv: 16 },
-  adductors: { mev: 6, mav: 12, mrv: 16 },
-  neck: { mev: 4, mav: 8, mrv: 12 },
-};
-export function landmarkFor(muscle: string): Landmark {
-  return MUSCLE_LANDMARKS[muscle] ?? DEFAULT_LANDMARK;
-}
+// Los landmarks de volumen (MEV/MAV/MRV) dejaron de variar por músculo y pasaron
+// a depender del OBJETIVO: viven en goal-params.ts junto al resto de los
+// umbrales por perfil. Se re-exportan acá para no cambiar los imports.
+export { landmarkFor, GOAL_LANDMARKS, type Landmark } from "./goal-params";
 
 /**
  * Delta de un valor entre el período actual y el anterior (semana o mes).
