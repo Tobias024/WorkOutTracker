@@ -20,6 +20,16 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.3.0",
+    date: "2026-09-08",
+    notable: true,
+    items: [
+      "La sugerencia de carga ahora cruza reps y RIR: te dice si subir el peso, bajarlo, o si el peso está bien y lo que faltó fueron las reps.",
+      "Cada objetivo tiene su rango de reps y de RIR; los ves en el ⓘ de cada serie.",
+      "Si el plan de una serie queda fuera del rango de tu objetivo, la app lo avisa en vez de acompañarlo — en la sesión y en el editor de rutina.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-09-03",
     notable: true,

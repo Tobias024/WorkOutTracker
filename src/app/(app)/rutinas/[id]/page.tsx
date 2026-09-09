@@ -26,7 +26,8 @@ import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import { formatClock, parseClock } from "@/lib/format";
-import type { MetricKind } from "@/lib/types";
+import type { MetricKind, TrainingProfile } from "@/lib/types";
+import { planOutOfRange, repRangeLabel } from "@/lib/goal-params";
 import {
   useRoutine,
   useUpdateRoutine,
@@ -42,6 +43,7 @@ import {
   type LastExerciseLog,
 } from "@/hooks/useWorkout";
 import { useExerciseNote } from "@/hooks/useExerciseNotes";
+import { useTrainingProfile } from "@/hooks/useGoal";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
 import type { Exercise } from "@/lib/types";
@@ -61,6 +63,8 @@ export default function RoutineEditorPage() {
   const { data: lastLogs } = useLastExerciseLogs(
     (data?.exercises ?? []).map((r) => r.exercise_id),
   );
+  const { data: prefs } = useTrainingProfile();
+  const trainingProfile = prefs?.trainingProfile ?? null;
 
   const [picker, setPicker] = useState(false);
   const [shareModal, setShareModal] = useState<string | null>(null);
@@ -162,6 +166,7 @@ export default function RoutineEditorPage() {
               rex={rex}
               exercise={exMap.get(rex.exercise_id)}
               last={lastLogs?.get(rex.exercise_id)}
+              profile={trainingProfile}
               isFirst={i === 0}
               isLast={i === exercises.length - 1}
               onSaveSets={(plans) =>
@@ -243,6 +248,7 @@ function RoutineExerciseRow({
   rex,
   exercise,
   last,
+  profile,
   isFirst,
   isLast,
   onSaveSets,
@@ -254,6 +260,8 @@ function RoutineExerciseRow({
   rex: RoutineExerciseWithSets;
   exercise?: Exercise;
   last?: LastExerciseLog;
+  /** Objetivo del usuario: marca las series planeadas fuera de su rango de reps. */
+  profile?: TrainingProfile | null;
   isFirst: boolean;
   isLast: boolean;
   onSaveSets: (plans: SetPlan[]) => void;
@@ -317,6 +325,7 @@ function RoutineExerciseRow({
         sets={rex.sets}
         kind={exercise?.metric_kind ?? "reps_weight"}
         last={last}
+        profile={profile}
         onSave={onSaveSets}
       />
 
@@ -346,6 +355,7 @@ function SetPlanner({
   sets,
   kind,
   last,
+  profile,
   onSave,
 }: {
   sets: {
@@ -357,6 +367,7 @@ function SetPlanner({
   /** Mismo criterio que SetRow: el tipo del ejercicio decide qué se planifica. */
   kind: MetricKind;
   last?: LastExerciseLog;
+  profile?: TrainingProfile | null;
   onSave: (plans: SetPlan[]) => void;
 }) {
   const showsLoad = kind === "reps_weight" || kind === "time_load";
@@ -439,6 +450,9 @@ function SetPlanner({
       </div>
       {rows.map((r, i) => {
         const hint = lastFor(i + 1);
+        // Un plan fuera del rango de reps del objetivo se ignora al sugerir
+        // carga durante la sesión, así que se avisa acá, que es donde nace.
+        const outOfRange = showsReps && planOutOfRange(r.target_reps, profile);
         return (
           <div key={i}>
             <div className="flex items-center gap-2">
@@ -531,11 +545,17 @@ function SetPlanner({
                 <X className="size-4 mx-auto" />
               </button>
             </div>
-            {hint && (
+            {(hint || outOfRange) && (
               <div className="flex gap-2 mt-0.5">
                 <span className="w-8" />
-                <span className="flex-1 text-center text-[11px] text-muted tabular-nums">
-                  {hint}
+                <span className="flex-1 text-center text-[11px] tabular-nums">
+                  {hint && <span className="text-muted">{hint}</span>}
+                  {hint && outOfRange && " · "}
+                  {outOfRange && (
+                    <span className="text-warning">
+                      fuera del rango de tu objetivo ({repRangeLabel(profile)})
+                    </span>
+                  )}
                 </span>
                 <span className="w-7" />
               </div>

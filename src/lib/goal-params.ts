@@ -8,6 +8,13 @@
  * hipertrofia y aplicados a todo el mundo. Este módulo es la única fuente de
  * verdad de esos números; los llamadores le pasan el perfil.
  *
+ * OJO — `hardSetMinReps` y `hardSetMaxRir` están escritos DOS VECES: acá y en
+ * `is_hard_set()` de `supabase/migrations/0035_hard_sets_by_goal.sql`, porque el
+ * ranking los necesita del lado de Postgres (`scoreboard_stats`,
+ * `friend_metrics`). Si tocás uno, tocá el otro o el número del ranking se
+ * separa del de Registro sin que nada falle. `repRangeMax` NO está en el SQL a
+ * propósito: sólo lo usa la sugerencia de carga, no el conteo de volumen.
+ *
  * Qué respalda cada columna, porque no todas tienen el mismo peso:
  *
  * - RIR por objetivo — evidencia sólida. Robinson et al. 2024 (Sports Med
@@ -25,10 +32,23 @@
  *   2021, ref "7"); hipertrofia rinde en ~5-30 reps (piso 5, el histórico);
  *   la resistencia local pide series largas (refs "13"/"14") → piso 12.
  *
+ * - Techos de reps (`repRangeMax`) — Schoenfeld 2021 (ref "4") otra vez:
+ *   hipertrofia equivalente hasta ~30 reps; para fuerza el ≥80% 1RM óptimo cae
+ *   en ~6 reps máximo — ese 6 es una LECTURA PRÁCTICA del porcentaje, no un
+ *   número que el paper escriba. Resistencia no tiene techo con respaldo. El
+ *   techo sólo lo usa la sugerencia de carga (`loadAdvice`), NO `isHardSet`: una
+ *   serie de 35 reps sigue contando como volumen, sólo que la carga está liviana.
+ *
  * - `repTolerance` — NO sale de ningún paper. Es una heurística derivada del
  *   ancho del rango de reps de cada objetivo: fallar 1 rep de 5 es un 20% del
  *   estímulo, fallar 1 de 20 es un 5%. La UI que la use debe decir eso y NO
  *   citar un paper, a diferencia de las otras dos.
+ *
+ * - La matriz reps × RIR de `loadAdvice` — Helms, Cronin, Storey y Zourdos 2016
+ *   (ref "21") para la regla base ("N reps @ RIR X": bajá la carga si no llegás
+ *   a las reps, subila si llegás con más RIR del objetivo), y Steele 2017 /
+ *   Halperin 2022 (refs "9"/"10") para el cuadrante donde las dos señales se
+ *   contradicen. Detalle en el docstring de `loadAdvice`.
  */
 import type { TrainingProfile } from "./types";
 
@@ -43,8 +63,14 @@ export interface GoalParams {
   rirProductiveMax: number;
   /** RIR máximo para que una serie cuente como efectiva. */
   hardSetMaxRir: number;
-  /** Reps mínimas para que una serie cuente como efectiva. */
+  /** Reps mínimas para que una serie cuente como efectiva. Es también el piso del rango de reps del objetivo. */
   hardSetMinReps: number;
+  /**
+   * Techo del rango de reps del objetivo (inclusive); `null` = sin techo. Sólo
+   * para la sugerencia de carga: por encima, la carga está liviana para lo que
+   * buscás. No afecta a `isHardSet` ni al SQL del ranking.
+   */
+  repRangeMax: number | null;
   /** Desvío de reps vs. plan tolerado antes de sugerir corregir la carga. */
   repTolerance: number;
 }
@@ -55,6 +81,7 @@ export const GOAL_PARAMS: Record<TrainingProfile, GoalParams> = {
     rirProductiveMax: 4,
     hardSetMaxRir: 4,
     hardSetMinReps: 1,
+    repRangeMax: 6,
     repTolerance: 1,
   },
   hipertrofia: {
@@ -62,6 +89,7 @@ export const GOAL_PARAMS: Record<TrainingProfile, GoalParams> = {
     rirProductiveMax: 3,
     hardSetMaxRir: 3,
     hardSetMinReps: 5,
+    repRangeMax: 30,
     repTolerance: 2,
   },
   resistencia: {
@@ -69,6 +97,7 @@ export const GOAL_PARAMS: Record<TrainingProfile, GoalParams> = {
     rirProductiveMax: 4,
     hardSetMaxRir: 4,
     hardSetMinReps: 12,
+    repRangeMax: null,
     repTolerance: 3,
   },
 };
@@ -93,22 +122,14 @@ export function rirProductiveLabel(
   return `${lo}-${p.rirProductiveMax}`;
 }
 
-/**
- * ¿El RIR cargado se quedó tan lejos del fallo que la serie no cuenta como
- * efectiva para el objetivo? Mismo umbral que `isHardSet` (`hardSetMaxRir`), así
- * que la UI y el conteo de volumen dicen lo mismo.
- *
- * Es el espejo del piso de reps de `repDeviation`: en hipertrofia una serie con
- * RIR 4 no suma volumen efectivo, y dejarla en gris "neutro" no comunicaba que
- * hay algo que corregir. Robinson et al. 2024 (ref "19") es lo que lo sostiene:
- * la hipertrofia mejora cuanto más cerca del fallo. Para fuerza el umbral es
- * más alto (RIR ≤ 4) justamente porque ahí la pendiente del RIR es nula.
- */
-export function rirTooFar(
-  rir: number | null,
+/** Etiqueta corta del rango de reps del objetivo, para los tooltips. Ej. "5-30", "12+". */
+export function repRangeLabel(
   profile: TrainingProfile | null | undefined,
-): boolean {
-  return rir != null && rir > goalParams(profile).hardSetMaxRir;
+): string {
+  const p = goalParams(profile);
+  return p.repRangeMax == null
+    ? `${p.hardSetMinReps}+`
+    : `${p.hardSetMinReps}-${p.repRangeMax}`;
 }
 
 export type RirZone = "danger" | "success" | "muted";
@@ -128,52 +149,154 @@ export function rirZone(
 }
 
 /**
- * Desvío de las reps registradas respecto de las planeadas.
- *
- * `level` es la magnitud (y decide el color, con la paleta de MEV) y `direction`
- * la corrección de carga que se sugiere: quedarse corto y pasarse son los dos
- * errores de carga, por eso ambos se marcan; la flecha lleva la dirección para
- * que "hice más reps" no se lea como fracaso.
+ * ¿El plan de la serie cae fuera del rango de reps del objetivo? Un plan de 3
+ * reps para hipertrofia, o de 12 para fuerza. `loadAdvice` lo ignora en ese caso
+ * (el objetivo pasa a ser el rango del goal entero) y la UI lo avisa, en la
+ * sesión y en el editor de rutina: la app no acompaña en silencio un plan mal
+ * armado, lo señala donde nace.
  */
-export interface RepDeviation {
-  level: "ok" | "off" | "far";
-  /** `under` = faltaron reps → bajá el peso. `over` = sobraron → subilo. */
-  direction: "under" | "over" | null;
+export function planOutOfRange(
+  planned: number | null | undefined,
+  profile: TrainingProfile | null | undefined,
+): boolean {
+  if (planned == null) return false;
+  const p = goalParams(profile);
+  if (planned < p.hardSetMinReps) return true;
+  return p.repRangeMax != null && planned > p.repRangeMax;
 }
 
-export function repDeviation(
-  actual: number | null,
-  planned: number | null,
-  profile: TrainingProfile | null | undefined,
+export type LoadAction = "ok" | "subir" | "bajar" | "seguir";
+/** Magnitud → color con la paleta de MEV: ok success · off warning · far danger. */
+export type LoadLevel = "ok" | "off" | "far";
+/** Dónde cayó un valor respecto de su rango objetivo. */
+export type Band = "bajo" | "en" | "alto";
+
+export interface LoadAdvice {
+  action: LoadAction;
+  level: LoadLevel;
+  reps: Band;
+  /** `null` = RIR sin cargar: la sugerencia sale sólo de las reps. */
+  rir: Band | null;
+  /** La sugerencia la disparó sólo el RIR (reps en rango). Para el "· por el RIR" del texto. */
+  byRir: boolean;
+  /** Reps por debajo del piso del objetivo: el texto explica que la serie no suma. */
+  belowFloor: boolean;
+  /** El plan de la serie cae fuera del rango del objetivo: se ignoró y el ⓘ lo avisa. */
+  planOutOfRange: boolean;
+}
+
+/**
+ * Sugerencia de carga: cruza las reps y el RIR de una serie contra los rangos
+ * del objetivo y dice si subir el peso, bajarlo, dejarlo, o si el problema no
+ * fue el peso.
+ *
+ *     reps \ rir    bajo      en        alto      (sin RIR)
+ *     bajo          bajar     bajar     SEGUIR    bajar
+ *     en            bajar     ok        subir     ok
+ *     alto          subir     subir     subir     subir
+ *
+ * **Objetivo de reps.** Piso = `hardSetMinReps`, techo = `repRangeMax`. Si la
+ * serie tiene un plan DENTRO de ese rango, el objetivo es `plan ± repTolerance`
+ * acotado al rango: el plan sólo puede angostar el rango del objetivo, nunca
+ * moverlo afuera. Sin plan, o con un plan fuera de rango (que se ignora y se
+ * marca en `planOutOfRange`), el objetivo es el rango entero. Así un plan mal
+ * armado no puede sesgar la sugerencia: 3 reps con plan de 3 en hipertrofia
+ * dispara "bajá · menos de 5 reps no suma", igual que sin plan.
+ *
+ * **Objetivo de RIR.** Siempre el del objetivo (`rirZone`), nunca el plan: la
+ * rutina no planifica RIR.
+ *
+ * **La regla base** es la de Helms, Cronin, Storey y Zourdos 2016 (ref "21"),
+ * que prescribe "N reps @ RIR X": *bajá la carga si no completás las reps;
+ * subila si las completás con más RIR que el objetivo*. Son las filas "reps
+ * bajo → bajar" y "RIR alto → subir".
+ *
+ * **Las dos diagonales** son donde las señales se contradicen:
+ * - Reps bajo + RIR alto (te faltaron reps pero paraste lejos del fallo). No es
+ *   un problema de carga. Steele 2017 y Halperin 2022 (refs "9"/"10") muestran
+ *   que la gente SUBESTIMA sistemáticamente sus reps en reserva — 1-2 con
+ *   experiencia, 4-5 sin — así que un RIR alto reportado es real como mínimo:
+ *   la carga permitía las reps, el usuario paró antes. De ahí `seguir`, que
+ *   dice "el peso está bien: llegá a las reps".
+ * - Reps alto + RIR bajo. Reps sobre el rango = carga liviana para el objetivo
+ *   (Schoenfeld 2021, ref "4"); subirla baja las reps al rango y sube el RIR al
+ *   mismo esfuerzo. Las dos señales apuntan igual: `subir`.
+ *
+ * **Magnitud.** `far` si las reps quedaron fuera del rango absoluto del objetivo
+ * o a más de 2× la tolerancia del plan; si no, `off`. Cuando la sugerencia la
+ * dispara sólo el RIR (fila "en"), la magnitud es `off` como máximo: el RIR es
+ * la señal más ruidosa de las dos (Halperin 2022: la precisión sólo se sostiene
+ * en series de menos de ~12 reps). `seguir` es siempre `off`.
+ *
+ * **Bajadas.** El piso no aplica — el tope es la primera parte de una serie más
+ * larga, sus reps sueltas no dicen si la carga estuvo bien. Plan y techo sí.
+ */
+export function loadAdvice(input: {
+  reps: number | null;
+  rir: number | null;
+  planned: number | null | undefined;
   /** La serie tiene bajadas: las reps del tope no son toda la serie. */
-  hasDrops = false,
-): RepDeviation | null {
-  if (actual == null) return null;
+  hasDrops?: boolean;
+  profile: TrainingProfile | null | undefined;
+}): LoadAdvice | null {
+  const { reps, rir, hasDrops = false, profile } = input;
+  const planned = input.planned ?? null;
+  if (reps == null) return null;
   const p = goalParams(profile);
-
-  // Piso absoluto, independiente del plan. Por debajo de `hardSetMinReps` la
-  // serie deja de contar como efectiva para el objetivo (mismo umbral que usa
-  // isHardSet), así que la carga está alta para lo que buscás — aunque el plan
-  // pidiera pocas reps y la desviación entre en la tolerancia.
-  //
-  // El piso es 5 para hipertrofia, no 8. Schoenfeld et al. 2021 (ref "4")
-  // rehizo el continuo de repeticiones y encontró hipertrofia equivalente
-  // entre ~5 y ~30 reps con volumen igualado y series cerca del fallo: una
-  // serie de 6 está dentro del rango, no es un error de carga. Marcarla sería
-  // contradecir el mismo paper que la app cita para elegir cargas.
-  //
-  // Con bajadas no aplica: el tope es la primera parte de una serie más larga,
-  // así que sus reps sueltas no dicen si la carga estuvo bien.
-  if (!hasDrops && actual < p.hardSetMinReps)
-    return { level: "far", direction: "under" };
-
-  if (planned == null) return null;
+  const floor = p.hardSetMinReps;
+  const ceil = p.repRangeMax ?? Infinity;
   const t = p.repTolerance;
-  const diff = actual - planned;
-  const d = Math.abs(diff);
-  if (d <= t) return { level: "ok", direction: null };
-  const direction = diff < 0 ? "under" : "over";
-  return { level: d > t * 2 ? "far" : "off", direction };
+
+  const outOfRange = planOutOfRange(planned, profile);
+  const usePlan = planned != null && !outOfRange;
+  const floorApplies = !hasDrops;
+  const lo = usePlan
+    ? floorApplies
+      ? Math.max(floor, planned - t)
+      : planned - t
+    : floorApplies
+      ? floor
+      : -Infinity;
+  const hi = usePlan ? Math.min(ceil, planned + t) : ceil;
+
+  const repsBand: Band = reps < lo ? "bajo" : reps > hi ? "alto" : "en";
+  const belowFloor = floorApplies && reps < floor;
+  const repsFar =
+    belowFloor ||
+    reps > ceil ||
+    (usePlan && Math.abs(reps - planned) > t * 2);
+
+  const rirBand: Band | null =
+    rir == null
+      ? null
+      : (({ danger: "bajo", success: "en", muted: "alto" }) as const)[
+          rirZone(rir, profile)
+        ];
+
+  let action: LoadAction;
+  if (repsBand === "bajo") action = rirBand === "alto" ? "seguir" : "bajar";
+  else if (repsBand === "alto") action = "subir";
+  else action = rirBand === "bajo" ? "bajar" : rirBand === "alto" ? "subir" : "ok";
+
+  const byRir = repsBand === "en" && action !== "ok";
+  const level: LoadLevel =
+    action === "ok"
+      ? "ok"
+      : action === "seguir" || byRir
+        ? "off"
+        : repsFar
+          ? "far"
+          : "off";
+
+  return {
+    action,
+    level,
+    reps: repsBand,
+    rir: rirBand,
+    byRir,
+    belowFloor,
+    planOutOfRange: outOfRange,
+  };
 }
 
 // ── Landmarks de volumen semanal ────────────────────────────────────────────

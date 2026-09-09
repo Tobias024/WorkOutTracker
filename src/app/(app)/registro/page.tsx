@@ -66,6 +66,7 @@ import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/
 import { muscleEs } from "@/lib/i18n-exercise";
 import { Ref } from "@/components/PaperLink";
 import { useTrainingProfile } from "@/hooks/useGoal";
+import { goalParams } from "@/lib/goal-params";
 import { GoalMetrics, SparklineGridCard, RetentionCard } from "@/components/GoalMetrics";
 import { BodyProgress } from "@/components/BodyProgress";
 import { e1rmSeriesByExercise, strengthRetentionIndex } from "@/lib/metrics-goal";
@@ -864,7 +865,8 @@ export default function RegistroPage() {
               }
               info={
                 <>
-                  Series de trabajo (≥5 reps y cerca del fallo) acumuladas en la
+                  Series de trabajo (≥{goalParams(trainingProfile).hardSetMinReps}{" "}
+                  reps y cerca del fallo, según tu objetivo) acumuladas en la
                   semana en curso. Es el mejor indicador de estímulo para
                   hipertrofia (<Ref id="1" />, <Ref id="7" />).{"\n\n"}
                   El % compara las dos últimas semanas anteriores.

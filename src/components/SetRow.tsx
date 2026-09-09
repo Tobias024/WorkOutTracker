@@ -4,6 +4,7 @@
 import { useState } from "react";
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   Check,
   Info,
@@ -16,9 +17,9 @@ import { formatClock, formatPace, formatWeight, parseClock } from "@/lib/format"
 import { rirOf } from "@/lib/metrics";
 import {
   goalParams,
-  repDeviation,
+  loadAdvice,
+  repRangeLabel,
   rirProductiveLabel,
-  rirTooFar,
   rirZone,
 } from "@/lib/goal-params";
 import type {
@@ -38,8 +39,8 @@ export interface PlannedSet {
   distance_m: number | null;
 }
 
-/** Ring de la caja del peso según cuánto se desvían las reps del plan. */
-const DEVIATION_RING: Record<"ok" | "off" | "far", string> = {
+/** Ring de la caja según la magnitud de la sugerencia de carga. */
+const RING: Record<"ok" | "off" | "far", string> = {
   ok: "ring-1 ring-success/50",
   off: "ring-2 ring-warning",
   far: "ring-2 ring-danger",
@@ -101,17 +102,18 @@ export function SetRow({
     ? formatPace(set.duration_seconds, set.distance_m)
     : null;
 
-  // Desvío de reps vs. plan. Sólo se evalúa con reps ya cargadas (o la serie
-  // tildada): si no, cada fila vacía arrancaría pintada de ámbar. Los warmups
-  // quedan afuera porque no tienen plan que cumplir.
-  const deviation =
+  // Sugerencia de carga: cruza reps y RIR contra los rangos del objetivo. Sólo
+  // se evalúa con reps ya cargadas (o la serie tildada): si no, cada fila vacía
+  // arrancaría pintada. Los warmups quedan afuera: no tienen plan que cumplir.
+  const advice =
     !set.is_warmup && showsReps && (set.completed || drops[0].reps != null)
-      ? repDeviation(
-          drops[0].reps,
-          planned?.reps ?? null,
+      ? loadAdvice({
+          reps: drops[0].reps,
+          rir,
+          planned: planned?.reps,
+          hasDrops: drops.length > 1,
           profile,
-          drops.length > 1,
-        )
+        })
       : null;
 
   // El plan se muestra en el chip ⓘ, y como placeholder sólo si nunca hiciste
@@ -124,17 +126,15 @@ export function SetRow({
     distance_m: ghost?.distance_m ?? planned?.distance_m ?? null,
   };
 
-  // Piso de reps del objetivo: si se cayo por debajo, el mensaje dice POR QUE,
-  // porque "baja el peso" solo no explica que la serie dejo de contar.
+  // Matices del mensaje: por qué se sugiere bajar (la serie dejó de contar) y
+  // si la sugerencia salió del RIR y no de las reps.
   const minReps = goalParams(profile).hardSetMinReps;
-  const belowFloorLabel =
-    deviation?.level === "far" && (drops[0].reps ?? 0) < minReps
-      ? `bajá el peso · menos de ${minReps} reps no suma`
-      : "bajá el peso";
-
-  // RIR por encima del maximo que el objetivo tolera: la serie no suma volumen
-  // efectivo. Se avisa igual que el desvio de reps, porque es accionable.
-  const rirFar = !set.is_warmup && showsReps && rirTooFar(rir, profile);
+  const adviceSuffix = [
+    advice?.belowFloor ? `menos de ${minReps} reps no suma` : null,
+    advice?.byRir ? "por el RIR" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const plannedLabel = planned
     ? [
@@ -193,9 +193,14 @@ export function SetRow({
             value={drops[0].weight}
             placeholder={hint.weight != null ? String(hint.weight) : "kg"}
             step={2.5}
-            // El color va en la caja del PESO aunque lo dispare el desvío de
-            // reps: la corrección que se sugiere es sobre la carga.
-            ring={deviation ? DEVIATION_RING[deviation.level] : undefined}
+            // El color va en la caja del PESO aunque lo dispare el RIR o las
+            // reps: la corrección que se sugiere es sobre la carga. La excepción
+            // es "seguir", donde el mensaje dice que el peso está bien.
+            ring={
+              advice && advice.action !== "seguir"
+                ? RING[advice.level]
+                : undefined
+            }
             onCommit={(v) => updateDrop(0, { weight: v })}
             onFocus={onStart}
           />
@@ -206,6 +211,8 @@ export function SetRow({
             value={drops[0].reps}
             placeholder={hint.reps != null ? String(hint.reps) : "reps"}
             step={1}
+            // Sólo cuando lo que falta son las reps y no la carga.
+            ring={advice?.action === "seguir" ? RING.off : undefined}
             onCommit={(v) => updateDrop(0, { reps: v })}
             onFocus={onStart}
           />
@@ -324,10 +331,11 @@ export function SetRow({
       {/* Plan de la serie. Es un chip fijo, no un placeholder: el placeholder
           desaparece al primer tecleo y era justamente lo que hacía perder la
           referencia apenas empezabas el ejercicio. */}
-      {!set.is_warmup && (plannedLabel || deviation?.direction || rirFar) && (
-        <div className="flex items-center gap-1.5 mt-1 pl-8 text-[11px] tabular-nums">
-          {plannedLabel && (
-            <>
+      {!set.is_warmup &&
+        (plannedLabel || showsReps) &&
+        (plannedLabel || (advice && advice.action !== "ok")) && (
+          <div className="mt-1 pl-8 text-[11px] tabular-nums">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setShowPlan((s) => !s)}
@@ -344,39 +352,87 @@ export function SetRow({
               </button>
               {showPlan && (
                 <span className="text-muted">
-                  plan {plannedLabel}
-                  {showsReps && ` · RIR ${rirProductiveLabel(profile)}`}
+                  {plannedLabel && `plan ${plannedLabel} · `}
+                  {showsReps &&
+                    `reps ${repRangeLabel(profile)} · RIR ${rirProductiveLabel(profile)}`}
                 </span>
               )}
-            </>
-          )}
-          {deviation?.direction && (
-            <span
-              className={clsx(
-                "flex items-center gap-0.5 font-medium",
-                deviation.level === "far" ? "text-danger" : "text-warning",
+              {/* Una sola sugerencia por serie: la matriz ya resolvió el cruce
+                  de reps y RIR, así que no hay dos mensajes que compitan. Con el
+                  plan desplegado pasa a la línea de abajo, para no competir por
+                  el ancho en una pantalla de 394 px. */}
+              {!showPlan && advice && advice.action !== "ok" && (
+                <span
+                  className={clsx(
+                    "flex items-center gap-0.5 font-medium",
+                    advice.level === "far" ? "text-danger" : "text-warning",
+                  )}
+                >
+                  {advice.action === "bajar" && (
+                    <>
+                      <ArrowDown className="size-3" /> bajá el peso
+                    </>
+                  )}
+                  {advice.action === "subir" && (
+                    <>
+                      <ArrowUp className="size-3" /> subí el peso
+                    </>
+                  )}
+                  {advice.action === "seguir" && (
+                    <>
+                      <ArrowRight className="size-3" /> el peso está bien: llegá
+                      a las reps
+                    </>
+                  )}
+                  {advice.action !== "seguir" &&
+                    adviceSuffix &&
+                    ` · ${adviceSuffix}`}
+                </span>
               )}
-            >
-              {deviation.direction === "under" ? (
-                <>
-                  <ArrowDown className="size-3" /> {belowFloorLabel}
-                </>
-              ) : (
-                <>
-                  <ArrowUp className="size-3" /> subí el peso
-                </>
-              )}
-            </span>
-          )}
-          {/* RIR más alto de lo que el objetivo aprovecha: no es un matiz de
-              color, es que la serie no suma volumen efectivo. */}
-          {rirFar && !deviation?.direction && (
-            <span className="flex items-center gap-0.5 font-medium text-warning">
-              <ArrowUp className="size-3" /> subí el peso o las reps
-            </span>
-          )}
-        </div>
-      )}
+            </div>
+
+            {showPlan && advice && advice.action !== "ok" && (
+              <p
+                className={clsx(
+                  "mt-0.5 flex items-center gap-0.5 font-medium",
+                  advice.level === "far" ? "text-danger" : "text-warning",
+                )}
+              >
+                {advice.action === "bajar" && (
+                  <>
+                    <ArrowDown className="size-3" /> bajá el peso
+                  </>
+                )}
+                {advice.action === "subir" && (
+                  <>
+                    <ArrowUp className="size-3" /> subí el peso
+                  </>
+                )}
+                {advice.action === "seguir" && (
+                  <>
+                    <ArrowRight className="size-3" /> el peso está bien: llegá a
+                    las reps
+                  </>
+                )}
+                {advice.action !== "seguir" && adviceSuffix && ` · ${adviceSuffix}`}
+              </p>
+            )}
+            {showPlan && showsReps && (
+              <p className="mt-0.5 text-muted">
+                La tolerancia (±{goalParams(profile).repTolerance}) es una
+                heurística, no sale de un paper.
+                {profile === "resistencia" &&
+                  " En series largas el RIR es una estimación gruesa."}
+              </p>
+            )}
+            {showPlan && advice?.planOutOfRange && planned?.reps != null && (
+              <p className="mt-0.5 text-warning">
+                El plan pide {planned.reps} reps; para tu objetivo el rango es{" "}
+                {repRangeLabel(profile)}. Se usa el rango.
+              </p>
+            )}
+          </div>
+        )}
 
       {pace && (
         <div className="mt-1 pl-8 text-xs text-muted">Ritmo {pace}</div>

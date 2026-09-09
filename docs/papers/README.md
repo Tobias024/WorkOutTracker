@@ -23,6 +23,8 @@ Cuando haya que tocar un umbral, la pregunta no es "qué número queda bien" sin
 | 19 | [robinson-2024-proximidad-fallo.md](robinson-2024-proximidad-fallo.md) | Zonas de RIR por objetivo |
 | 20 | [ralston-2017-volumen-fuerza.md](ralston-2017-volumen-fuerza.md) | MEV/MAV/MRV de fuerza (6/12/18) |
 | 18 | [macdougall-1995-spm.md](macdougall-1995-spm.md) | Umbrales de color de la recencia (2d/4d) |
+| 21 | [helms-2016-rir-rpe.md](helms-2016-rir-rpe.md) | La regla base de la matriz reps × RIR |
+| 9 · 10 | [steele-2017-halperin-2022-prediccion-rir.md](steele-2017-halperin-2022-prediccion-rir.md) | Quién manda cuando reps y RIR se contradicen |
 
 Los IDs son los mismos de [`src/lib/references.ts`](../../src/lib/references.ts),
 que es lo que se muestra en los tooltips ⓘ.

@@ -111,6 +111,11 @@ export const REFERENCES: Record<
   // Se mantiene aunque ya no define ningún número de la app: los landmarks
   // pasaron a las anclas de Pelland (ref "16") y Ralston (ref "20"). Queda para
   // poder nombrar de dónde venía el modelo anterior.
+  "21": {
+    short: "Helms 2016 (RIR-RPE)",
+    cite: "Helms, Cronin, Storey, Zourdos 2016 — escala RPE basada en repeticiones en reserva: prescribir \"N reps @ RIR X\" y ajustar la carga según si se llega a las reps y con cuánto RIR",
+    url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC4961270/",
+  },
   rp: {
     short: "Renaissance Periodization",
     cite: "Renaissance Periodization — volume landmarks (heurística de campo; ya no se usa para los valores de la app)",
