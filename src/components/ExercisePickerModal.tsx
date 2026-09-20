@@ -9,7 +9,8 @@ import { CreateExerciseModal } from "@/components/CreateExerciseModal";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
 import { sessionDate } from "@/lib/metrics";
-import { MUSCLES_ES, MUSCLE_FILTERS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { MUSCLES_ES, MUSCLE_GROUPS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
 import type { Exercise } from "@/lib/types";
 
 export function ExercisePickerModal({
@@ -74,7 +75,7 @@ export function ExercisePickerModal({
             onChange={setMuscle}
             options={[
               { value: "", label: "Todos" },
-              ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+              ...MUSCLE_GROUPS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
             ]}
           />
         </div>
@@ -114,8 +115,8 @@ export function ExercisePickerModal({
                           Hecho
                         </Badge>
                       )}
-                      {ex.primary_muscles[0] && (
-                        <Badge>{muscleEs(ex.primary_muscles[0])}</Badge>
+                      {primaryMuscle(ex) && (
+                        <Badge>{muscleEs(primaryMuscle(ex))}</Badge>
                       )}
                       {ex.equipment && (
                         <Badge>{equipmentEs(ex.equipment)}</Badge>

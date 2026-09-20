@@ -23,6 +23,12 @@ import { useBodyWeight } from "@/hooks/useBodyData";
 import { useTrainingProfile } from "@/hooks/useGoal";
 import { createClient } from "@/lib/supabase/client";
 import { formatClock, formatVolume, formatDuration } from "@/lib/format";
+import {
+  useRestStore,
+  useRestSeconds,
+  useRestHydrated,
+  REST_MAX_SECONDS,
+} from "@/hooks/useRestTimer";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
 import type { SessionPr } from "@/lib/types";
 
@@ -84,11 +90,13 @@ export default function WorkoutPage() {
   const [movingId, setMovingId] = useState<string | null>(null);
   // #1 candado: modal de "Descartar entrenamiento".
   const [discardOpen, setDiscardOpen] = useState(false);
-  // Cronómetro de descanso: serie que arrancó el descanso + tiempo vivo.
-  const [restFor, setRestFor] = useState<{ setId: string; startMs: number } | null>(
-    null,
-  );
-  const [restNow, setRestNow] = useState(0);
+  // Cronómetro de descanso: vive en un store persistido (ver useRestTimer).
+  const rest = useRestStore();
+  const restNow = useRestSeconds();
+  const restHydrated = useRestHydrated();
+  /** Hay un descanso corriendo y es de ESTA sesión. */
+  const restOfThisSession =
+    rest.startedAt != null && rest.setId != null && rest.sessionId === sessionId;
 
   const ended = !!data?.session.ended_at;
 
@@ -100,17 +108,15 @@ export default function WorkoutPage() {
     return () => clearInterval(t);
   }, [ended]);
 
-  // Tiempo vivo del cronómetro de descanso.
+  // Descansos que hay que tirar al entrar: los de OTRA sesión (abrir una vieja
+  // desde el historial no debe cerrarle la serie a la que está en curso) y los
+  // que quedaron colgados más del tope — un "descanso" de ayer no es un
+  // descanso, y guardarlo ensuciaría el promedio con un outlier gigante.
   useEffect(() => {
-    if (!restFor) {
-      setRestNow(0);
-      return;
-    }
-    const tick = () => setRestNow(Math.round((Date.now() - restFor.startMs) / 1000));
-    tick();
-    const t = setInterval(tick, 500);
-    return () => clearInterval(t);
-  }, [restFor]);
+    if (rest.startedAt == null) return;
+    const stale = Date.now() - rest.startedAt > REST_MAX_SECONDS * 1000;
+    if (rest.sessionId !== sessionId || stale) rest.clear();
+  }, [rest, sessionId]);
 
   // En un entrenamiento activo (cargado y sin finalizar) ocultamos la TabBar
   // inferior para aprovechar la pantalla. Al finalizar o salir, reaparece.
@@ -180,6 +186,9 @@ export default function WorkoutPage() {
     // esperar un refetch, para no rebotar al navegar a /registro.
     qc.setQueryData(["active-session"], null);
     rememberActiveSession(null);
+    // La sesión se cerró: el descanso vivo ya no tiene serie siguiente que
+    // medir. Sin esto quedaría persistido y reaparecería en la próxima.
+    rest.clear();
     // Recién ahora cambió el ranking: dispara los avisos (subiste / te pasaron).
     // Fire-and-forget, pero logueamos el resultado/errores (antes se tragaban).
     fetch("/api/rank/notify", { method: "POST" })
@@ -215,6 +224,7 @@ export default function WorkoutPage() {
   async function discard() {
     await deleteSession.mutateAsync(sessionId);
     rememberActiveSession(null);
+    rest.clear();
     setDiscardOpen(false);
     router.replace("/rutinas");
   }
@@ -226,32 +236,29 @@ export default function WorkoutPage() {
   // adentro del "descanso" (~20-45 s de sobreestimación sistemática, del mismo
   // orden que la banda objetivo de 30-60 s del perfil de resistencia).
   //
-  // Señales válidas de arranque: el botón "Empecé" del banner, o la primera
-  // edición de peso/reps de una serie sin tildar (estás en la máquina cargándola).
-  // Si la siguiente se tilda sin ninguna de las dos, el intervalo medido está
-  // contaminado y se DESCARTA en vez de inflar el promedio.
+  // La ÚNICA señal de arranque es el botón "Comenzar" del banner. Antes también
+  // lo cerraba el foco en cualquier campo de otra serie, y eso lo volvía
+  // inservible: mirar el peso de un ejercicio de más abajo —o pifiarle a un
+  // campo— daba el descanso por terminado. Nada fuera del botón lo interrumpe.
+  //
+  // Si la serie siguiente se tilda sin haber tocado el botón, el intervalo
+  // medido está contaminado y se DESCARTA en vez de inflar el promedio.
   function saveRest(setId: string, sec: number) {
-    if (sec > 0) m.updateSet.mutate({ id: setId, patch: { rest_seconds: sec } });
-  }
-  const restElapsed = (startMs: number) => Math.round((Date.now() - startMs) / 1000);
-
-  /** Arrancó la serie `setId` → cierra y guarda el descanso vivo. */
-  function onSetStarted(setId: string) {
-    if (!restFor || restFor.setId === setId) return;
-    saveRest(restFor.setId, restElapsed(restFor.startMs));
-    setRestFor(null);
+    if (sec > 0 && sec <= REST_MAX_SECONDS)
+      m.updateSet.mutate({ id: setId, patch: { rest_seconds: sec } });
   }
 
   /** Se tildó una serie: arranca su descanso (el previo, si sigue vivo, se descarta). */
   function onSetCompleted(setId: string) {
-    setRestFor({ setId, startMs: Date.now() });
+    rest.start(sessionId, setId);
   }
 
   /** Botón del banner: es la señal explícita de que arrancó la serie siguiente. */
   function stopRest() {
-    if (!restFor) return;
-    saveRest(restFor.setId, restElapsed(restFor.startMs));
-    setRestFor(null);
+    const { setId, startedAt } = rest;
+    if (!restOfThisSession || setId == null || startedAt == null) return;
+    saveRest(setId, Math.round((Date.now() - startedAt) / 1000));
+    rest.clear();
   }
 
   return (
@@ -366,7 +373,6 @@ export default function WorkoutPage() {
             isFirst={i === 0}
             isLast={i === exercises.length - 1}
             onSetCompleted={ended ? undefined : onSetCompleted}
-            onSetStarted={ended ? undefined : onSetStarted}
             onStartMove={() => setMovingId(we.id)}
             onEndMove={() => setMovingId(null)}
             onMove={(dir) => {
@@ -416,7 +422,7 @@ export default function WorkoutPage() {
         <Plus className="size-4" /> Agregar ejercicio
       </Button>
 
-      {restFor && !ended && (
+      {restHydrated && restOfThisSession && !ended && (
         <div className="fixed inset-x-0 bottom-20 px-4 z-40">
           <div className="mx-auto max-w-2xl">
             <div className="card flex items-center gap-3 p-3 shadow-lg ring-1 ring-primary/40">
@@ -428,7 +434,7 @@ export default function WorkoutPage() {
                 </p>
               </div>
               <Button size="sm" onClick={stopRest}>
-                Empecé
+                Comenzar
               </Button>
             </div>
           </div>

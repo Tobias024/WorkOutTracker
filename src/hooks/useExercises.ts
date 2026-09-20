@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/client";
 import type { Exercise, MetricKind } from "@/lib/types";
+import { worksMuscle } from "@/lib/muscle-contributions";
 
 // Catálogo sin el array `instructions` (el más pesado y sólo lo usa el modal de
 // detalle, que lo trae on-demand con useExerciseInstructions). Aliviana el fetch
@@ -96,6 +97,49 @@ export function useCreateExercise() {
   });
 }
 
+/**
+ * Corrige los músculos de un ejercicio PROPIO.
+ *
+ * Hasta acá el mapeo ejercicio→músculo sólo se podía arreglar tocando el repo
+ * (la tabla de overrides en TS), aunque la RLS permitiera el update desde
+ * siempre: `exercises_mutate` con `created_by = auth.uid()` (migración 0002).
+ * Los ejercicios del catálogo global tienen `created_by` null, así que ésos
+ * siguen siendo cosa del código.
+ *
+ * Ojo con el alcance: por la RLS de la 0030 los custom son visibles para todo
+ * el mundo, así que si otra persona usa este ejercicio, corregirlo también le
+ * mueve los números a ella. Es lo correcto —el mapeo o está bien o está mal—
+ * pero conviene saberlo.
+ */
+export function useUpdateExerciseMuscles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      id: string;
+      primary_muscles: string[];
+      secondary_muscles: string[];
+    }): Promise<void> => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("exercises")
+        .update({
+          primary_muscles: args.primary_muscles,
+          secondary_muscles: args.secondary_muscles.filter(
+            (m) => !args.primary_muscles.includes(m),
+          ),
+        })
+        .eq("id", args.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["exercises"] });
+      // Los músculos alimentan todas las métricas por grupo: sin esto Registro
+      // sigue mostrando el reparto viejo hasta el próximo refetch.
+      qc.invalidateQueries({ queryKey: ["history"] });
+    },
+  });
+}
+
 /** Instrucciones de un ejercicio, on-demand (para el modal de detalle). */
 export function useExerciseInstructions(exerciseId?: string) {
   return useQuery({
@@ -134,8 +178,12 @@ export function filterExercises(
   const q = query.trim().toLowerCase();
   return list.filter((e) => {
     if (q && !e.name.toLowerCase().includes(q)) return false;
-    if (muscle && !e.primary_muscles.includes(muscle)) return false;
     if (equipment && e.equipment !== equipment) return false;
+    // Último porque es el único que no es una comparación suelta: resuelve la
+    // contribución del ejercicio. Va por el músculo RESUELTO (grupo-app) y no
+    // por la columna cruda, porque si no el chip "Deltoides lateral" no
+    // matchearía ninguna fila — en la base esas filas dicen `shoulders`.
+    if (muscle && !worksMuscle(e, muscle)) return false;
     return true;
   });
 }

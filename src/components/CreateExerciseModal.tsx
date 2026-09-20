@@ -4,53 +4,14 @@
 import { useState } from "react";
 import { Modal, Input, Textarea, Button } from "@/components/ui";
 import {
-  MUSCLE_FILTERS,
-  MUSCLES_ES,
   FORCE_ES,
   MECHANIC_ES,
   EQUIPMENT_ES,
   METRIC_KIND_ES,
 } from "@/lib/i18n-exercise";
 import { useCreateExercise } from "@/hooks/useExercises";
-import { clsx } from "@/lib/clsx";
+import { Chip, Field, MusclePicker } from "@/components/MusclePicker";
 import { METRIC_KINDS, type Exercise, type MetricKind } from "@/lib/types";
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        "px-3 py-1.5 rounded-full text-xs ring-1 transition",
-        active
-          ? "bg-primary/15 ring-primary text-fg"
-          : "bg-surface-2 ring-border text-muted hover:text-fg",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm text-muted">
-        {label}
-        {hint && <span className="text-xs"> · {hint}</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
 
 /** Crea un ejercicio custom con los campos que alimentan los cálculos
  *  (obligatorios: nombre, músculo principal, mecánica, fuerza). */
@@ -68,7 +29,7 @@ export function CreateExerciseModal({
   const create = useCreateExercise();
   const [name, setName] = useState(initialName);
   const [metricKind, setMetricKind] = useState<MetricKind>("reps_weight");
-  const [primary, setPrimary] = useState("");
+  const [primary, setPrimary] = useState<string[]>([]);
   const [secondary, setSecondary] = useState<string[]>([]);
   const [mechanic, setMechanic] = useState("");
   const [force, setForce] = useState("");
@@ -77,12 +38,13 @@ export function CreateExerciseModal({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const valid = name.trim().length >= 2 && !!primary && !!mechanic && !!force;
+  const valid =
+    name.trim().length >= 2 && primary.length > 0 && !!mechanic && !!force;
 
   function reset() {
     setMetricKind("reps_weight");
     setName("");
-    setPrimary("");
+    setPrimary([]);
     setSecondary([]);
     setMechanic("");
     setForce("");
@@ -94,15 +56,15 @@ export function CreateExerciseModal({
 
   async function submit() {
     if (!valid) {
-      setError("Completá nombre, músculo principal, mecánica y fuerza.");
+      setError("Completá nombre, músculos principales, mecánica y fuerza.");
       return;
     }
     try {
       const ex = await create.mutateAsync({
         name,
         metric_kind: metricKind,
-        primary_muscles: [primary],
-        secondary_muscles: secondary.filter((m) => m !== primary),
+        primary_muscles: primary,
+        secondary_muscles: secondary.filter((m) => !primary.includes(m)),
         mechanic,
         force,
         equipment: equipment || null,
@@ -116,9 +78,6 @@ export function CreateExerciseModal({
     }
   }
 
-  const toggleSecondary = (m: string) =>
-    setSecondary((s) => (s.includes(m) ? s.filter((x) => x !== m) : [...s, m]));
-
   return (
     <Modal open={open} onClose={onClose} title="Crear ejercicio">
       <div className="flex flex-col gap-4">
@@ -130,29 +89,14 @@ export function CreateExerciseModal({
           />
         </Field>
 
-        <Field label="Músculo principal" hint="obligatorio">
-          <div className="flex flex-wrap gap-1.5">
-            {MUSCLE_FILTERS.map((m) => (
-              <Chip key={m} active={primary === m} onClick={() => setPrimary(m)}>
-                {MUSCLES_ES[m]}
-              </Chip>
-            ))}
-          </div>
-        </Field>
-
-        <Field label="Músculos secundarios" hint="opcional">
-          <div className="flex flex-wrap gap-1.5">
-            {MUSCLE_FILTERS.filter((m) => m !== primary).map((m) => (
-              <Chip
-                key={m}
-                active={secondary.includes(m)}
-                onClick={() => toggleSecondary(m)}
-              >
-                {MUSCLES_ES[m]}
-              </Chip>
-            ))}
-          </div>
-        </Field>
+        <MusclePicker
+          primary={primary}
+          secondary={secondary}
+          onChange={(p, sec) => {
+            setPrimary(p);
+            setSecondary(sec);
+          }}
+        />
 
         <Field
           label="Cómo se mide"

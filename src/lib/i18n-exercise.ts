@@ -34,15 +34,29 @@ export const MUSCLES_ES: Record<string, string> = {
 };
 
 /**
- * Músculos para los chips de filtro del catálogo: son los valores REALES que
- * aparecen en `primary_muscles` (incluye "shoulders"). NO incluye las cabezas
- * de deltoides, que son un grupo DERIVADO para métricas, no un tag de datos —
- * filtrar por ellas no matchearía ninguna fila.
+ * Vocabulario de GRUPOS-APP: lo que se filtra, lo que se muestra y lo que se
+ * guarda al crear o editar un ejercicio.
+ *
+ * Antes esta lista eran los valores crudos de la base e incluía `shoulders` en
+ * vez de las tres cabezas del deltoides, que se trataban como un grupo derivado
+ * "sólo para métricas". Eso dejaba a la app diciendo dos cosas: el chip de
+ * "Elevaciones laterales" decía *Hombros* y el volumen se le acreditaba a
+ * *Deltoides lateral*. Y peor: la cabeza se adivinaba con expresiones regulares
+ * en INGLÉS sobre nombres en ESPAÑOL, así que un ejercicio de hombro nuevo caía
+ * siempre en anterior, sin aviso.
+ *
+ * Ahora la cabeza se puede elegir y guardar. El regex de `deltoidHead` queda
+ * como respaldo para las filas del catálogo en inglés, que es donde funciona.
+ *
+ * `shoulders` no está acá a propósito: sigue siendo un valor válido en la base
+ * (las filas viejas del dataset lo usan) y el resolver lo traduce a una cabeza,
+ * pero ya no es algo que se ofrezca para elegir.
  */
-export const MUSCLE_FILTERS: string[] = [
+export const MUSCLE_GROUPS: string[] = [
   "abdominals", "abductors", "adductors", "biceps", "calves", "chest",
-  "forearms", "glutes", "hamstrings", "lats", "lower back", "middle back",
-  "neck", "quadriceps", "shoulders", "traps", "triceps",
+  "forearms", "front delts", "glutes", "hamstrings", "lats", "lower back",
+  "middle back", "neck", "quadriceps", "rear delts", "side delts", "traps",
+  "triceps",
 ];
 
 /** Cómo se mide una serie. Ver `MetricKind` en types.ts y la migración 0033. */

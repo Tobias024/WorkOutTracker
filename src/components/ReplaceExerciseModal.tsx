@@ -6,7 +6,8 @@ import { Search } from "lucide-react";
 import { Modal, Input, Spinner, Badge, Tabs } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { useExercises, filterExercises } from "@/hooks/useExercises";
-import { MUSCLES_ES, MUSCLE_FILTERS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { MUSCLES_ES, MUSCLE_GROUPS, muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { primaryMuscle, worksMuscle } from "@/lib/muscle-contributions";
 import type { Exercise } from "@/lib/types";
 
 export function ReplaceExerciseModal({
@@ -34,8 +35,11 @@ export function ReplaceExerciseModal({
   const list = filterExercises(data ?? [], query, muscle || undefined)
     .slice()
     .sort((a, b) => {
-      const aMatch = a.primary_muscles[0] === currentMuscle ? 0 : 1;
-      const bMatch = b.primary_muscles[0] === currentMuscle ? 0 : 1;
+      // Ordena por el músculo RESUELTO, no por el crudo de la base: si no, un
+      // reemplazo para "Elevaciones laterales" (deltoides lateral) se ordenaba
+      // contra `shoulders` y traía primero cualquier press de hombro.
+      const aMatch = currentMuscle && worksMuscle(a, currentMuscle) ? 0 : 1;
+      const bMatch = currentMuscle && worksMuscle(b, currentMuscle) ? 0 : 1;
       return aMatch - bMatch;
     })
     .slice(0, 60);
@@ -81,7 +85,7 @@ export function ReplaceExerciseModal({
             onChange={setMuscle}
             options={[
               { value: "", label: "Todos" },
-              ...MUSCLE_FILTERS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
+              ...MUSCLE_GROUPS.map((m) => ({ value: m, label: MUSCLES_ES[m] })),
             ]}
           />
         </div>
@@ -109,8 +113,8 @@ export function ReplaceExerciseModal({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{ex.name}</p>
                     <div className="flex gap-1.5 mt-0.5 flex-wrap">
-                      {ex.primary_muscles[0] && (
-                        <Badge>{muscleEs(ex.primary_muscles[0])}</Badge>
+                      {primaryMuscle(ex) && (
+                        <Badge>{muscleEs(primaryMuscle(ex))}</Badge>
                       )}
                       {ex.equipment && <Badge>{equipmentEs(ex.equipment)}</Badge>}
                     </div>

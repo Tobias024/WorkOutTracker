@@ -66,7 +66,12 @@ export function useStartWorkout() {
       for (const rex of rexs ?? []) {
         const sub = subMap.get(rex.id);
         const exerciseId = sub ?? rex.exercise_id;
-        const { data: we } = await supabase
+        // Los errores de estos dos inserts se propagan a propósito. Antes se
+        // ignoraban y `we!.id` tapaba el null con un non-null assertion: si la
+        // fila no se creaba (columna faltante, RLS), la sesión nacía sin series
+        // y sin un solo mensaje. Vale más romper acá que dejar entrenar sobre
+        // una sesión vacía.
+        const { data: we, error: weError } = await supabase
           .from("workout_exercises")
           .insert({
             session_id: session.id,
@@ -78,6 +83,8 @@ export function useStartWorkout() {
           })
           .select()
           .single();
+        if (weError) throw weError;
+        if (!we) throw new Error("No se pudo crear el ejercicio de la sesión");
 
         // Usa el plan por serie (reps + peso) si existe; si no, cae a los
         // valores "flat" target_sets/target_reps.
@@ -100,7 +107,7 @@ export function useStartWorkout() {
         const sets =
           planned.length > 0
             ? planned.map((p, i) => ({
-                workout_exercise_id: we!.id,
+                workout_exercise_id: we.id,
                 set_number: i + 1,
                 reps: null,
                 weight: null,
@@ -112,7 +119,7 @@ export function useStartWorkout() {
                 planned_distance_m: p.target_distance_m,
               }))
             : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, (_, i) => ({
-                workout_exercise_id: we!.id,
+                workout_exercise_id: we.id,
                 set_number: i + 1,
                 reps: null,
                 weight: null,
@@ -123,7 +130,10 @@ export function useStartWorkout() {
                 planned_duration_seconds: null,
                 planned_distance_m: null,
               }));
-        await supabase.from("workout_sets").insert(sets);
+        const { error: setsError } = await supabase
+          .from("workout_sets")
+          .insert(sets);
+        if (setsError) throw setsError;
       }
 
       qc.invalidateQueries({ queryKey: ["history"] });

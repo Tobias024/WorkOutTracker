@@ -5,7 +5,6 @@ import {
   Fragment,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,16 +12,20 @@ import { SectionCard } from "@/components/ui";
 import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { formatClock } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { TrainingProfile, Exercise } from "@/lib/types";
-import { goalParams } from "@/lib/goal-params";
+import { goalParams, rirProductiveLabel } from "@/lib/goal-params";
 import type { HistorySession } from "@/hooks/useHistory";
 import {
   e1rmSeriesByExercise,
   intensityZones,
   heavyRirTrend,
   patternFrequency,
-  rirBucketsByMuscle,
+  rirZoneByMuscle,
+  RIR_OUT_SHARE,
+  RIR_MIN_RATED,
+  type MuscleRirZone,
   daysSinceLastByMuscle,
   repsPerSetWeekly,
   sessionDensityWeekly,
@@ -75,7 +78,7 @@ export function GoalMetrics({
       intensity: intensityZones(sessions, 28),
       heavyRir: heavyRirTrend(sessions, 12),
       patterns: patternFrequency(sessions, exMap, 8),
-      rirBuckets: rirBucketsByMuscle(sessions, exMap, 30, trainingProfile),
+      rirZones: rirZoneByMuscle(sessions, exMap, 30, trainingProfile),
       recency: daysSinceLastByMuscle(sessions, exMap, now),
       reps: repsPerSetWeekly(sessions, 12),
       density: sessionDensityWeekly(sessions, 12),
@@ -108,10 +111,8 @@ export function GoalMetrics({
   } else if (trainingProfile === "hipertrofia") {
     // Series efectivas por grupo (MEV/MAV/MRV) es LA métrica del perfil → arriba.
     if (muscleSetsBar) cards.push(muscleSetsBar);
-    if (m.rirBuckets.length)
-      cards.push(
-        <RirBucketsCard rows={m.rirBuckets} profile={trainingProfile} />,
-      );
+    if (m.rirZones.length)
+      cards.push(<RirZoneCard rows={m.rirZones} profile={trainingProfile} />);
     if (m.recency.length) cards.push(<RecencyCard rows={m.recency} />);
     if (m.e1rm.length) cards.push(<SparklineGridCard series={m.e1rm.slice(0, 12)} />);
   } else if (trainingProfile === "resistencia") {
@@ -291,21 +292,36 @@ function HeavyRirCard({ data }: { data: { label: string; value: number }[] }) {
   );
 }
 
-function RirBucketsCard({
+/**
+ * Músculos cuyo reparto de RIR se fue de la zona del objetivo.
+ *
+ * Reemplaza a la barra apilada por músculo, que para hipertrofia no podía
+ * comunicar nada: con `rirTooCloseBelow` en null, todas las series en zona
+ * daban ocho barras llenas e idénticas. Acá el caso bueno es un mensaje y el
+ * caso malo es una lista corta de qué corregir — que es la única diferencia que
+ * importaba ver.
+ */
+function RirZoneCard({
   rows,
   profile,
 }: {
-  rows: ReturnType<typeof rirBucketsByMuscle>;
+  rows: MuscleRirZone[];
   profile: TrainingProfile | null;
 }) {
-  // Los cortes de las barras salen del objetivo, así que la leyenda también:
-  // dejarla fija en 0-1 / 2-3 / 4+ mentía para fuerza y resistencia.
   const gp = goalParams(profile);
-  const tooClose = gp.rirTooCloseBelow;
+  const flagged = rows.filter(
+    (r) => r.rated >= RIR_MIN_RATED && r.outPct >= RIR_OUT_SHARE,
+  );
+  const rated = rows.reduce((a, r) => a + r.rated, 0);
+  const unrated = rows.reduce((a, r) => a + r.unrated, 0);
+  const coverage = rated + unrated > 0 ? rated / (rated + unrated) : 0;
+  const zone = rirProductiveLabel(profile);
+  const n = (v: number) => v.toFixed(1).replace(/\.0$/, "");
+
   return (
     <SectionCard
       title="Proximidad al fallo"
-      subtitle="Reparto de series por RIR, por músculo · 30 días"
+      subtitle={`Zona RIR ${zone} · por músculo · 30 días`}
       info={
         <>
           La proximidad al fallo que conviene depende del objetivo: la
@@ -314,92 +330,61 @@ function RirBucketsCard({
           suma fatiga sin rédito. Ojo: se subpredicen las reps al fallo; mejora
           con experiencia. <Ref id="19" /> <Ref id="8" /> <Ref id="9" />{" "}
           <Ref id="10" />
+          {"\n\n"}
+          Sólo se listan los músculos con problema, no todos: en hipertrofia,
+          con la zona abierta hacia el fallo, un reparto sano se ve idéntico en
+          todos los grupos y una barra por músculo no distingue el caso bueno
+          del malo.{"\n\n"}
+          Un músculo entra si al menos un tercio de sus series con RIR quedó
+          fuera de zona, y sólo con {RIR_MIN_RATED} series o más. Ese tercio es{" "}
+          <span className="text-fg">una heurística de producto</span>, no sale
+          de ningún paper: con 3-4 series por sesión, una serie fuera de zona es
+          ruido y un tercio del mes ya es un hábito. El piso de{" "}
+          {RIR_MIN_RATED} series sí tiene origen: es el volumen por debajo del
+          cual un efecto no se distingue del ruido. <Ref id="16" />
         </>
       }
     >
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs text-muted">
-        {tooClose != null && (
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-2 rounded-full bg-danger" />
-            RIR {tooClose === 1 ? "0" : `0-${tooClose - 1}`}
-          </span>
-        )}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-success" />
-          RIR {tooClose ?? 0}-{gp.rirProductiveMax}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-muted" />
-          RIR {gp.rirProductiveMax + 1}+
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {rows.map((r) => {
-          const total = r.total || 1;
-          return (
-            <div key={r.muscle} className="flex items-center gap-2">
-              <MuscleLabel name={muscleEs(r.muscle)} />
-              <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-surface-2">
-                {r.b01 > 0 && (
-                  <div
-                    className="bg-danger"
-                    style={{ width: `${(r.b01 / total) * 100}%` }}
-                  />
+      {flagged.length === 0 ? (
+        <p className="text-sm text-muted">
+          {rated === 0
+            ? "Todavía no cargaste el RIR de ninguna serie."
+            : `Todos los músculos están dentro del RIR ${zone}.`}
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {flagged.map((r) => {
+            const far = r.tooFar >= r.tooClose;
+            return (
+              <span
+                key={r.muscle}
+                className={clsx(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ring-1",
+                  far
+                    ? "bg-warning/15 text-warning ring-warning/30"
+                    : "bg-danger/15 text-danger ring-danger/30",
                 )}
-                {r.b23 > 0 && (
-                  <div
-                    className="bg-success"
-                    style={{ width: `${(r.b23 / total) * 100}%` }}
-                  />
-                )}
-                {r.b4 > 0 && (
-                  <div
-                    className="bg-muted"
-                    style={{ width: `${(r.b4 / total) * 100}%` }}
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              >
+                {muscleEs(r.muscle)} · {n(far ? r.tooFar : r.tooClose)} de{" "}
+                {n(r.rated)}{" "}
+                {far
+                  ? `en RIR ${gp.rirProductiveMax + 1}+`
+                  : "casi al fallo"}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {/* Sin esto la card afirmaría "todo en zona" sobre tres series de cuarenta. */}
+      {rated + unrated > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          {Math.round(coverage * 100)}% de tus series tienen el RIR cargado.
+        </p>
+      )}
     </SectionCard>
   );
 }
 
-/** Label de músculo truncado con popover del nombre completo al mantener
- *  presionado (long-press en móvil; `title` para hover en desktop). */
-function MuscleLabel({ name }: { name: string }) {
-  const [show, setShow] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const start = () => {
-    timer.current = setTimeout(() => setShow(true), 300);
-  };
-  const end = () => {
-    if (timer.current) clearTimeout(timer.current);
-    setShow(false);
-  };
-  return (
-    <span className="relative w-16 shrink-0">
-      <span
-        className="block text-xs text-muted truncate select-none"
-        title={name}
-        onPointerDown={start}
-        onPointerUp={end}
-        onPointerLeave={end}
-        onPointerCancel={end}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {name}
-      </span>
-      {show && (
-        <span className="absolute left-0 -top-7 z-20 whitespace-nowrap rounded bg-surface-2 px-2 py-1 text-xs text-fg shadow-lg ring-1 ring-border">
-          {name}
-        </span>
-      )}
-    </span>
-  );
-}
 
 export function SparklineGridCard({
   series,
@@ -585,8 +570,6 @@ function RestCard({
   band: string;
   samples: number;
 }) {
-  const min = Math.floor(avgSec / 60);
-  const sec = avgSec % 60;
   return (
     <SectionCard
       title="Descanso medio entre series"
@@ -594,12 +577,14 @@ function RestCard({
       info={
         <>
           Medido con el cronómetro: arranca cuando tildás una serie y se cierra
-          cuando <span className="text-fg">arranca la siguiente</span> — o sea
-          cuando tocás &ldquo;Empecé&rdquo; en el banner, o cuando empezás a
-          cargar el peso/reps de la próxima serie.{"\n\n"}
-          Si tildás la serie siguiente sin ninguna de esas dos señales, ese
-          descanso <span className="text-fg">no se guarda</span>: el intervalo
-          medido incluiría la ejecución de la serie y sobreestimaría el descanso
+          únicamente cuando tocás{" "}
+          <span className="text-fg">&ldquo;Comenzar&rdquo;</span> en el banner.
+          Nada más lo interrumpe — ni cambiar de ejercicio, ni salir de la
+          pantalla, ni cerrar la app: sigue contando desde la hora real de
+          arranque.{"\n\n"}
+          Si tildás la serie siguiente sin haber tocado el botón, ese descanso{" "}
+          <span className="text-fg">no se guarda</span>: el intervalo medido
+          incluiría la ejecución de la serie y sobreestimaría el descanso
           20-45 s. Por eso el promedio usa menos series de las que hiciste, y el
           subtítulo dice cuántas. Se ignoran huecos &gt; 10 min.{"\n\n"}
           Ojo con leer la referencia como un objetivo: el descanso autoseleccionado
@@ -610,7 +595,7 @@ function RestCard({
       }
     >
       <p className="text-2xl font-bold tracking-tight">
-        {min}:{String(sec).padStart(2, "0")}{" "}
+        {formatClock(avgSec)}{" "}
         <span className="text-sm text-muted font-medium">min</span>
       </p>
     </SectionCard>

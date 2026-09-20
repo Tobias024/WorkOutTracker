@@ -21,12 +21,17 @@ export interface Release {
 export const CHANGELOG: Release[] = [
   {
     version: "0.3.0",
-    date: "2026-09-08",
+    date: "2026-09-20",
     notable: true,
     items: [
       "La sugerencia de carga ahora cruza reps y RIR: te dice si subir el peso, bajarlo, o si el peso está bien y lo que faltó fueron las reps.",
       "Cada objetivo tiene su rango de reps y de RIR; los ves en el ⓘ de cada serie.",
       "Si el plan de una serie queda fuera del rango de tu objetivo, la app lo avisa en vez de acompañarlo — en la sesión y en el editor de rutina.",
+      "El cronómetro de descanso ya no se pierde: sobrevive a salir de la pantalla, recargar y cerrar la app. Sólo lo corta el botón, que ahora dice “Comenzar”.",
+      "Los ejercicios por tiempo se cargan en dos campos, minutos y segundos, sin depender de que el teclado tenga “:”.",
+      "Los músculos de cada ejercicio se muestran igual en la ficha, en la rutina y en las métricas; los que creaste vos se pueden corregir a mano.",
+      "“Proximidad al fallo” pasa a listar sólo los músculos fuera de la zona de RIR, y dice qué porcentaje de tus series tiene el RIR cargado.",
+      "El Excel exporta tus comentarios y notas, y trae una pestaña que explica cada columna.",
     ],
   },
   {

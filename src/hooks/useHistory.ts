@@ -16,6 +16,11 @@ export interface HistorySet {
   drops: SetDrop[] | null;
   duration_seconds: number | null;
   distance_m: number | null;
+  /** Comentario libre que el usuario escribió en la serie. */
+  comment: string | null;
+  /** Plan de la rutina al arrancar la sesión (migración 0034). */
+  planned_reps: number | null;
+  planned_weight: number | null;
 }
 export interface HistoryExercise {
   exercise_id: string;
@@ -44,7 +49,7 @@ export function useHistory() {
       const { data, error } = await supabase
         .from("workout_sessions")
         .select(
-          "id, name, routine_id, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, rest_seconds, drops, duration_seconds, distance_m))",
+          "id, name, routine_id, created_at, started_at, ended_at, duration_seconds, body_weight_kg, workout_exercises(exercise_id, replaced_from_exercise_id, workout_sets(reps, weight, completed, is_warmup, rpe, completed_at, rest_seconds, drops, duration_seconds, distance_m, comment, planned_reps, planned_weight))",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;

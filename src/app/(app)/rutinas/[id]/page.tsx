@@ -25,7 +25,7 @@ import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
-import { formatClock, parseClock } from "@/lib/format";
+import { DurationField } from "@/components/DurationField";
 import type { MetricKind, TrainingProfile } from "@/lib/types";
 import { planOutOfRange, repRangeLabel } from "@/lib/goal-params";
 import {
@@ -46,6 +46,7 @@ import { useExerciseNote } from "@/hooks/useExerciseNotes";
 import { useTrainingProfile } from "@/hooks/useGoal";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
 import type { Exercise } from "@/lib/types";
 
 export default function RoutineEditorPage() {
@@ -288,8 +289,8 @@ function RoutineExerciseRow({
           />
           <div className="min-w-0 flex-1">
             <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
-            {exercise?.primary_muscles[0] && (
-              <Badge>{muscleEs(exercise.primary_muscles[0])}</Badge>
+            {exercise && primaryMuscle(exercise) && (
+              <Badge>{muscleEs(primaryMuscle(exercise))}</Badge>
             )}
           </div>
         </button>
@@ -339,7 +340,7 @@ function RoutineExerciseRow({
         open={replace}
         onClose={() => setReplace(false)}
         currentName={exercise?.name ?? ""}
-        currentMuscle={exercise?.primary_muscles[0]}
+        currentMuscle={exercise ? primaryMuscle(exercise) ?? undefined : undefined}
         canSaveForFuture={false}
         onReplace={(newEx) => {
           onReplace(newEx);
@@ -394,6 +395,23 @@ function SetPlanner({
 
   function updateRow(i: number, patch: Partial<SetPlan>) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  /**
+   * Actualiza y guarda en el mismo paso, con las filas YA actualizadas.
+   *
+   * Los campos que editan en `onChange` pueden guardar después en un `onBlur`
+   * suelto, porque para entonces el componente ya re-renderizó y `rows` está
+   * fresco. El de duración no: actualiza y guarda en el mismo `onBlur`, así que
+   * un `onSave(rows)` ahí manda el estado del render ANTERIOR — el mm:ss recién
+   * tipeado no viajaba, y se perdía salvo que después se tocara otra celda.
+   */
+  function commitRow(i: number, patch: Partial<SetPlan>) {
+    setRows((rs) => {
+      const next = rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+      onSave(next);
+      return next;
+    });
   }
 
   function addRow() {
@@ -500,23 +518,13 @@ function SetPlanner({
                 />
               )}
               {showsDuration && (
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="mm:ss"
-                  defaultValue={
-                    r.target_duration_seconds == null
-                      ? ""
-                      : formatClock(r.target_duration_seconds)
-                  }
+                <DurationField
                   key={r.target_duration_seconds ?? "empty"}
-                  onBlur={(e) => {
-                    updateRow(i, {
-                      target_duration_seconds: parseClock(e.target.value),
-                    });
-                    onSave(rows);
-                  }}
-                  className="h-9 flex-1 text-center"
+                  value={r.target_duration_seconds ?? null}
+                  onCommit={(v) =>
+                    commitRow(i, { target_duration_seconds: v })
+                  }
+                  className="flex-1"
                 />
               )}
               {showsReps && (

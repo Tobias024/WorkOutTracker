@@ -40,25 +40,6 @@ export function formatClock(totalSeconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/**
- * Inverso de `formatClock` para los campos de carga. Acepta "mm:ss", "h:mm:ss"
- * y un número suelto, que se lee como SEGUNDOS (una plancha se piensa en
- * segundos; una corrida se escribe con ":"). Devuelve null si no se entiende.
- */
-export function parseClock(raw: string): number | null {
-  const t = raw.trim();
-  if (!t) return null;
-  if (!t.includes(":")) {
-    const n = Number(t);
-    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
-  }
-  const parts = t.split(":").map((p) => Number(p.trim() || 0));
-  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
-  const [a, b, c] = parts;
-  const total =
-    parts.length === 2 ? a * 60 + b : parts.length === 3 ? a * 3600 + b * 60 + c : NaN;
-  return Number.isFinite(total) ? Math.round(total) : null;
-}
 
 /** Metros → "5,2 km" (o "800 m" por debajo del kilómetro). */
 export function formatDistance(meters: number | null): string {

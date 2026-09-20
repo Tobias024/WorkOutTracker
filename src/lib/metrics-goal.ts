@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { goalParams } from "@/lib/goal-params";
 import {
+  directMuscles,
   estimate1RM,
   sessionDate,
   weekStart,
@@ -90,11 +91,24 @@ const RECOVERY_MIN_SETS = 1;
 const EPSILON = 1e-9;
 
 /**
- * Grupos que la card de recencia siembra siempre, aunque nunca se hayan
- * entrenado — un grupo en cero es justamente lo que más conviene ver, y antes
- * simplemente no aparecía. Se dejan afuera `neck`, `abductors` y `adductors`
- * (especialidad, no parte de un programa de hipertrofia típico) y `shoulders`
- * (inalcanzable: `baseToGroup` siempre lo reescribe a una cabeza del deltoides).
+ * Universo de la card de recencia: se siembra con esta lista y después se
+ * recorta a los grupos que APARECEN alguna vez en el historial.
+ *
+ * Sembrarla entera tenía sentido —un grupo en cero es lo que más conviene ver—
+ * pero la lista incluía grupos que la rutina del usuario no toca nunca, y esos
+ * quedaban clavados en "sin trabajo" para siempre. El caso testigo era
+ * `traps`: el trapecio SUPERIOR lo entrenan encogimientos y remo al mentón, y
+ * quien no hace ninguno de los dos leía un hueco permanente que no podía
+ * cerrar. Peor todavía, las otras dos cards de la misma pantalla sí se arman
+ * sólo con lo que hay en los datos, así que la pantalla se contradecía sola.
+ *
+ * Recortar contra el historial COMPLETO (no la ventana) conserva lo valioso:
+ * un grupo entrenado hace tres meses sigue apareciendo como "hace 90d", que es
+ * justamente la señal que la card existe para dar.
+ *
+ * Se dejan afuera `neck`, `abductors` y `adductors` (especialidad, no parte de
+ * un programa de hipertrofia típico) y `shoulders` (inalcanzable: `baseToGroup`
+ * siempre lo reescribe a una cabeza del deltoides).
  */
 const RECENCY_GROUPS = [
   "chest", "lats", "middle back", "lower back", "traps",
@@ -258,7 +272,11 @@ export interface PatternRow {
 
 function patternsOf(ex: Exercise): string[] {
   const out: string[] = [];
-  const prim = ex.primary_muscles ?? [];
+  // Motores primarios RESUELTOS, no la columna cruda: el resto del módulo ya
+  // usa la capa de contribución (ver el cabezal de sessionMuscleSets) y esto
+  // se había quedado atrás, así que un ejercicio con override curado se
+  // clasificaba por un primario que las métricas no usaban.
+  const prim = directMuscles(ex);
   if (prim.includes("quadriceps")) out.push("squat");
   if (
     prim.includes("hamstrings") ||
@@ -305,25 +323,52 @@ export function patternFrequency(
   }));
 }
 
-// ── Hipertrofia: proximidad al fallo (buckets de RIR por músculo) ────────────
+// ── Proximidad al fallo: músculos FUERA de la zona de RIR ───────────────────
 
-export interface MuscleBuckets {
+export interface MuscleRirZone {
   muscle: string;
-  b01: number;
-  b23: number;
-  b4: number;
-  total: number;
+  /** Series ponderadas dentro de la zona productiva del objetivo. */
+  inZone: number;
+  /** Más cerca del fallo de lo que el objetivo pide. 0 si el perfil no penaliza. */
+  tooClose: number;
+  /** Lejos del fallo: no suma volumen efectivo. */
+  tooFar: number;
+  /** Series contables SIN RIR cargado. No entran en el reparto, pero se informan. */
+  unrated: number;
+  /** inZone + tooClose + tooFar. */
+  rated: number;
+  /** Proporción del volumen con RIR que cayó fuera de zona, 0-1. */
+  outPct: number;
 }
 
-export function rirBucketsByMuscle(
+/**
+ * Reparto de series por zona de RIR, por músculo.
+ *
+ * Antes esto alimentaba una barra apilada por músculo, y para hipertrofia esa
+ * barra no podía decir nada: `rirTooCloseBelow` es null (Robinson 2024 no
+ * penaliza acercarse al fallo), así que con todas las series en zona las ocho
+ * barras salían idénticas y llenas. Un gráfico donde el caso bueno y el caso
+ * malo se ven igual no es un gráfico.
+ *
+ * Ahora devuelve el reparto crudo y ordenado por qué tan afuera está cada
+ * músculo; **quién entra en la lista lo decide la UI**, para que pueda
+ * distinguir "está todo en zona" de "no hay datos" — dos cosas que una lista
+ * vacía confunde.
+ *
+ * Novedad respecto de la versión anterior: las series sin RIR cargado se
+ * cuentan en `unrated` en vez de descartarse en silencio. Sin ese número, la
+ * card afirmaría que está todo bien sobre tres series de cuarenta.
+ */
+export function rirZoneByMuscle(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
   days = 30,
   profile?: TrainingProfile | null,
-): MuscleBuckets[] {
+): MuscleRirZone[] {
   const gp = goalParams(profile);
   const cutoff = Date.now() - days * DAY;
-  const acc = new Map<string, { b01: number; b23: number; b4: number }>();
+  type Acc = { inZone: number; tooClose: number; tooFar: number; unrated: number };
+  const acc = new Map<string, Acc>();
   for (const s of sessions) {
     if (ms(s) < cutoff) continue;
     for (const we of s.workout_exercises) {
@@ -333,17 +378,23 @@ export function rirBucketsByMuscle(
       for (const set of we.workout_sets) {
         if (!isCountableSet(set)) continue;
         const rir = rirOf(set);
-        if (rir == null) continue;
         // Los cortes son los del objetivo: para fuerza un RIR 4 es zona
         // productiva y no "lejos del fallo" (Robinson 2024, ref "19").
-        const key =
-          gp.rirTooCloseBelow != null && rir < gp.rirTooCloseBelow
-            ? "b01"
-            : rir <= gp.rirProductiveMax
-              ? "b23"
-              : "b4";
+        const key: keyof Acc =
+          rir == null
+            ? "unrated"
+            : gp.rirTooCloseBelow != null && rir < gp.rirTooCloseBelow
+              ? "tooClose"
+              : rir <= gp.rirProductiveMax
+                ? "inZone"
+                : "tooFar";
         for (const c of contribs) {
-          const a = acc.get(c.muscle) ?? { b01: 0, b23: 0, b4: 0 };
+          const a = acc.get(c.muscle) ?? {
+            inZone: 0,
+            tooClose: 0,
+            tooFar: 0,
+            unrated: 0,
+          };
           a[key] += c.weight;
           acc.set(c.muscle, a);
         }
@@ -351,11 +402,41 @@ export function rirBucketsByMuscle(
     }
   }
   return [...acc.entries()]
-    .map(([muscle, a]) => ({ muscle, ...a, total: a.b01 + a.b23 + a.b4 }))
-    .filter((x) => x.total > 0)
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 8);
+    .map(([muscle, a]) => {
+      const rated = a.inZone + a.tooClose + a.tooFar;
+      return {
+        muscle,
+        ...a,
+        rated,
+        outPct: rated > 0 ? (a.tooClose + a.tooFar) / rated : 0,
+      };
+    })
+    .filter((x) => x.rated + x.unrated > 0)
+    .sort((a, b) => b.outPct - a.outPct || b.rated - a.rated);
 }
+
+/**
+ * Proporción del volumen fuera de zona a partir de la cual un músculo entra en
+ * la lista.
+ *
+ * **Es heurística de producto, no sale de ningún paper** — igual que
+ * `repTolerance` en goal-params.ts, y conviene decirlo donde se muestre. Con
+ * tres o cuatro series por sesión, una serie fuera de zona es ruido
+ * (autorregulación, una serie que salió mal); un tercio del volumen del mes ya
+ * es un patrón que se puede corregir.
+ *
+ * Va como PROPORCIÓN y no como conteo por la misma razón por la que
+ * `GOAL_LANDMARKS` usa un solo par de anclas para todos los músculos: así las
+ * filas son comparables entre grupos con volúmenes muy distintos.
+ */
+export const RIR_OUT_SHARE = 1 / 3;
+
+/**
+ * Series con RIR mínimas para afirmar un patrón. Reusa el "~4 series" de
+ * Pelland (ref "16") como lo que realmente es —un piso de DETECCIÓN, no un
+ * MEV—, que es la misma advertencia escrita en `GOAL_LANDMARKS`.
+ */
+export const RIR_MIN_RATED = 4;
 
 // ── Hipertrofia: días desde la última sesión por músculo ────────────────────
 
@@ -381,10 +462,19 @@ export function daysSinceLastByMuscle(
         last.set(m, Math.max(last.get(m) ?? 0, t));
     }
   }
-  return RECENCY_GROUPS.map((muscle) => {
-    const t = last.get(muscle);
-    return { muscle, days: t == null ? null : calendarDaysBetween(t, now) };
-  }).sort((a, b) => {
+  // Todo grupo que el usuario tocó alguna vez, aunque ese día no llegara al
+  // umbral de series: define el universo de la card. Sin esto la lista fija
+  // mostraría grupos que su rutina no entrena.
+  const known = new Set<string>();
+  for (const s of sessions)
+    for (const m of sessionMuscleSets(s, exMap).keys()) known.add(m);
+
+  return RECENCY_GROUPS.filter((m) => known.has(m))
+    .map((muscle) => {
+      const t = last.get(muscle);
+      return { muscle, days: t == null ? null : calendarDaysBetween(t, now) };
+    })
+    .sort((a, b) => {
     // Los que nunca se entrenaron van primero: son la señal más fuerte.
     if (a.days == null || b.days == null) return (b.days == null ? 1 : 0) - (a.days == null ? 1 : 0);
     return b.days - a.days;
@@ -791,6 +881,17 @@ export function readinessByMuscle(
 const REST_MIN_SAMPLES = 5;
 
 /**
+ * Descanso más largo que se considera un descanso de verdad (segundos).
+ *
+ * Se exporta porque lo usan dos lugares que tienen que coincidir: el promedio
+ * de acá (descarta outliers) y el cronómetro de la sesión, que ahora sobrevive
+ * al cierre de la PWA y necesita el mismo corte para no revivir un descanso de
+ * ayer. Si los dos números se separan, la UI mide algo que la métrica después
+ * tira a la basura.
+ */
+export const REST_MAX_SECONDS = 10 * 60;
+
+/**
  * Descanso medio entre series (segundos), MEDIDO: promedia el `rest_seconds`
  * que guarda el cronómetro de descanso por serie. Se ignoran nulos y outliers
  * (> cap minutos).
@@ -807,12 +908,11 @@ const REST_MIN_SAMPLES = 5;
  */
 export function avgRestBetweenSets(
   sessions: HistorySession[],
-  maxMin = 10,
+  capS = REST_MAX_SECONDS,
   days = 30,
 ): { avgSec: number | null; samples: number } {
   let sum = 0;
   let n = 0;
-  const capS = maxMin * 60;
   const cutoff = Date.now() - days * DAY;
   for (const s of sessions) {
     if (ms(s) < cutoff) continue;

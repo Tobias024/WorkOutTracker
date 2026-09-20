@@ -13,7 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { clsx } from "@/lib/clsx";
-import { formatClock, formatPace, formatWeight, parseClock } from "@/lib/format";
+import { formatClock, formatPace, formatWeight } from "@/lib/format";
+import { DurationField } from "@/components/DurationField";
 import { rirOf } from "@/lib/metrics";
 import {
   goalParams,
@@ -54,7 +55,6 @@ export function SetRow({
   kind = "reps_weight",
   onChange,
   onDelete,
-  onStart,
 }: {
   set: WorkoutSet;
   /** Peso/reps + bajadas de la última vez (placeholder tenue si el campo está vacío). */
@@ -73,11 +73,6 @@ export function SetRow({
   kind?: MetricKind;
   onChange: (patch: Partial<WorkoutSet>) => void;
   onDelete: () => void;
-  /**
-   * Empezó a cargarse esta serie (foco en peso/reps): es la señal de que el
-   * descanso anterior terminó. Sólo se pasa en series sin tildar.
-   */
-  onStart?: () => void;
 }) {
   const [showComment, setShowComment] = useState(!!set.comment);
   // El plan arranca oculto: es una referencia para consultar, no algo que
@@ -136,14 +131,17 @@ export function SetRow({
     .filter(Boolean)
     .join(" · ");
 
+  // Las REPS van primero: son lo que el plan fija de verdad. El peso planeado
+  // es orientativo y se mueve solo a medida que progresás, así que leerlo como
+  // el encabezado del plan invita a perseguir un número que ya envejeció.
   const plannedLabel = planned
     ? [
-        planned.weight != null ? formatWeight(planned.weight) : null,
         planned.reps != null ? `${planned.reps} reps` : null,
         planned.duration_seconds != null
           ? formatClock(planned.duration_seconds)
           : null,
         planned.distance_m != null ? `${planned.distance_m / 1000} km` : null,
+        planned.weight != null ? formatWeight(planned.weight) : null,
       ]
         .filter(Boolean)
         .join(" × ")
@@ -202,7 +200,6 @@ export function SetRow({
                 : undefined
             }
             onCommit={(v) => updateDrop(0, { weight: v })}
-            onFocus={onStart}
           />
         )}
         {showsLoad && showsReps && <span className="text-muted text-xs">×</span>}
@@ -214,7 +211,6 @@ export function SetRow({
             // Sólo cuando lo que falta son las reps y no la carga.
             ring={advice?.action === "seguir" ? RING.off : undefined}
             onCommit={(v) => updateDrop(0, { reps: v })}
-            onFocus={onStart}
           />
         )}
         {showsDistance && (
@@ -227,22 +223,18 @@ export function SetRow({
             onCommit={(v) =>
               onChange({ distance_m: v == null ? null : Math.round(v * 1000) })
             }
-            onFocus={onStart}
           />
         )}
         {showsLoad && showsDuration && (
           <span className="text-muted text-xs">×</span>
         )}
         {showsDuration && (
-          <ClockField
+          <DurationField
+            key={set.duration_seconds ?? "empty"}
             value={set.duration_seconds}
-            placeholder={
-              hint.duration_seconds != null
-                ? formatClock(hint.duration_seconds)
-                : "mm:ss"
-            }
+            placeholder={hint.duration_seconds}
             onCommit={(v) => onChange({ duration_seconds: v })}
-            onFocus={onStart}
+            className="flex-1"
           />
         )}
 
@@ -448,7 +440,6 @@ export function SetRow({
             placeholder={gd?.weight != null ? String(gd.weight) : "kg"}
             step={2.5}
             onCommit={(v) => updateDrop(i + 1, { weight: v })}
-            onFocus={onStart}
           />
           <span className="text-muted text-xs">×</span>
           <NumberField
@@ -456,7 +447,6 @@ export function SetRow({
             placeholder={gd?.reps != null ? String(gd.reps) : "reps"}
             step={1}
             onCommit={(v) => updateDrop(i + 1, { reps: v })}
-            onFocus={onStart}
           />
           <button
             onClick={() => removeDrop(i + 1)}
@@ -495,7 +485,6 @@ function NumberField({
   step,
   ring,
   onCommit,
-  onFocus,
 }: {
   value: number | null;
   placeholder: string;
@@ -503,7 +492,6 @@ function NumberField({
   /** Ring de estado (desvío vs. plan). Por defecto, el borde neutro. */
   ring?: string;
   onCommit: (v: number | null) => void;
-  onFocus?: () => void;
 }) {
   return (
     <input
@@ -513,7 +501,6 @@ function NumberField({
       defaultValue={value ?? ""}
       key={value ?? "empty"}
       placeholder={placeholder}
-      onFocus={onFocus}
       onBlur={(e) => {
         const v = e.target.value === "" ? null : Number(e.target.value);
         if (v !== value) onCommit(v);
@@ -526,36 +513,3 @@ function NumberField({
   );
 }
 
-/**
- * Campo de duración en mm:ss. Mismo contrato que `NumberField` (no controlado,
- * `key` para remontar cuando cambia el valor de afuera, commit en blur) para no
- * romper el patrón del resto de la fila. `type="text"` con `inputMode="numeric"`
- * porque un `type="number"` no acepta los dos puntos.
- */
-function ClockField({
-  value,
-  placeholder,
-  onCommit,
-  onFocus,
-}: {
-  value: number | null;
-  placeholder: string;
-  onCommit: (v: number | null) => void;
-  onFocus?: () => void;
-}) {
-  return (
-    <input
-      type="text"
-      inputMode="numeric"
-      defaultValue={value == null ? "" : formatClock(value)}
-      key={value ?? "empty"}
-      placeholder={placeholder}
-      onFocus={onFocus}
-      onBlur={(e) => {
-        const v = parseClock(e.target.value);
-        if (v !== value) onCommit(v);
-      }}
-      className="h-9 flex-1 min-w-0 rounded bg-surface px-2 text-center text-sm outline-none ring-1 ring-border focus:ring-primary"
-    />
-  );
-}

@@ -61,12 +61,13 @@ import {
   type PlanResolver,
 } from "@/lib/metrics";
 import { buildSessionsRows } from "@/lib/export-csv";
+import { useAllExerciseNotes } from "@/hooks/useExerciseNotes";
+import { goalParams, rirProductiveLabel } from "@/lib/goal-params";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
 import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { Ref } from "@/components/PaperLink";
 import { useTrainingProfile } from "@/hooks/useGoal";
-import { goalParams } from "@/lib/goal-params";
 import { GoalMetrics, SparklineGridCard, RetentionCard } from "@/components/GoalMetrics";
 import { BodyProgress } from "@/components/BodyProgress";
 import { e1rmSeriesByExercise, strengthRetentionIndex } from "@/lib/metrics-goal";
@@ -183,6 +184,7 @@ export default function RegistroPage() {
   const { data: prefs } = useTrainingProfile();
   const trainingProfile = prefs?.trainingProfile ?? null;
   const deleteSession = useDeleteSession();
+  const { data: exerciseNotes } = useAllExerciseNotes();
   const { data: sleepLogs } = useSleep();
   const { data: measurements } = useMeasurements();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -531,7 +533,7 @@ export default function RegistroPage() {
       if (to && d > to) return false;
       return true;
     });
-    const seriesRows = buildSessionsRows(sessions, exMap);
+    const seriesRows = buildSessionsRows(sessions, exMap, exerciseNotes);
     const metricRows = buildMetricsSheet();
 
     // Hoja "Sesiones": una fila por sesión (tiempos + peso corporal + resumen).
@@ -587,18 +589,108 @@ export default function RegistroPage() {
         ]),
     ];
 
+    // Hoja "Notas": la nota fija por ejercicio. Va aparte y no como columna
+    // porque su cardinalidad es por EJERCICIO, no por serie — repetir un texto
+    // largo en miles de filas infla el archivo y hace parecer que hay miles de
+    // notas distintas. En "Series" queda igual, una sola vez por serie, para
+    // que se pueda leer sin cruzar hojas.
+    const usedExIds = new Set(
+      sessions.flatMap((s) => s.workout_exercises.map((we) => we.exercise_id)),
+    );
+    const noteRows: SheetCell[][] = [
+      ["ejercicio", "nota"],
+      ...[...(exerciseNotes ?? new Map<string, string>())]
+        .filter(([id]) => usedExIds.has(id))
+        .map(([id, note]): SheetCell[] => [exMap.get(id)?.name ?? "", note]),
+    ];
+
     setExportOpen(false);
     try {
       await downloadWorkbook(`wolf-${tag}.xlsx`, [
+        { name: "Instrucciones", rows: buildReadmeSheet(sessions) },
         { name: "Series", rows: seriesRows },
         { name: "Sesiones", rows: sessionRows },
         { name: "Sueño", rows: sleepRows },
         { name: "Medidas", rows: measRows },
+        { name: "Notas", rows: noteRows },
         { name: "Métricas", rows: metricRows },
       ]);
     } catch (e) {
       console.error("No se pudo generar el Excel:", e);
     }
+  }
+
+  /**
+   * Hoja "Instrucciones": qué significa cada cosa del archivo.
+   *
+   * El export está pensado para que lo lea una IA, y sin esto se prestaba a
+   * conclusiones equivocadas en silencio: un `rir` vacío parece un 0, el número
+   * de serie se repite en los drop-sets como si fueran series distintas, y
+   * "series efectivas" no significa lo mismo para dos personas con objetivos
+   * distintos. Todo eso se explica acá en vez de dejarlo a la inferencia.
+   */
+  function buildReadmeSheet(sessions: HistorySession[]): SheetCell[][] {
+    const gp = goalParams(trainingProfile);
+    const objetivo = trainingProfile ?? "hipertrofia (por defecto)";
+    return [
+      ["WOLF — export de entrenamiento"],
+      [`Generado el ${new Date().toLocaleDateString("es-AR")}`],
+      [`Sesiones incluidas: ${sessions.length}`],
+      [`Objetivo de entrenamiento del usuario: ${objetivo}`],
+      [],
+      ["Hojas"],
+      ["Series", "Una fila por serie registrada. Es la tabla principal."],
+      ["Sesiones", "Una fila por entrenamiento: tiempos, peso corporal, resumen."],
+      ["Sueño", "Horas dormidas por día, cuando se cargaron."],
+      ["Medidas", "Medidas corporales y % de grasa, cuando se cargaron."],
+      ["Notas", "Nota fija del usuario sobre un ejercicio (cómo lo hace, molestias, setup)."],
+      ["Métricas", "Snapshot del estado ACTUAL. No respeta el período elegido."],
+      [],
+      ["Cómo leer la hoja Series"],
+      [
+        "serie",
+        "Número de serie dentro del ejercicio. Un drop-set ocupa VARIAS FILAS con el mismo número: cada bajada es una fila. No son series distintas.",
+      ],
+      [
+        "rir",
+        "Reps en reserva. VACÍO significa NO CARGADO, no cero. No lo asumas como 0 ni lo promedies como tal.",
+      ],
+      ["volumen_kg", "reps × peso_kg de esa fila. 0 en series por tiempo o distancia."],
+      [
+        "duracion_s / distancia_m",
+        "Series medidas por tiempo o distancia. Esas filas no tienen reps ni peso y NO suman volumen de fuerza.",
+      ],
+      [
+        "descanso_s",
+        "Descanso medido tras esa serie. Sólo se guarda cuando el usuario marcó el arranque de la siguiente, así que faltan muchos. Un vacío no significa que no descansó.",
+      ],
+      ["completado", "si/no. Las series en 'no' se planearon pero no se hicieron."],
+      [
+        "plan_reps / plan_peso_kg",
+        "Lo que la rutina pedía para esa serie. Vacío = serie agregada a mano. El plan fija sobre todo las REPS; el peso es orientativo y se mueve solo.",
+      ],
+      ["comentario", "Comentario del usuario en esa serie. Aparece una vez por serie."],
+      ["nota_ejercicio", "La nota fija de ese ejercicio, repetida por conveniencia."],
+      ["musculo", "Músculo principal ya resuelto, el mismo con el que la app cuenta el volumen."],
+      [],
+      ["Definiciones que dependen del objetivo"],
+      [
+        "Serie efectiva",
+        `Serie completada, sin calentamiento, con al menos ${gp.hardSetMinReps} reps y RIR ${gp.hardSetMaxRir} o menos. Los umbrales cambian según el objetivo del usuario.`,
+      ],
+      [
+        "Zona de RIR productiva",
+        `${rirProductiveLabel(trainingProfile)} para este objetivo.`,
+      ],
+      [
+        "Volumen por músculo",
+        "Cada serie suma 1 al músculo principal y 0,5 a cada secundario (series fraccionales).",
+      ],
+      [],
+      ["Qué NO está en este archivo"],
+      ["", "Las series de calentamiento están incluidas pero marcadas (is_warmup no se exporta; se reflejan en que no cuentan como efectivas)."],
+      ["", "El detalle de las rutinas planificadas: sólo el plan de cada serie que llegó a registrarse."],
+    ];
   }
 
   // Hoja de métricas: snapshot del estado actual (no depende del período de la
@@ -1333,8 +1425,10 @@ function ExportModal({
   return (
     <Modal open={open} onClose={onClose} title="Exportar Excel">
       <p className="text-sm text-muted mb-3">
-        Elegí un período. Se descarga un Excel con dos pestañas: una con tus
-        series (una fila por serie, según el período) y otra con tus métricas.
+        Elegí un período. Se descarga un Excel con tus series (una fila por
+        serie), sesiones, sueño, medidas, comentarios y métricas. La primera
+        pestaña explica qué significa cada columna, así una IA lo puede leer sin
+        adivinar.
       </p>
       <div className="flex flex-col gap-2">
         {presets.map((p) => (

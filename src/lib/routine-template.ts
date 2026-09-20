@@ -4,6 +4,7 @@ import type { Exercise } from "@/lib/types";
 import type { SheetSpec, SheetCell } from "@/lib/export-xlsx";
 import { estimate1RM, sessionDate, isCountableSet } from "@/lib/metrics";
 import { muscleEs, equipmentEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
 
 /**
  * Arma las 4 hojas del template de rutina (IA-friendly): Instrucciones, Rutina
@@ -73,7 +74,7 @@ export function buildRoutineTemplate(
     ...exercises.map((ex): SheetCell[] => [
       ex.slug,
       ex.name,
-      ex.primary_muscles[0] ? muscleEs(ex.primary_muscles[0]) : "",
+      muscleEs(primaryMuscle(ex)),
       ex.equipment ? equipmentEs(ex.equipment) : "",
     ]),
   ];

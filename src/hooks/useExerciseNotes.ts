@@ -25,6 +25,30 @@ export function useExerciseNote(exerciseId?: string) {
   });
 }
 
+/**
+ * Todas las notas del usuario, indexadas por `exercise_id`.
+ *
+ * `useExerciseNote` trae de a una porque la sesión muestra la del ejercicio
+ * abierto. El export las necesita todas de una: son contexto que el usuario
+ * escribió sobre cómo hace cada movimiento, y hasta ahora no salía del teléfono.
+ */
+export function useAllExerciseNotes() {
+  return useQuery({
+    queryKey: ["exercise-notes"],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<Map<string, string>> => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("user_exercise_notes")
+        .select("exercise_id, note");
+      if (error) throw error;
+      return new Map(
+        (data ?? []).map((r) => [r.exercise_id as string, r.note as string]),
+      );
+    },
+  });
+}
+
 export function useUpsertExerciseNote() {
   const qc = useQueryClient();
   return useMutation({
@@ -62,6 +86,7 @@ export function useUpsertExerciseNote() {
     },
     onSuccess: (value, { exerciseId }) => {
       qc.setQueryData(["exercise-note", exerciseId], value);
+      qc.invalidateQueries({ queryKey: ["exercise-notes"] });
     },
   });
 }

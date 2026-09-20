@@ -21,6 +21,7 @@ import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
 import { SetRow, type PlannedSet } from "@/components/SetRow";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
 import { countsForStrengthVolume, totalVolume } from "@/lib/metrics";
 import { formatDistance, formatDuration, formatVolume } from "@/lib/format";
 import { useExerciseNote } from "@/hooks/useExerciseNotes";
@@ -47,7 +48,6 @@ export function SessionExerciseCard({
   onEndMove,
   onMove,
   onSetCompleted,
-  onSetStarted,
 }: {
   we: SessionExercise;
   exercise?: Exercise;
@@ -70,8 +70,6 @@ export function SessionExerciseCard({
   onMove?: (dir: "up" | "down") => void;
   /** El usuario tildó una serie (para arrancar el cronómetro de descanso). */
   onSetCompleted?: (setId: string) => void;
-  /** El usuario empezó a cargar una serie sin tildar → cierra el descanso vivo. */
-  onSetStarted?: (setId: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [replace, setReplace] = useState(false);
@@ -309,8 +307,8 @@ export function SessionExerciseCard({
                   <ArrowUp className="size-3" /> mejoraste
                 </Badge>
               )}
-              {exercise?.primary_muscles[0] && (
-                <Badge>{muscleEs(exercise.primary_muscles[0])}</Badge>
+              {exercise && primaryMuscle(exercise) && (
+                <Badge>{muscleEs(primaryMuscle(exercise))}</Badge>
               )}
               {we.replaced_from_exercise_id && originalExercise && (
                 <Badge className="bg-accent/15 text-accent ring-accent/30">
@@ -412,9 +410,6 @@ export function SessionExerciseCard({
                 profile={profile}
                 onChange={(patch) => handleSetChange(set, patch)}
                 onDelete={() => onDeleteSet(set.id)}
-                onStart={
-                  set.completed ? undefined : () => onSetStarted?.(set.id)
-                }
               />
             ))}
           </div>
@@ -436,7 +431,7 @@ export function SessionExerciseCard({
         open={replace}
         onClose={() => setReplace(false)}
         currentName={exercise?.name ?? ""}
-        currentMuscle={exercise?.primary_muscles[0]}
+        currentMuscle={exercise ? primaryMuscle(exercise) ?? undefined : undefined}
         canSaveForFuture={!!we.routine_exercise_id}
         onReplace={onReplace}
       />

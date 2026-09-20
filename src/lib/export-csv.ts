@@ -2,13 +2,9 @@
 import type { HistorySession } from "@/hooks/useHistory";
 import { effectiveDrops, sessionDate, dateKey, rirOf } from "@/lib/metrics";
 import { muscleEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
 import type { Exercise } from "@/lib/types";
 
-function csvCell(value: string | number | null): string {
-  const s = value == null ? "" : String(value);
-  // Escapa comillas y envuelve si hay coma, comilla o salto de línea.
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 type Cell = string | number | null;
 
@@ -20,6 +16,8 @@ type Cell = string | number | null;
 export function buildSessionsRows(
   sessions: HistorySession[],
   exMap: Map<string, Exercise>,
+  /** Nota fija por ejercicio (`user_exercise_notes`), indexada por exercise_id. */
+  notes?: Map<string, string>,
 ): Cell[][] {
   const rows: Cell[][] = [
     [
@@ -37,6 +35,12 @@ export function buildSessionsRows(
       "descanso_s",
       "completado",
       "duracion_min",
+      // Al final, como el resto de las columnas agregadas: el orden posicional
+      // es parte del contrato con quien ya tiene el archivo viejo.
+      "plan_reps",
+      "plan_peso_kg",
+      "comentario",
+      "nota_ejercicio",
     ],
   ];
 
@@ -47,7 +51,10 @@ export function buildSessionsRows(
     for (const we of s.workout_exercises) {
       const ex = exMap.get(we.exercise_id);
       const exName = ex?.name ?? "";
-      const muscle = ex?.primary_muscles[0] ? muscleEs(ex.primary_muscles[0]) : "";
+      // Mismo mapeo que usan las métricas: si el export dijera otra cosa, la
+      // IA que lo lee sacaría conclusiones sobre un reparto que la app no usa.
+      const muscle = ex ? muscleEs(primaryMuscle(ex)) : "";
+      const note = notes?.get(we.exercise_id) ?? "";
       we.workout_sets.forEach((set, si) => {
         const rir = rirOf(set);
         // Una serie por tiempo o distancia no tiene bajadas (effectiveDrops
@@ -61,7 +68,7 @@ export function buildSessionsRows(
               vol: d.reps && d.weight ? d.reps * d.weight : 0,
             }))
           : [{ reps: null, weight: null, vol: 0 }];
-        cells.forEach((c) => {
+        cells.forEach((c, ci) => {
           rows.push([
             fecha,
             s.name,
@@ -77,33 +84,16 @@ export function buildSessionsRows(
             set.rest_seconds ?? "",
             set.completed ? "si" : "no",
             durMin,
+            set.planned_reps ?? "",
+            set.planned_weight ?? "",
+            // El comentario es de la SERIE, no de cada bajada: repetirlo en las
+            // filas de un drop-set parecerían tres comentarios distintos.
+            ci === 0 ? (set.comment ?? "") : "",
+            ci === 0 ? note : "",
           ]);
         });
       });
     }
   }
   return rows;
-}
-
-/** Arma un CSV con una fila por serie (mismos datos que `buildSessionsRows`). */
-export function buildSessionsCsv(
-  sessions: HistorySession[],
-  exMap: Map<string, Exercise>,
-): string {
-  return buildSessionsRows(sessions, exMap)
-    .map((row) => row.map(csvCell).join(","))
-    .join("\r\n");
-}
-
-/** Descarga un string como archivo. UTF-8 con BOM para que Excel respete acentos. */
-export function downloadCsv(filename: string, csv: string) {
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }

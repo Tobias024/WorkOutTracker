@@ -55,6 +55,17 @@ function numOrNull(v: string | number | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Igual que `numOrNull` pero redondeando: `duracion_seg` y `distancia_m` son
+ * columnas `integer`, y una planilla armada a mano trae decimales sin querer
+ * (una celda con fórmula, un `62,7`). Mandarlos crudos deja que la base decida
+ * qué hacer con el resto.
+ */
+function intOrNull(v: string | number | null): number | null {
+  const n = numOrNull(v);
+  return n == null ? null : Math.round(n);
+}
+
 export default function RoutinesPage() {
   const router = useRouter();
   const { data, isLoading } = useRoutines();
@@ -174,8 +185,8 @@ export default function RoutinesPage() {
             target_weight: numOrNull(r[4]),
             // Columnas agregadas al final: una plantilla vieja no las trae y
             // `numOrNull(undefined)` da null, así que sigue importando igual.
-            target_duration_seconds: numOrNull(r[5]),
-            target_distance_m: numOrNull(r[6]),
+            target_duration_seconds: intOrNull(r[5]),
+            target_distance_m: intOrNull(r[6]),
           });
       }
 

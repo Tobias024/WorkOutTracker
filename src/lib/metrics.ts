@@ -95,7 +95,14 @@ export function isHardSet(
 // El reparto fraccional por músculo vive ahora en la capa de contribución
 // (overrides por slug + split de deltoides + fallback). Se re-exporta acá para
 // no cambiar los imports existentes.
-export { muscleContributions, baseToGroup } from "./muscle-contributions";
+export {
+  muscleContributions,
+  baseToGroup,
+  directMuscles,
+  indirectMuscles,
+  primaryMuscle,
+  worksMuscle,
+} from "./muscle-contributions";
 
 // Los landmarks de volumen (MEV/MAV/MRV) dejaron de variar por músculo y pasaron
 // a depender del OBJETIVO: viven en goal-params.ts junto al resto de los

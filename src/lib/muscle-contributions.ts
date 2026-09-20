@@ -17,7 +17,7 @@
 // lo volvía más estricto que no curarlo.
 //
 // Resuelve la contribución de un ejercicio a cada GRUPO-APP con esta precedencia:
-//   1. override por slug (los 28 que el usuario entrena) → membresía curada
+//   1. override por slug (los ejercicios de la rutina) → membresía curada
 //   2. derivado de primary/secondary de free-exercise-db
 // En ambos casos se aplica el SPLIT del deltoides: `shoulders` (un único músculo
 // en el dataset) se reparte en anterior/lateral/posterior según name+force.
@@ -85,11 +85,20 @@ export function baseToGroup(
   return muscle === "shoulders" ? deltoidHead(ex, role) : muscle;
 }
 
-// ── Overrides por slug (los 28 ejercicios del usuario) ───────────────────────
+// ── Overrides por slug (sólo catálogo global) ───────────────────────────────
 // Declaran MEMBRESÍA (qué músculo es directo y cuál indirecto), no pesos: el
-// peso lo pone el modelo binario de arriba. Siguen siendo necesarios porque 22
-// de los 28 son custom en español con `secondary_muscles` VACÍO en la base — sin
-// esto, un compuesto le asignaría todo el volumen al primario.
+// peso lo pone el modelo binario de arriba.
+//
+// Acá quedan únicamente filas del catálogo de free-exercise-db, que tienen
+// `created_by` null: no las puede corregir nadie desde la app, así que su
+// curación tiene que vivir en el código.
+//
+// Los ejercicios custom del usuario NO están más acá. Estaban porque nacieron
+// con `secondary_muscles` vacío, y eso dejaba a la app con dos verdades: las
+// métricas leían el override y la ficha leía la fila cruda. Ahora la fila dice
+// lo mismo que decía el override (`scripts/backfill-muscles.ts`), así que el
+// override sobraba — y encima le ganaba a lo que el usuario editara desde la
+// app, que era la forma de que "Editar músculos" no hiciera nada.
 
 const EX = (direct: string[], indirect: string[] = []): Contribution[] => [
   ...direct.map((muscle) => ({ muscle, weight: DIRECT })),
@@ -98,43 +107,16 @@ const EX = (direct: string[], indirect: string[] = []): Contribution[] => [
 
 export const EXERCISE_OVERRIDES: Record<string, Contribution[]> = {
   // Pecho
-  "hip5d-d1e1": EX(["chest"], ["triceps", FRONT_DELTS]), // Press banca con barra
-  "hip5d-d1e2": EX(["chest"], [FRONT_DELTS, "triceps"]), // Press inclinado con mancuernas
   Dumbbell_Flyes: EX(["chest"], [FRONT_DELTS]),
-  "hip5d-d1e4": EX(["chest"], ["triceps", FRONT_DELTS]), // Fondos en paralelas / asistidos
   // Hombros
-  "hip5d-d4e1": EX([FRONT_DELTS], [SIDE_DELTS, "triceps"]), // Press militar con mancuernas
   Dumbbell_Shoulder_Press: EX([FRONT_DELTS], [SIDE_DELTS, "triceps"]),
-  "hip5d-d4e3": EX([FRONT_DELTS], [SIDE_DELTS, "triceps"]), // Press Arnold
-  "hip5d-d4e2": EX([SIDE_DELTS]), // Elevaciones laterales
-  "hip5d-d4e4": EX([REAR_DELTS]), // Posterior en máquina (pájaros)
-  // Face pull (custom): trabaja trapecio MEDIO/BAJO, que en el vocabulario de
-  // free-exercise-db es `middle back` — no `traps`, que ahí significa trapecio
-  // SUPERIOR (shrugs, cleans, remo al mentón). La fila inglesa del dataset
-  // ("Face Pull") lo confirma: secondary = middle back.
-  "hip5d-d2e4": EX([REAR_DELTS], ["middle back"]),
   // Espalda
-  "hip5d-d2e1": EX(["lats"], ["biceps"]), // Jalón al pecho (polea alta)
-  // Remo con barra: `middle back` directo YA ES el trapecio medio. Sumarle
-  // `traps` además contaba dos veces el mismo tejido, y encima bajo la etiqueta
-  // del trapecio superior, que el remo casi no entrena.
-  "hip5d-d2e2": EX(["middle back"], ["lats", "biceps", REAR_DELTS]), // Remo con barra
-  "hip5d-d2e3": EX(["middle back"], ["lats", "biceps"]), // Remo en polea baja
   "One-Arm_Dumbbell_Row": EX(["middle back"], ["lats", "biceps", REAR_DELTS]),
   // Bíceps
-  "hip5d-d5e1": EX(["biceps"], ["forearms"]), // Curl con barra
   Barbell_Curl: EX(["biceps"], ["forearms"]),
-  "hip5d-d5e5": EX(["biceps"]), // Curl banco Scott
-  "hip5d-d5e3": EX(["biceps"], ["forearms"]), // Curl martillo con mancuernas
   // Tríceps
   "EZ-Bar_Skullcrusher": EX(["triceps"], ["forearms"]),
-  "hip5d-d5e4": EX(["triceps"]), // Extensión de tríceps en polea
   // Piernas
-  "hip5d-d3e2": EX(["quadriceps"], ["glutes"]), // Prensa
-  "hip5d-d3e1": EX(["quadriceps"], ["glutes", "hamstrings", "lower back"]), // Sentadilla con barra
-  "hip5d-d3e4": EX(["hamstrings"]), // Curl femoral en máquina
-  "hip5d-d3e3": EX(["hamstrings"], ["glutes", "lower back"]), // Peso muerto rumano
-  "hip5d-d3e5": EX(["calves"]), // Elevación de gemelos
   Smith_Machine_Calf_Raise: EX(["calves"]),
   // Abdominales
   "Bent-Knee_Hip_Raise": EX(["abdominals"]),
@@ -168,4 +150,44 @@ export function muscleContributions(ex: ExLike): Contribution[] {
     accMax(acc, baseToGroup(m, ex, "secondary"), INDIRECT);
 
   return [...acc.entries()].map(([muscle, weight]) => ({ muscle, weight }));
+}
+
+// ── Display: la MISMA capa que las métricas ─────────────────────────────────
+//
+// Hasta acá la app tenía dos verdades sobre qué entrena un ejercicio. Las
+// métricas usaban `muscleContributions`, pero cada badge, la ficha del
+// ejercicio, los filtros del catálogo y el export leían `primary_muscles[0]`
+// crudo de la base. Como 22 de los ejercicios del usuario son custom con
+// `secondary_muscles` VACÍO, la ficha mostraba bastante menos de lo que el
+// volumen contaba — y para los hombros mostraba otra cosa directamente
+// ("Hombros" en la card, "Deltoides lateral" en las métricas).
+//
+// Todo lo que se muestre tiene que salir de acá.
+
+const byWeight = (ex: ExLike, w: number) =>
+  muscleContributions(ex)
+    .filter((c) => c.weight === w)
+    .map((c) => c.muscle);
+
+/** Motores primarios del ejercicio (grupo-app). */
+export function directMuscles(ex: ExLike): string[] {
+  return byWeight(ex, DIRECT);
+}
+
+/** Músculos que participan sin ser el motor (grupo-app). */
+export function indirectMuscles(ex: ExLike): string[] {
+  return byWeight(ex, INDIRECT);
+}
+
+/**
+ * Titular para los badges de una línea. `null` si el ejercicio no tiene ningún
+ * músculo resuelto (cardio sin primario, una fila del dataset incompleta).
+ */
+export function primaryMuscle(ex: ExLike): string | null {
+  return directMuscles(ex)[0] ?? null;
+}
+
+/** ¿El ejercicio trabaja este grupo-app, directa o indirectamente? */
+export function worksMuscle(ex: ExLike, muscle: string): boolean {
+  return muscleContributions(ex).some((c) => c.muscle === muscle);
 }
