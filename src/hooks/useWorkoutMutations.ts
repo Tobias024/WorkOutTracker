@@ -5,6 +5,24 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { FullSession } from "@/hooks/useWorkout";
 import type { WorkoutSession, WorkoutSet } from "@/lib/types";
+import {
+  findExercise,
+  findSet,
+  insertExercise,
+  insertSet,
+  makeSet,
+  patchExercise,
+  patchSession,
+  patchSet,
+  previousExerciseValues,
+  previousSessionValues,
+  previousSetValues,
+  reinsertExercise,
+  reinsertSet,
+  removeExerciseById,
+  removeSetById,
+  swapExercises,
+} from "@/lib/session-cache";
 
 /** Mutaciones sobre una sesión activa. */
 export function useSessionMutations(sessionId: string) {
@@ -17,20 +35,23 @@ export function useSessionMutations(sessionId: string) {
     qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
     qc.invalidateQueries({ queryKey: ["scoreboard"], refetchType: "none" });
   };
-  // Cambios estructurales (ids nuevos del server): además refetchea la sesión.
-  const refetchSession = () => qc.invalidateQueries({ queryKey: sessionKey });
+  // Todas las mutations de la sesión comparten scope: TanStack las ejecuta de a
+  // una, en orden de creación (insert -> patch/delete de la misma serie;
+  // updateSession al final). onMutate corre igual de inmediato.
+  const scope = { id: `session-${sessionId}` };
 
-  /** Escribe optimísticamente en el cache de la sesión y devuelve el snapshot. */
-  function optimistic(mutate: (s: FullSession) => FullSession) {
-    const prev = qc.getQueryData<FullSession>(sessionKey);
-    if (prev) qc.setQueryData<FullSession>(sessionKey, mutate(prev));
-    return { prev };
+  /** Aplica una transformación pura sobre el cache actual (si existe). */
+  function apply(fn: (s: FullSession) => FullSession) {
+    qc.setQueryData<FullSession>(sessionKey, (s) => (s ? fn(s) : s));
   }
-  function rollback(ctx: { prev?: FullSession } | undefined) {
-    if (ctx?.prev) qc.setQueryData(sessionKey, ctx.prev);
-  }
+  /** Lee el cache actual (para capturar valores previos antes de aplicar). */
+  const current = () => qc.getQueryData<FullSession>(sessionKey);
+
+  /** 23505 = unique_violation: el id ya existe (reintento cuya respuesta se perdió). */
+  const isDuplicate = (e: { code?: string } | null) => e?.code === "23505";
 
   const updateSet = useMutation({
+    scope,
     mutationFn: async ({
       id,
       patch,
@@ -47,23 +68,22 @@ export function useSessionMutations(sessionId: string) {
     },
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => ({
-        ...s,
-        exercises: s.exercises.map((ex) => ({
-          ...ex,
-          sets: ex.sets.map((set) =>
-            set.id === id ? { ...set, ...patch } : set,
-          ),
-        })),
-      }));
+      const cur = current();
+      const prevValues = cur ? previousSetValues(cur, id, patch) : undefined;
+      apply((s) => patchSet(s, id, patch));
+      return { prevValues };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (_e, { id }, ctx) => {
+      if (ctx?.prevValues) apply((s) => patchSet(s, id, ctx.prevValues!));
+    },
     // Sin refetch de la sesión: el optimistic ya es correcto para un patch.
     onSettled: markStaleBackground,
   });
 
   const addSet = useMutation({
+    scope,
     mutationFn: async ({
+      id,
       workoutExerciseId,
       setNumber,
       reps,
@@ -71,6 +91,7 @@ export function useSessionMutations(sessionId: string) {
       durationSeconds,
       distanceM,
     }: {
+      id: string;
       workoutExerciseId: string;
       setNumber: number;
       reps?: number | null;
@@ -80,6 +101,7 @@ export function useSessionMutations(sessionId: string) {
     }) => {
       const supabase = createClient();
       const { error } = await supabase.from("workout_sets").insert({
+        id,
         workout_exercise_id: workoutExerciseId,
         set_number: setNumber,
         reps: reps ?? null,
@@ -87,9 +109,10 @@ export function useSessionMutations(sessionId: string) {
         duration_seconds: durationSeconds ?? null,
         distance_m: distanceM ?? null,
       });
-      if (error) throw error;
+      if (error && !isDuplicate(error)) throw error;
     },
     onMutate: async ({
+      id,
       workoutExerciseId,
       setNumber,
       reps,
@@ -98,46 +121,23 @@ export function useSessionMutations(sessionId: string) {
       distanceM,
     }) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      const tempSet: WorkoutSet = {
-        id: `temp-${setNumber}-${workoutExerciseId}`,
+      const newSet = makeSet({
+        id,
         workout_exercise_id: workoutExerciseId,
         set_number: setNumber,
         reps: reps ?? null,
         weight: weight ?? null,
-        rpe: null,
-        comment: null,
-        is_warmup: false,
-        completed: false,
-        completed_at: null,
-        rest_seconds: null,
-        drops: null,
         duration_seconds: durationSeconds ?? null,
         distance_m: distanceM ?? null,
-        // Una serie agregada durante el entreno no sale de la rutina: no tiene
-        // plan contra el cual compararse, y por eso no se colorea.
-        planned_reps: null,
-        planned_weight: null,
-        planned_duration_seconds: null,
-        planned_distance_m: null,
-      };
-      return optimistic((s) => ({
-        ...s,
-        exercises: s.exercises.map((ex) =>
-          ex.id === workoutExerciseId
-            ? { ...ex, sets: [...ex.sets, tempSet] }
-            : ex,
-        ),
-      }));
+      });
+      apply((s) => insertSet(s, workoutExerciseId, newSet));
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
-    // Refetchea para reemplazar el id temporal por el real.
-    onSettled: () => {
-      refetchSession();
-      markStaleBackground();
-    },
+    onError: (_e, { id }) => apply((s) => removeSetById(s, id)),
+    onSettled: markStaleBackground,
   });
 
   const deleteSet = useMutation({
+    scope,
     mutationFn: async (id: string) => {
       const supabase = createClient();
       const { error } = await supabase.from("workout_sets").delete().eq("id", id);
@@ -145,50 +145,71 @@ export function useSessionMutations(sessionId: string) {
     },
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => ({
-        ...s,
-        exercises: s.exercises.map((ex) => ({
-          ...ex,
-          sets: ex.sets.filter((set) => set.id !== id),
-        })),
-      }));
+      const cur = current();
+      const removed = cur ? findSet(cur, id) : undefined;
+      apply((s) => removeSetById(s, id));
+      return { removed };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (_e, _id, ctx) => {
+      const r = ctx?.removed;
+      if (r) apply((s) => reinsertSet(s, r.exerciseId, r.index, r.set));
+    },
     onSettled: markStaleBackground,
   });
 
   const addExercise = useMutation({
+    scope,
     mutationFn: async ({
+      id,
+      setIds,
       exerciseId,
       position,
     }: {
+      id: string;
+      setIds: string[];
       exerciseId: string;
       position: number;
     }) => {
       const supabase = createClient();
-      const { data: we, error } = await supabase
-        .from("workout_exercises")
-        .insert({
+      const { error } = await supabase.from("workout_exercises").insert({
+        id,
+        session_id: sessionId,
+        exercise_id: exerciseId,
+        position,
+      });
+      if (error && !isDuplicate(error)) throw error;
+      const { error: setsError } = await supabase.from("workout_sets").insert(
+        setIds.map((setId, i) => ({
+          id: setId,
+          workout_exercise_id: id,
+          set_number: i + 1,
+        })),
+      );
+      if (setsError && !isDuplicate(setsError)) throw setsError;
+    },
+    onMutate: async ({ id, setIds, exerciseId, position }) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      apply((s) =>
+        insertExercise(s, {
+          id,
           session_id: sessionId,
           exercise_id: exerciseId,
           position,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      await supabase.from("workout_sets").insert([
-        { workout_exercise_id: we.id, set_number: 1 },
-        { workout_exercise_id: we.id, set_number: 2 },
-        { workout_exercise_id: we.id, set_number: 3 },
-      ]);
+          routine_exercise_id: null,
+          replaced_from_exercise_id: null,
+          notes: null,
+          sets: setIds.map((setId, i) =>
+            makeSet({ id: setId, workout_exercise_id: id, set_number: i + 1 }),
+          ),
+        }),
+      );
     },
-    onSuccess: () => {
-      refetchSession();
-      markStaleBackground();
-    },
+    onError: (_e, { id }) => apply((s) => removeExerciseById(s, id)),
+    onSettled: markStaleBackground,
   });
 
   const removeExercise = useMutation({
+    scope,
     mutationFn: async (workoutExerciseId: string) => {
       const supabase = createClient();
       const { error } = await supabase
@@ -199,12 +220,15 @@ export function useSessionMutations(sessionId: string) {
     },
     onMutate: async (workoutExerciseId) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => ({
-        ...s,
-        exercises: s.exercises.filter((ex) => ex.id !== workoutExerciseId),
-      }));
+      const cur = current();
+      const removed = cur ? findExercise(cur, workoutExerciseId) : undefined;
+      apply((s) => removeExerciseById(s, workoutExerciseId));
+      return { removed };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (_e, _id, ctx) => {
+      const r = ctx?.removed;
+      if (r) apply((s) => reinsertExercise(s, r.index, r.exercise));
+    },
     onSettled: markStaleBackground,
   });
 
@@ -213,6 +237,7 @@ export function useSessionMutations(sessionId: string) {
    * saveForFuture=true guarda la sustitución para próximas veces (si viene de una rutina).
    */
   const replaceExercise = useMutation({
+    scope,
     mutationFn: async ({
       workoutExerciseId,
       originalExerciseId,
@@ -241,7 +266,9 @@ export function useSessionMutations(sessionId: string) {
       if (error) throw error;
 
       if (saveForFuture && routineExerciseId && user) {
-        await supabase.from("exercise_substitutions").upsert(
+        const { error: subError } = await supabase
+          .from("exercise_substitutions")
+          .upsert(
           {
             user_id: user.id,
             routine_exercise_id: routineExerciseId,
@@ -249,6 +276,7 @@ export function useSessionMutations(sessionId: string) {
           },
           { onConflict: "user_id,routine_exercise_id" },
         );
+        if (subError) throw subError;
       }
     },
     // Optimista: la card cambia de ejercicio al toque; si falla vuelve el snapshot.
@@ -258,24 +286,25 @@ export function useSessionMutations(sessionId: string) {
       newExerciseId,
     }) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => ({
-        ...s,
-        exercises: s.exercises.map((ex) =>
-          ex.id === workoutExerciseId
-            ? {
-                ...ex,
-                exercise_id: newExerciseId,
-                replaced_from_exercise_id: originalExerciseId,
-              }
-            : ex,
-        ),
-      }));
+      const patch = {
+        exercise_id: newExerciseId,
+        replaced_from_exercise_id: originalExerciseId,
+      };
+      const cur = current();
+      const prevValues = cur
+        ? previousExerciseValues(cur, workoutExerciseId, [
+            "exercise_id",
+            "replaced_from_exercise_id",
+          ])
+        : undefined;
+      apply((s) => patchExercise(s, workoutExerciseId, patch));
+      return { prevValues };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
-    onSuccess: () => {
-      refetchSession();
-      markStaleBackground();
+    onError: (_e, { workoutExerciseId }, ctx) => {
+      if (ctx?.prevValues)
+        apply((s) => patchExercise(s, workoutExerciseId, ctx.prevValues!));
     },
+    onSettled: markStaleBackground,
   });
 
   /**
@@ -285,6 +314,7 @@ export function useSessionMutations(sessionId: string) {
    * swap por valor es robusto aunque no sea contiguo.
    */
   const reorder = useMutation({
+    scope,
     mutationFn: async ({
       a,
       b,
@@ -306,23 +336,14 @@ export function useSessionMutations(sessionId: string) {
     },
     onMutate: async ({ a, b }) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => {
-        const exs = [...s.exercises];
-        const ia = exs.findIndex((e) => e.id === a.id);
-        const ib = exs.findIndex((e) => e.id === b.id);
-        if (ia === -1 || ib === -1) return s;
-        const newA = { ...exs[ia], position: exs[ib].position };
-        const newB = { ...exs[ib], position: exs[ia].position };
-        exs[ia] = newB;
-        exs[ib] = newA;
-        return { ...s, exercises: exs };
-      });
+      apply((s) => swapExercises(s, a.id, b.id));
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (_e, { a, b }) => apply((s) => swapExercises(s, a.id, b.id)),
     onSettled: markStaleBackground,
   });
 
   const updateSession = useMutation({
+    scope,
     mutationFn: async (patch: Partial<WorkoutSession>) => {
       const supabase = createClient();
       const { error } = await supabase
@@ -333,9 +354,14 @@ export function useSessionMutations(sessionId: string) {
     },
     onMutate: async (patch) => {
       await qc.cancelQueries({ queryKey: sessionKey });
-      return optimistic((s) => ({ ...s, session: { ...s.session, ...patch } }));
+      const cur = current();
+      const prevValues = cur ? previousSessionValues(cur, patch) : undefined;
+      apply((s) => patchSession(s, patch));
+      return { prevValues };
     },
-    onError: (_e, _v, ctx) => rollback(ctx),
+    onError: (_e, _patch, ctx) => {
+      if (ctx?.prevValues) apply((s) => patchSession(s, ctx.prevValues!));
+    },
     onSettled: markStaleBackground,
   });
 

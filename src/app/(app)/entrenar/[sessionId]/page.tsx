@@ -54,6 +54,7 @@ import {
 } from "@/hooks/useRestTimer";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
 import { flushUndoables, undoable } from "@/lib/toast";
+import { newId } from "@/lib/uuid";
 import type { SessionPr } from "@/lib/types";
 
 /** Sesión abierta hace más que esto al entrar = probablemente olvidada. */
@@ -701,6 +702,7 @@ function SessionView({
               onUpdateSet={(id, patch) => m.updateSet.mutate({ id, patch })}
               onAddSet={() =>
                 m.addSet.mutate({
+                  id: newId(),
                   workoutExerciseId: we.id,
                   // max + 1 y no length + 1: con series borradas (o escondidas
                   // esperando el "Deshacer") el length repetiría un número.
@@ -761,6 +763,8 @@ function SessionView({
         onClose={() => setPicker(false)}
         onSelect={(ex) =>
           m.addExercise.mutate({
+            id: newId(),
+            setIds: [newId(), newId(), newId()],
             exerciseId: ex.id,
             position: exercises.length,
           })

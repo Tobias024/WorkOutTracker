@@ -9,6 +9,9 @@ export type Sex = "male" | "female";
 
 /** @deprecated Reemplazado por training_profile + body_objective. Se conserva
  *  la columna y se sincroniza para no romper el scoreboard. */
+/** Lo que se muestra de un amigo: nunca peso, altura ni perfil de entrenamiento. */
+export type FriendSummary = Pick<Profile, "id" | "username" | "display_name" | "goal">;
+
 export type Goal = "fuerza" | "hipertrofia" | "resistencia" | "perdida_grasa";
 
 /** Perfil de entrenamiento: qué métricas de entrenamiento se priorizan. */
@@ -371,6 +374,16 @@ export type Database = {
       record_session_achievements: {
         Args: { p_session_id: string };
         Returns: SessionPr[];
+      };
+      /** Amigos aceptados con sólo los campos públicos (0040). */
+      my_friends: {
+        Args: Record<string, never>;
+        Returns: FriendSummary[];
+      };
+      /** Intercambia la posición de dos ejercicios de la misma rutina, atómico (0040). */
+      swap_positions: {
+        Args: { p_a: string; p_b: string };
+        Returns: undefined;
       };
     };
   };

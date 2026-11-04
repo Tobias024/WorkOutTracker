@@ -20,6 +20,17 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.1",
+    date: "2026-11-04",
+    notable: true,
+    items: [
+      "Podés editar una serie apenas la agregás: ya no aparece \"No se pudo guardar\" si cargás el peso muy rápido.",
+      "Agregar series y ejercicios durante el entreno es instantáneo: la pantalla ya no se recarga después de cada alta.",
+      "Las series efectivas de Registro respetan tu objetivo (fuerza, hipertrofia o resistencia) desde que abre la pantalla.",
+      "En el perfil de un amigo ves sus 10 mejores marcas, y reordenar ejercicios de una rutina ya no puede dejar dos en el mismo lugar.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-11-04",
     notable: true,

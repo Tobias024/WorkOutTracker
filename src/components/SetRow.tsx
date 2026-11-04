@@ -114,9 +114,6 @@ export function SetRow({
   const [showPlan, setShowPlan] = useState(false);
 
   const n = set.set_number;
-  // Serie optimista de addSet: todavía no tiene id real en la base, borrarla
-  // apuntaría a una fila que no existe.
-  const saving = set.id.startsWith("temp-");
 
   const drops: SetDrop[] =
     set.drops && set.drops.length > 0
@@ -528,9 +525,7 @@ export function SetRow({
           <div className="mt-1 border-t border-border pt-1">
             <SetMenuItem
               danger
-              disabled={saving}
               icon={<Trash2 className="size-4" />}
-              hint={saving ? "Guardando…" : undefined}
               onClick={() => {
                 setMenu(false);
                 onDelete();

@@ -3,36 +3,16 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/types";
+import type { FriendSummary } from "@/lib/types";
 
 export function useFriends() {
   return useQuery({
     queryKey: ["friends"],
-    queryFn: async (): Promise<Profile[]> => {
+    queryFn: async (): Promise<FriendSummary[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: rels, error } = await supabase
-        .from("friendships")
-        .select("requester_id, addressee_id")
-        .eq("status", "accepted");
+      const { data, error } = await supabase.rpc("my_friends");
       if (error) throw error;
-
-      const ids = (rels ?? []).map((r) =>
-        r.requester_id === user.id ? r.addressee_id : r.requester_id,
-      );
-      if (ids.length === 0) return [];
-
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", ids);
-      // Sin esto, un fallo acá se veía como "no tenés amigos".
-      if (profilesError) throw profilesError;
-      return (profiles ?? []) as Profile[];
+      return (data ?? []) as FriendSummary[];
     },
   });
 }

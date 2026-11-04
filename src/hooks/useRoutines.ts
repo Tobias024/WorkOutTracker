@@ -400,14 +400,11 @@ export function useRoutineExerciseOps(routineId: string) {
       b: RoutineExercise;
     }) => {
       const supabase = createClient();
-      await supabase
-        .from("routine_exercises")
-        .update({ position: b.position })
-        .eq("id", a.id);
-      await supabase
-        .from("routine_exercises")
-        .update({ position: a.position })
-        .eq("id", b.id);
+      const { error } = await supabase.rpc("swap_positions", {
+        p_a: a.id,
+        p_b: b.id,
+      });
+      if (error) throw error;
     },
     onMutate: async ({ a, b }) => {
       await qc.cancelQueries({ queryKey: ["routine", routineId] });

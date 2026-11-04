@@ -421,17 +421,6 @@ function RegistroContent() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo como series/semana, para comparar
-    // contra las marcas MEV/MAV/MRV (que son semanales). Se calculan dos ventanas:
-    // 7 días (conteo directo de la última semana, el default correcto) y 30 días
-    // (promedio semanal, más suave). Ver computeHardSets.
-    const hardSets7 = computeHardSets(
-      sessions, exMap, 7, first ?? null, now, trainingProfile,
-    );
-    const hardSets30 = computeHardSets(
-      sessions, exMap, 30, first ?? null, now, trainingProfile,
-    );
-
     // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
     const cutoff30 = new Date(now);
     cutoff30.setDate(cutoff30.getDate() - 30);
@@ -486,8 +475,6 @@ function RegistroContent() {
       muscleDonut,
       byMonth,
       prs,
-      hardSets7,
-      hardSets30,
       balance,
       heatWeeks,
       heatMax,
@@ -496,9 +483,27 @@ function RegistroContent() {
       sparklines: e1rmSeriesByExercise(sessions, exMap, 12).slice(0, 12),
       retention: strengthRetentionIndex(sessions, exMap, 16),
     };
-    // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
+    // todayKey no se lee dentro: es solo disparador para recomputar al cambiar de día
+    // (el gráfico/ventanas usan new Date()). hardSets vive en su propio memo (trainingProfile).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, exMap, todayKey]);
+
+  // Series efectivas (hard sets) por músculo como series/semana, para comparar
+  // contra las marcas MEV/MAV/MRV (que son semanales). Dos ventanas: 7 días
+  // (conteo directo de la última semana, el default correcto) y 30 días
+  // (promedio semanal, más suave). Ver computeHardSets. Memo propio porque
+  // depende de trainingProfile (umbrales según objetivo).
+  const { hardSets7, hardSets30 } = useMemo(() => {
+    const sessions = data ?? [];
+    const now = new Date();
+    const first = firstSessionDate(sessions);
+    return {
+      hardSets7: computeHardSets(sessions, exMap, 7, first ?? null, now, trainingProfile),
+      hardSets30: computeHardSets(sessions, exMap, 30, first ?? null, now, trainingProfile),
+    };
+    // todayKey: solo disparador para recomputar al cambiar de día (now = new Date()).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, exMap, todayKey, trainingProfile]);
 
   // Métricas por semana (distingue semana en curso de semanas anteriores).
   const weekMetrics = useMemo(() => {
@@ -858,7 +863,7 @@ function RegistroContent() {
           : "Series efectivas por músculo (prom. semanal · últ. 30 días)",
       ],
       ["Músculo", "Series/sem", "MEV", "MAV", "MRV", "Estado"],
-      ...(hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30).map((r) => [
+      ...(hardWindow === "7d" ? hardSets7 : hardSets30).map((r) => [
         muscleEs(r.muscle),
         Math.round(r.sets * 10) / 10,
         r.mev,
@@ -1039,7 +1044,7 @@ function RegistroContent() {
         />
       </div>
       <MuscleSetsBar
-        data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
+        data={hardWindow === "7d" ? hardSets7 : hardSets30}
         windowDays={hardWindow === "7d" ? 7 : 30}
       />
     </SectionCard>
