@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
   sinceFor,
@@ -71,6 +71,9 @@ export function useScoreboard(
   return useQuery({
     queryKey: ["scoreboard", metric, period, exerciseId ?? null, sex ?? null],
     staleTime: 2 * 60_000,
+    // Al cambiar tablero/período/filtro se sigue mostrando la lista anterior
+    // (atenuada) en vez de un spinner que hace saltar el layout.
+    placeholderData: keepPreviousData,
     enabled: !NEEDS_EXERCISE.includes(metric) || !!exerciseId,
     queryFn: async (): Promise<ScoreboardRowWithMove[]> => {
       const supabase = createClient();

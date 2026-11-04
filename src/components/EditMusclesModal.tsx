@@ -77,7 +77,11 @@ export function EditMusclesModal({
           }}
         />
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        )}
 
         {/* El cambio es retroactivo: las métricas se recalculan sobre todo el
             historial, no sólo sobre lo que venga después. */}
@@ -86,8 +90,8 @@ export function EditMusclesModal({
         </p>
 
         <div className="flex gap-2">
-          <Button onClick={save} disabled={update.isPending} className="flex-1">
-            {update.isPending ? "Guardando…" : "Guardar"}
+          <Button onClick={save} loading={update.isPending} className="flex-1">
+            Guardar
           </Button>
           <Button variant="ghost" onClick={onClose}>
             Cancelar

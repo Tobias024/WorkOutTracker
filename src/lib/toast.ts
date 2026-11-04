@@ -83,8 +83,8 @@ interface Pending {
 const pending = new Set<Pending>();
 let flushBound = false;
 
-function run(p: Pending) {
-  if (p.done) return;
+function run(p: Pending): Promise<unknown> {
+  if (p.done) return Promise.resolve();
   p.done = true;
   pending.delete(p);
   clearTimer(`${p.toastId}:commit`);
@@ -92,15 +92,26 @@ function run(p: Pending) {
   try {
     const r = p.commit();
     if (r && typeof (r as Promise<unknown>).catch === "function") {
-      (r as Promise<unknown>).catch(() => {});
+      return (r as Promise<unknown>).catch(() => {});
     }
   } catch {
     // el caller maneja sus errores (ej. mutationCache.onError)
   }
+  return Promise.resolve();
 }
 
 function flushAll() {
-  [...pending].forEach(run);
+  void flushUndoables();
+}
+
+/**
+ * Ejecuta YA todos los `undoable` pendientes y espera sus commits (si
+ * devuelven promesa). Usarlo antes de una acción que depende del estado del
+ * servidor, ej. terminar el entreno con un ejercicio recién quitado: si no,
+ * sus series contarían en los logros/ranking.
+ */
+export function flushUndoables(): Promise<void> {
+  return Promise.all([...pending].map(run)).then(() => undefined);
 }
 
 function bindFlush() {

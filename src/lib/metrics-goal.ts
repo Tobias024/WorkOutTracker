@@ -816,6 +816,8 @@ export interface Readiness {
   muscle: string;
   days: number;
   lag: number;
+  /** Series que faltan para cubrir el MEV esta semana (0 si ya está cubierto). */
+  missingSets: number;
   score: number;
 }
 
@@ -881,6 +883,7 @@ export function readinessByMuscle(
       muscle: mu,
       days,
       lag,
+      missingSets: Math.max(0, Math.ceil(mev - sets - EPSILON)),
       score: lag * LAG_WEIGHT + recovery * RECOVERY_WEIGHT,
     });
   }

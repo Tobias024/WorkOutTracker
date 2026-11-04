@@ -26,10 +26,12 @@ export function useFriends() {
       );
       if (ids.length === 0) return [];
 
-      const { data: profiles } = await supabase
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
         .in("id", ids);
+      // Sin esto, un fallo acá se veía como "no tenés amigos".
+      if (profilesError) throw profilesError;
       return (profiles ?? []) as Profile[];
     },
   });
@@ -38,6 +40,8 @@ export function useFriends() {
 /** Genera un link de invitación (vía RPC). */
 export function useCreateInvite() {
   return useMutation({
+    // El error se muestra inline en la tarjeta de invitación.
+    meta: { silent: true },
     mutationFn: async (): Promise<string> => {
       const supabase = createClient();
       const { data, error } = await supabase.rpc("create_invite");
@@ -62,6 +66,8 @@ export function useAcceptInvite() {
 export function useRemoveFriend() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en el diálogo de confirmación.
+    meta: { silent: true },
     mutationFn: async (friendId: string) => {
       const supabase = createClient();
       const {
@@ -76,6 +82,10 @@ export function useRemoveFriend() {
         );
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["friends"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["friends"] });
+      // El ranking solo muestra amigos: sin esto seguiría apareciendo.
+      qc.invalidateQueries({ queryKey: ["scoreboard"] });
+    },
   });
 }

@@ -25,6 +25,19 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-
 
 /** Refresca la sesión y protege rutas privadas. */
 export async function updateSession(request: NextRequest) {
+  // El layout de (app) es un server component y no conoce el pathname: se lo
+  // pasamos en un header de request para que mande a onboarding con ?next=
+  // (si no, un usuario nuevo que llegó por un link pierde el destino).
+  // Todas las respuestas de acá usan NextResponse.next({ request }), así que
+  // el header viaja upstream.
+  try {
+    request.headers.set(
+      "x-pathname",
+      request.nextUrl.pathname + request.nextUrl.search,
+    );
+  } catch {
+    // headers inmutables en algún runtime: sin next, onboarding va a /rutinas.
+  }
   // Los prefetch de Next.js (Link precargando otras tabs en segundo plano)
   // no deben disparar un refresh de sesión: si el access token está por
   // vencer, varias requests de prefetch en simultáneo pueden refrescarlo

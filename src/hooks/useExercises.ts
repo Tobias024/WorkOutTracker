@@ -61,6 +61,8 @@ function slugify(s: string): string {
 export function useCreateExercise() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en el modal, no como toast global.
+    meta: { silent: true },
     mutationFn: async (ex: NewExercise): Promise<Exercise> => {
       const supabase = createClient();
       const {
@@ -114,6 +116,8 @@ export function useCreateExercise() {
 export function useUpdateExerciseMuscles() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en el modal, no como toast global.
+    meta: { silent: true },
     mutationFn: async (args: {
       id: string;
       primary_muscles: string[];
@@ -168,6 +172,11 @@ export function useExerciseMap() {
   }, [data]);
 }
 
+/** Minúsculas y sin diacríticos, para comparar búsquedas. */
+function normalizeText(s: string): string {
+  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+}
+
 /** Filtra el catálogo en memoria por texto / músculo / equipo. */
 export function filterExercises(
   list: Exercise[],
@@ -175,9 +184,14 @@ export function filterExercises(
   muscle?: string,
   equipment?: string,
 ): Exercise[] {
-  const q = query.trim().toLowerCase();
+  // Sin tildes y por palabras: "pres inclin" o "sentadilla bulgara" tienen que
+  // encontrar "Press inclinado" / "Sentadilla búlgara".
+  const tokens = normalizeText(query).split(/\s+/).filter(Boolean);
   return list.filter((e) => {
-    if (q && !e.name.toLowerCase().includes(q)) return false;
+    if (tokens.length) {
+      const name = normalizeText(e.name);
+      if (!tokens.every((t) => name.includes(t))) return false;
+    }
     if (equipment && e.equipment !== equipment) return false;
     // Último porque es el único que no es una comparación suelta: resuelve la
     // contribución del ejercicio. Va por el músculo RESUELTO (grupo-app) y no

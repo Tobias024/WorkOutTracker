@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LineChart,
   ChevronRight,
@@ -11,18 +18,26 @@ import {
   Trophy,
   Flame,
   Trash2,
-  UserCog,
+  Check,
+  X,
 } from "lucide-react";
 import {
   PageHeader,
   Spinner,
   EmptyState,
+  ErrorState,
+  Skeleton,
   Stat,
   Button,
+  buttonClasses,
+  IconButton,
+  ConfirmDialog,
+  Field,
   Modal,
   SectionCard,
   Tabs,
 } from "@/components/ui";
+import { toast } from "@/lib/toast";
 import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
 import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
 import { MuscleSetsBar, type MuscleSetRow } from "@/components/MuscleSetsBar";
@@ -64,7 +79,7 @@ import { buildSessionsRows } from "@/lib/export-csv";
 import { useAllExerciseNotes } from "@/hooks/useExerciseNotes";
 import { goalParams, rirProductiveLabel } from "@/lib/goal-params";
 import { downloadWorkbook, type SheetCell } from "@/lib/export-xlsx";
-import { formatDate, formatDateTime, formatDuration, formatVolume } from "@/lib/format";
+import { fmtNum, formatDate, formatDateTime, formatVolume } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { Ref } from "@/components/PaperLink";
 import { useTrainingProfile } from "@/hooks/useGoal";
@@ -74,7 +89,65 @@ import { e1rmSeriesByExercise, strengthRetentionIndex } from "@/lib/metrics-goal
 import { clsx } from "@/lib/clsx";
 import type { Achievement, Exercise, TrainingProfile } from "@/lib/types";
 
-const WEEKDAYS = ["D", "L", "M", "M", "J", "V", "S"];
+// Semana lunes→domingo (igual que weekStart, la racha y el heatmap). `weekday`
+// conserva la convención de getDay() (0=domingo) porque es lo que se guarda en
+// el plan: solo cambia el ORDEN en que se muestran.
+const WEEKDAYS: { weekday: number; short: string; full: string }[] = [
+  { weekday: 1, short: "L", full: "Lunes" },
+  { weekday: 2, short: "M", full: "Martes" },
+  { weekday: 3, short: "X", full: "Miércoles" },
+  { weekday: 4, short: "J", full: "Jueves" },
+  { weekday: 5, short: "V", full: "Viernes" },
+  { weekday: 6, short: "S", full: "Sábado" },
+  { weekday: 0, short: "D", full: "Domingo" },
+];
+const GOAL_LABEL: Record<TrainingProfile, string> = {
+  fuerza: "Fuerza",
+  hipertrofia: "Hipertrofia",
+  resistencia: "Resistencia",
+};
+
+// Estado de UI que sobrevive a ir al detalle de una sesión y volver. Se lee con
+// useSyncExternalStore: en el servidor (y en la hidratación) devuelve el valor
+// por defecto, así no hay mismatch, y en el cliente toma el de sessionStorage.
+const sessionListeners = new Set<() => void>();
+const sessionMemory = new Map<string, string>();
+function readSession(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key) ?? sessionMemory.get(key) ?? null;
+  } catch {
+    return sessionMemory.get(key) ?? null;
+  }
+}
+function subscribeSession(cb: () => void) {
+  sessionListeners.add(cb);
+  return () => {
+    sessionListeners.delete(cb);
+  };
+}
+function useSessionState<T extends string>(
+  key: string,
+  fallback: T,
+): [T, (v: T) => void] {
+  const raw = useSyncExternalStore(
+    subscribeSession,
+    () => readSession(key),
+    () => null,
+  );
+  const set = useCallback(
+    (v: T) => {
+      sessionMemory.set(key, v);
+      try {
+        sessionStorage.setItem(key, v);
+      } catch {
+        /* modo privado / storage bloqueado: queda en memoria */
+      }
+      sessionListeners.forEach((l) => l());
+    },
+    [key],
+  );
+  return [(raw ?? fallback) as T, set];
+}
 const HISTORY_PREVIEW = 8;
 
 function achievementText(
@@ -174,20 +247,40 @@ function computeHardSets(
     .slice(0, 8);
 }
 
+// useSearchParams requiere un Suspense para no volver dinámica toda la ruta.
 export default function RegistroPage() {
-  const { data, isLoading } = useHistory();
+  return (
+    <Suspense
+      fallback={
+        <div className="grid place-items-center py-16">
+          <Spinner />
+        </div>
+      }
+    >
+      <RegistroContent />
+    </Suspense>
+  );
+}
+
+function RegistroContent() {
+  const history = useHistory();
+  const { data, isPending, isError, isFetching, refetch } = history;
   const exMap = useExerciseMap();
   const { data: plan } = useWeeklyPlan();
   const setPlan = useSetWeeklyPlan();
   const { data: plannedSince } = usePlannedSince();
-  const { data: achievements } = useAchievements();
-  const { data: prefs } = useTrainingProfile();
+  const { data: achievements, isPending: achievementsPending } = useAchievements();
+  const { data: prefs, isPending: prefsPending } = useTrainingProfile();
   const trainingProfile = prefs?.trainingProfile ?? null;
   const deleteSession = useDeleteSession();
   const { data: exerciseNotes } = useAllExerciseNotes();
   const { data: sleepLogs } = useSleep();
   const { data: measurements } = useMeasurements();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const plannedWeekdays = useMemo(() => plan ?? [], [plan]);
   const { data: overrides } = useWeeklyPlanOverrides();
   const setOverride = useSetWeeklyPlanOverride();
@@ -457,7 +550,8 @@ export default function RegistroPage() {
     const year = now.getFullYear();
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const leadingBlanks = new Date(year, month, 1).getDay();
+    // Semana lunes→domingo: lunes = 0 hueco.
+    const leadingBlanks = (new Date(year, month, 1).getDay() + 6) % 7;
     const days: PlanDay[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
@@ -484,14 +578,28 @@ export default function RegistroPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   // Pestaña de Registro: métricas de entrenamiento vs. avances corporales.
-  const [regView, setRegView] = useState<"entreno" | "cuerpo">("entreno");
+  // Vive en la URL (?vista=cuerpo) para que el back desde una sesión la restaure.
+  const regView: "entreno" | "cuerpo" =
+    searchParams.get("vista") === "cuerpo" ? "cuerpo" : "entreno";
+  function setRegView(v: "entreno" | "cuerpo") {
+    router.replace(v === "cuerpo" ? `${pathname}?vista=cuerpo` : pathname, {
+      scroll: false,
+    });
+  }
   const [chartView, setChartView] = useState<"week" | "month">("week");
   // Tonelaje (carga externa) fuera de portada: en "Más métricas" plegable.
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [moreOpenRaw, setMoreOpenRaw] = useSessionState<"0" | "1">("registro:more", "0");
+  const moreOpen = moreOpenRaw === "1";
+  const setMoreOpen = (v: boolean) => setMoreOpenRaw(v ? "1" : "0");
+  const [historyOpenRaw, setHistoryOpenRaw] = useSessionState<"0" | "1">("registro:history", "0");
+  const historyOpen = historyOpenRaw === "1";
+  const setHistoryOpen = (v: boolean) => setHistoryOpenRaw(v ? "1" : "0");
   // Ventana de series efectivas: 7 días (default, medida directa vs marcas
   // semanales) o 30 días (promedio, más suave).
-  const [hardWindow, setHardWindow] = useState<"7d" | "30d">("7d");
+  const [hardWindow, setHardWindow] = useSessionState<"7d" | "30d">(
+    "registro:window",
+    "7d",
+  );
   const [showAllHistory, setShowAllHistory] = useState(false);
 
   // Historial agrupado por mes (orden desc de `data`), acotado a los últimos
@@ -526,13 +634,20 @@ export default function RegistroPage() {
     weekday: number;
   } | null>(null);
 
-  async function exportPeriod(from: Date | null, to: Date | null, tag: string) {
+  /** Devuelve el mensaje de error (para mostrarlo inline en el sheet) o null si
+   *  se descargó bien. */
+  async function exportPeriod(
+    from: Date | null,
+    to: Date | null,
+    tag: string,
+  ): Promise<string | null> {
     const sessions = (data ?? []).filter((s) => {
       const d = new Date(sessionDate(s));
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
     });
+    if (sessions.length === 0) return "No hay sesiones en este período.";
     const seriesRows = buildSessionsRows(sessions, exMap, exerciseNotes);
     const metricRows = buildMetricsSheet();
 
@@ -604,9 +719,9 @@ export default function RegistroPage() {
         .map(([id, note]): SheetCell[] => [exMap.get(id)?.name ?? "", note]),
     ];
 
-    setExportOpen(false);
+    const fileName = `wolf-${tag}.xlsx`;
     try {
-      await downloadWorkbook(`wolf-${tag}.xlsx`, [
+      await downloadWorkbook(fileName, [
         { name: "Instrucciones", rows: buildReadmeSheet(sessions) },
         { name: "Series", rows: seriesRows },
         { name: "Sesiones", rows: sessionRows },
@@ -617,7 +732,13 @@ export default function RegistroPage() {
       ]);
     } catch (e) {
       console.error("No se pudo generar el Excel:", e);
+      return "No se pudo generar el Excel. Probá de nuevo.";
     }
+    toast(
+      `Descargado ${fileName} (${sessions.length} ${sessions.length === 1 ? "sesión" : "sesiones"})`,
+      { tone: "success" },
+    );
+    return null;
   }
 
   /**
@@ -723,7 +844,7 @@ export default function RegistroPage() {
       [
         "Promedio entrenos/semana",
         w.workoutStats.completedCount > 0
-          ? Number(w.workoutStats.avgCompleted.toFixed(1))
+          ? Math.round(w.workoutStats.avgCompleted * 10) / 10
           : "",
         `${w.workoutStats.completedCount} semanas anteriores`,
       ],
@@ -739,15 +860,15 @@ export default function RegistroPage() {
       ["Músculo", "Series/sem", "MEV", "MAV", "MRV", "Estado"],
       ...(hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30).map((r) => [
         muscleEs(r.muscle),
-        Number(r.sets.toFixed(1)),
+        Math.round(r.sets * 10) / 10,
         r.mev,
         r.mav,
         r.mrv,
         statusOf(r),
       ]),
       [],
-      ["Sets por músculo (últ. 30 días)"],
-      ["Músculo", "Sets"],
+      ["Series por músculo (últ. 30 días)"],
+      ["Músculo", "Series"],
       ...metrics.muscleDonut.map((m) => [m.label, m.value]),
       [],
       ["Balance de patrones (volumen · últ. 30 días)"],
@@ -785,16 +906,37 @@ export default function RegistroPage() {
     setOverride.mutate({ weekStart: weekStartKey, weekdays: next });
   }
 
-  function handleDayClick(day: PlanDay) {
-    if (!day.isEditableWeek) return;
-    if (day.isCurrentWeek) {
-      setPendingToggle({ wkMs: day.wkMs, weekday: day.weekday });
+  // Solo se pide confirmación al QUITAR un día de la semana en curso (bajar la
+  // exigencia de una semana ya empezada). Agregar días o armar el plan por
+  // primera vez se aplica directo.
+  function requestToggle(wkMs: number, weekday: number) {
+    const isCurrent = wkMs === thisWeekMs;
+    const removing = resolvePlanned(wkMs).includes(weekday);
+    if (isCurrent && removing) {
+      setPendingToggle({ wkMs, weekday });
       return;
     }
-    toggleDayForWeek(day.wkMs, day.weekday);
+    toggleDayForWeek(wkMs, weekday);
   }
 
-  if (isLoading) {
+  function handleDayClick(day: PlanDay) {
+    if (!day.isEditableWeek) return;
+    requestToggle(day.wkMs, day.weekday);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    try {
+      await deleteSession.mutateAsync(pendingDelete);
+      setPendingDelete(null);
+      setDeleteError(null);
+      toast("Entrenamiento eliminado");
+    } catch {
+      setDeleteError("No se pudo eliminar. Probá de nuevo.");
+    }
+  }
+
+  if (isPending || prefsPending) {
     return (
       <div className="grid place-items-center py-16">
         <Spinner />
@@ -804,76 +946,101 @@ export default function RegistroPage() {
 
   // Cards que se PROMUEVEN a portada según perfil/objetivo (o van al fijo abajo
   // si no). Se construyen una vez y se ubican en UN solo lugar → sin duplicados.
+  const hardWindowDays = hardWindow === "7d" ? 7 : 30;
   const muscleSetsSection = (
     <SectionCard
       title="Series efectivas por grupo"
-      subtitle={
-        hardWindow === "7d"
-          ? "Series por semana · últimos 7 días · marcas MEV / MAV / MRV"
-          : "Promedio semanal · últimos 30 días · marcas MEV / MAV / MRV"
-      }
-      action={
-        <div className="w-28">
-          <Tabs
-            value={hardWindow}
-            onChange={setHardWindow}
-            options={[
-              { value: "7d", label: "7 días" },
-              { value: "30d", label: "30 días" },
-            ]}
-          />
+      subtitle={`Series/semana · últimos ${hardWindowDays} días`}
+      info={
+        <div className="flex flex-col gap-3">
+          <p>
+            <span className="text-fg font-medium">Qué es.</span> Las series que
+            hacés por semana en cada músculo, contra tres referencias de
+            volumen.
+          </p>
+          <div>
+            <p className="text-fg font-medium">Cómo leerlo</p>
+            <ul className="mt-1 flex flex-col gap-1">
+              <li>
+                • Bajo el mínimo efectivo (MEV): todavía es poco estímulo para
+                que ese músculo crezca. Sumá series si es una prioridad.
+              </li>
+              <li>
+                • Entre el MEV y el máximo recuperable (MRV): rango de trabajo.
+                El máximo volumen adaptativo (MAV) marca dónde rendirías mejor.
+              </li>
+              <li>
+                • Sobre el MRV: es una bandera de fatiga, no un error. Fijate si
+                estás recuperando bien.
+              </li>
+            </ul>
+          </div>
+          <p>
+            {hardWindow === "7d"
+              ? "Con 7 días ves el conteo directo de la última semana."
+              : "Con 30 días ves el promedio semanal, más suave pero menos puntual."}{" "}
+            Una serie sin RIR cargado también cuenta: si no registrás la
+            proximidad al fallo, las barras son un techo, no una medición.
+          </p>
+          <details className="rounded-md bg-surface-2 p-3">
+            <summary className="cursor-pointer text-fg font-medium">
+              Metodología y fuentes
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <p>
+                Serie efectiva: el piso de reps y la proximidad al fallo salen de
+                tu objetivo. Cada serie se reparte entre los músculos del
+                ejercicio: 1 para el motor principal y 0,5 para cada secundario,
+                el esquema que mejor explicó los datos entre tres probados (1,
+                0,5 y 0). <Ref id="16" />
+              </p>
+              <p>
+                Para hipertrofia, las marcas salen de las bandas de volumen
+                semanal por grupo muscular: menos de 9 series rinde 5,4%, entre
+                10 y 19 rinde 6,6% y 20 o más rinde 9,8%. <Ref id="1" /> De ahí
+                MEV 10, MAV 16 y MRV 20; los rendimientos decrecientes cerca de
+                11 coinciden. <Ref id="16" />
+              </p>
+              <p>
+                Para fuerza las marcas son más bajas porque su meseta llega
+                antes <Ref id="16" /> y las bandas por ejercicio topan cerca de
+                10. <Ref id="20" /> Esos tres valores están interpolados, así que
+                son los menos firmes.
+              </p>
+              <p>
+                No varían por músculo a propósito: las meta-regresiones agrupan
+                todos los músculos y no respaldan un valor distinto para pecho
+                que para glúteos. Referencia de campo: <Ref id="rp" />.
+              </p>
+              <p>
+                Pasarse del MRV no es hacer algo mal: la banda de 20+ es la que
+                más rinde, pero también la que más cuesta recuperar. Colores:
+                bajo el MEV ámbar, entre MEV y MRV verde, sobre el MRV rojo.
+              </p>
+              <p>
+                &ldquo;Volumen&rdquo; acá es el conteo de series cerca del
+                fallo, no el tonelaje (series × reps × peso), que sube con más
+                trabajo y no con mejor trabajo.
+              </p>
+            </div>
+          </details>
         </div>
       }
-      info={
-        <>
-          {hardWindow === "7d"
-            ? "Series efectivas por músculo (el piso de reps y la proximidad al fallo salen de tu objetivo), contadas en los últimos 7 días. Como las marcas son semanales, este es el conteo directo (sin promediar). "
-            : "Series efectivas por músculo (el piso de reps y la proximidad al fallo salen de tu objetivo), promediadas por semana sobre los últimos 30 días. "}
-          Cada serie se reparte entre los músculos del ejercicio: 1 para el
-          motor principal y 0,5 para cada secundario. Ese 0,5 es el esquema de
-          conteo que mejor explicó los datos entre los tres que se pusieron a
-          prueba (1, 0,5 y 0). <Ref id="16" />
-          {"\n\n"}
-          Una serie sin RIR cargado también cuenta como efectiva: si no
-          registrás la proximidad al fallo, estas barras son un techo, no una
-          medición.{"\n\n"}
-          Las marcas verticales son referencias de series por semana:{"\n"}
-          • MEV (Mínimo Volumen Efectivo): piso propuesto para que un músculo
-          crezca.{"\n"}
-          • MAV (Máximo Volumen Adaptativo): rango donde rendirías mejor.{"\n"}
-          • MRV (Máximo Volumen Recuperable): techo; pasarte acumularía fatiga
-          sin más ganancia.{"\n\n"}
-          <span className="text-fg">De dónde salen:</span> para hipertrofia, de
-          las bandas de volumen semanal por grupo muscular: menos de 9 series
-          rinde 5,4%, entre 10 y 19 rinde 6,6%, y 20 o más rinde 9,8%.{" "}
-          <Ref id="1" /> De ahí MEV 10 (piso de la banda productiva), MAV 16 (su
-          centro) y MRV 20. Los rendimientos decrecientes cerca de 11 coinciden.{" "}
-          <Ref id="16" />{"\n\n"}
-          Para fuerza las marcas son más bajas, porque su meseta llega antes{" "}
-          <Ref id="16" /> y las bandas de volumen por ejercicio topan alrededor
-          de 10. <Ref id="20" /> Esos tres valores están interpolados, así que
-          son los menos firmes.{"\n\n"}
-          No varían por músculo a propósito: las meta-regresiones agrupan todos
-          los músculos y no respaldan un valor distinto para pecho que para
-          glúteos. Antes esta app mostraba uno por músculo con heurísticas de
-          campo de <Ref id="rp" />.{"\n\n"}
-          <span className="text-fg">Pasarse del MRV no es hacer algo mal:</span>{" "}
-          la banda de 20+ es justamente la que más rinde. Lo que sube es el costo
-          de recuperación, no el error. Tomalo como bandera de fatiga, no como
-          diagnóstico.
-          {"\n\n"}
-          Color: bajo MEV = ámbar (por debajo de la referencia), entre MEV y
-          MRV = celeste, sobre MRV = rojo. El rojo marca costo de recuperación,
-          no un error: ahí el rendimiento por serie es el más alto, pero también
-          lo es la fatiga acumulada.{"\n\n"}
-          Ojo: "volumen" acá es el <span className="text-fg">conteo de
-          series</span> cerca del fallo, no el tonelaje (series×reps×peso), que
-          sube con más trabajo y no con mejor trabajo.
-        </>
-      }
     >
+      <div className="w-full mb-3">
+        <Tabs
+          value={hardWindow}
+          onChange={setHardWindow}
+          ariaLabel="Ventana de tiempo"
+          options={[
+            { value: "7d", label: "7 días" },
+            { value: "30d", label: "30 días" },
+          ]}
+        />
+      </div>
       <MuscleSetsBar
         data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
+        windowDays={hardWindow === "7d" ? 7 : 30}
       />
     </SectionCard>
   );
@@ -893,6 +1060,29 @@ export default function RegistroPage() {
       <RetentionCard r={metrics.retention} />
     ) : null;
 
+  const lastThree = (data ?? []).slice(0, 3);
+  const weeklyAvg =
+    weekMetrics.workoutStats.completedCount > 0
+      ? `${fmtNum(weekMetrics.workoutStats.avgCompleted, 1)}/sem`
+      : null;
+  const summaryParts = [
+    `${fmtNum(metrics.count)} ${metrics.count === 1 ? "entreno" : "entrenos"}`,
+    weeklyAvg,
+    metrics.avgDurationSec
+      ? `${fmtNum(Math.round(metrics.avgDurationSec / 60))} min promedio`
+      : null,
+  ].filter((x): x is string => x !== null);
+
+  function openFullHistory() {
+    setHistoryOpen(true);
+    // Esperamos al render para que el bloque ya esté expandido al hacer scroll.
+    requestAnimationFrame(() => {
+      document
+        .getElementById("historial")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   return (
     <div>
       <PageHeader
@@ -900,172 +1090,45 @@ export default function RegistroPage() {
         subtitle="Tu progreso y métricas"
         action={
           <div className="flex items-center gap-1">
-            <Link href="/perfil" aria-label="Mi perfil">
-              <Button size="sm" variant="ghost">
-                <UserCog className="size-4" />
-              </Button>
-            </Link>
             {!!data?.length && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setExportOpen(true)}
-                aria-label="Exportar Excel"
-              >
-                <Download className="size-4" />
-              </Button>
+              <IconButton label="Exportar a Excel" onClick={() => setExportOpen(true)}>
+                <Download className="size-5" />
+              </IconButton>
             )}
           </div>
         }
       />
 
-      {!data?.length ? (
+      {isError && !data ? (
+        <ErrorState
+          title="No pudimos cargar tu historial"
+          description="Revisá tu conexión. Tus datos están guardados."
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
+      ) : !data?.length ? (
         <EmptyState
           icon={<LineChart className="size-8" />}
           title="Sin entrenamientos todavía"
           description="Cuando completes una rutina vas a ver tus métricas acá."
         />
       ) : (
-        <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-2.5">
-            <Stat
-              label="Días esta semana"
-              value={weekMetrics.workoutStats.current}
-              unit="días"
-              sub="entrenados"
-              delta={weekMetrics.workoutStats.currentVsLastPct}
-              deltaSuffix="vs sem. pasada"
-              secondary={
-                weekMetrics.workoutStats.lastCompleted != null
-                  ? `sem. anterior: ${weekMetrics.workoutStats.lastCompleted}`
-                  : undefined
-              }
-              info={
-                "Días distintos entrenados en la semana en curso. La constancia es el driver base: sin adherencia no hay volumen.\n\n" +
-                "El % compara lunes→hoy con el mismo tramo de la semana pasada."
-              }
-            />
-            <Stat
-              label="Series efectivas"
-              value={weekMetrics.hardStats.current}
-              unit="sets"
-              sub="hasta ahora"
-              delta={weekMetrics.hardStats.currentVsLastPct}
-              deltaSuffix="vs sem. pasada"
-              secondary={
-                weekMetrics.hardStats.lastCompleted != null
-                  ? `sem. anterior: ${weekMetrics.hardStats.lastCompleted} sets`
-                  : undefined
-              }
-              info={
-                <>
-                  Series de trabajo (≥{goalParams(trainingProfile).hardSetMinReps}{" "}
-                  reps y cerca del fallo, según tu objetivo) acumuladas en la
-                  semana en curso. Es el mejor indicador de estímulo para
-                  hipertrofia (<Ref id="1" />, <Ref id="7" />).{"\n\n"}
-                  El % compara lunes→hoy con el mismo tramo de la semana pasada.
-                </>
-              }
+        <>
+          {/* División: métricas de entrenamiento vs. avances corporales. Va
+              arriba y fija para llegar a Cuerpo (peso, sueño) sin scrollear. */}
+          <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-bg/90 backdrop-blur">
+            <Tabs
+              value={regView}
+              onChange={setRegView}
+              ariaLabel="Vista de Registro"
+              options={[
+                { value: "entreno", label: "Entrenamiento" },
+                { value: "cuerpo", label: "Cuerpo" },
+              ]}
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5">
-            <button
-              onClick={() => setMonthOpen(true)}
-              className="card p-3.5 rounded-lg text-left hover:ring-1 hover:ring-primary transition"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted">Entrenos</p>
-                <ChevronRight className="size-3.5 text-muted" />
-              </div>
-              <p className="text-xl font-bold mt-1.5 tracking-tight">
-                {metrics.count}
-              </p>
-              <p className="text-[10px] text-muted mt-1">ver mes a mes</p>
-            </button>
-            <Stat
-              label="Racha"
-              info={
-                "Semanas consecutivas en las que cumpliste tu plan (los días que te propusiste entrenar). Se corta si una semana no llegás a la meta."
-              }
-              value={
-                plannedWeekdays.length === 0 ? (
-                  "—"
-                ) : (
-                  <span
-                    className={clsx(
-                      "inline-flex items-center gap-1",
-                      planStats.streakWeeks > 0 && "text-warning",
-                    )}
-                  >
-                    {planStats.streakWeeks} sem
-                    {planStats.streakWeeks > 0 && (
-                      <Flame className="size-4" fill="currentColor" />
-                    )}
-                  </span>
-                )
-              }
-            />
-            <Stat
-              label="Cumplimiento 30d"
-              info={
-                "Porcentaje de días planificados que efectivamente entrenaste en los últimos 30 días."
-              }
-              value={
-                plannedWeekdays.length === 0
-                  ? "—"
-                  : `${planStats.compliance.pct}%`
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <Stat
-              label="Promedio semanal"
-              value={
-                weekMetrics.workoutStats.completedCount > 0
-                  ? weekMetrics.workoutStats.avgCompleted.toFixed(1)
-                  : "—"
-              }
-              unit="/sem"
-              secondary={`${weekMetrics.workoutStats.completedCount} semanas anteriores`}
-              info={
-                "Promedio de entrenos por semana sobre las semanas anteriores (ya terminadas): Σ(entrenos por semana) / cantidad de semanas anteriores."
-              }
-            />
-            <Stat
-              label="Duración promedio"
-              info="Promedio de duración de tus sesiones finalizadas."
-              value={
-                metrics.avgDurationSec
-                  ? formatDuration(metrics.avgDurationSec)
-                  : "—"
-              }
-            />
-          </div>
-
-          <WeeklyPlanCard
-            currentWeekPlanned={currentWeekPlanned}
-            saveError={setPlan.isError || setOverride.isError}
-            planStats={planStats}
-            expanded={planExpanded}
-            onToggleExpanded={() => setPlanExpanded((v) => !v)}
-            onDayClick={handleDayClick}
-            onToggleToday={(weekday) =>
-              setPendingToggle({ wkMs: thisWeekMs, weekday })
-            }
-          />
-
-          {/* División: métricas de entrenamiento vs. avances corporales. */}
-          <Tabs
-            value={regView}
-            onChange={setRegView}
-            options={[
-              { value: "entreno", label: "Entrenamiento" },
-              { value: "cuerpo", label: "Cuerpo" },
-            ]}
-          />
-
+        <div className="flex flex-col gap-5 mt-3">
           {regView === "cuerpo" && (
             <div>
               <p className="text-xs text-muted mb-1">
@@ -1078,7 +1141,154 @@ export default function RegistroPage() {
 
           {regView === "entreno" && (
             <>
-          {/* Portada específica del objetivo (métricas promovidas). */}
+          {/* Objetivo: sin él casi todas las métricas de portada quedan ocultas. */}
+          {prefs && trainingProfile == null && (
+            <div className="card rounded-xl p-4 flex flex-col gap-3">
+              <p className="text-sm font-medium">
+                Elegí tu objetivo para ver las métricas que importan
+              </p>
+              <Link
+                href="/perfil"
+                className={buttonClasses({ size: "md", className: "w-full" })}
+              >
+                Elegir objetivo
+              </Link>
+            </div>
+          )}
+          {trainingProfile && (
+            <Link
+              href="/perfil"
+              className="self-start inline-flex items-center min-h-11 -my-2 rounded-full bg-surface-2 px-3 text-xs text-muted hover:text-fg"
+            >
+              Objetivo: {GOAL_LABEL[trainingProfile]} · cambiar
+            </Link>
+          )}
+
+          <div className="flex flex-col gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <Stat
+                label="Racha"
+                info={
+                  "Semanas consecutivas en las que cumpliste tu plan (los días que te propusiste entrenar). Se corta si una semana no llegás a la meta."
+                }
+                value={
+                  plannedWeekdays.length === 0 ? (
+                    "—"
+                  ) : (
+                    <span
+                      className={clsx(
+                        "inline-flex items-center gap-1",
+                        planStats.streakWeeks > 0 && "text-warning",
+                      )}
+                    >
+                      {planStats.streakWeeks} sem
+                      {planStats.streakWeeks > 0 && (
+                        <Flame className="size-4" fill="currentColor" />
+                      )}
+                    </span>
+                  )
+                }
+              />
+              <Stat
+                label="Cumplimiento 30d"
+                info={
+                  "Porcentaje de días planificados que efectivamente entrenaste en los últimos 30 días."
+                }
+                value={
+                  plannedWeekdays.length === 0
+                    ? "—"
+                    : `${planStats.compliance.pct}%`
+                }
+              />
+              <Stat
+                label="Días esta semana"
+                value={weekMetrics.workoutStats.current}
+                unit="días"
+                sub="entrenados"
+                delta={weekMetrics.workoutStats.currentVsLastPct}
+                deltaSuffix="vs sem. pasada"
+                secondary={
+                  weekMetrics.workoutStats.lastCompleted != null
+                    ? `sem. anterior: ${weekMetrics.workoutStats.lastCompleted}`
+                    : undefined
+                }
+                info={
+                  "Días distintos entrenados en la semana en curso. La constancia es el driver base: sin adherencia no hay volumen.\n\n" +
+                  "El % compara lunes→hoy con el mismo tramo de la semana pasada."
+                }
+              />
+              <Stat
+                label="Series efectivas"
+                value={weekMetrics.hardStats.current}
+                unit="series"
+                sub="hasta ahora"
+                delta={weekMetrics.hardStats.currentVsLastPct}
+                deltaSuffix="vs sem. pasada"
+                secondary={
+                  weekMetrics.hardStats.lastCompleted != null
+                    ? `sem. anterior: ${fmtNum(weekMetrics.hardStats.lastCompleted)} series`
+                    : undefined
+                }
+                info={
+                  <>
+                    Series de trabajo (≥{goalParams(trainingProfile).hardSetMinReps}{" "}
+                    reps y cerca del fallo, según tu objetivo) acumuladas en la
+                    semana en curso. Es el mejor indicador de estímulo para
+                    hipertrofia (<Ref id="1" />, <Ref id="7" />).{"\n\n"}
+                    El % compara lunes→hoy con el mismo tramo de la semana pasada.
+                  </>
+                }
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setMonthOpen(true)}
+              className="flex items-center justify-between gap-2 min-h-11 text-left text-xs text-muted hover:text-fg"
+            >
+              <span>{summaryParts.join(" · ")}</span>
+              <span className="inline-flex items-center gap-0.5 shrink-0">
+                mes a mes <ChevronRight className="size-3.5" />
+              </span>
+            </button>
+          </div>
+
+          {/* Últimos entrenos: lo más frecuente es revisar o corregir el de ayer. */}
+          <div className="card rounded-xl p-4">
+            <p className="text-sm font-semibold mb-3">Últimos entrenos</p>
+            <ul className="flex flex-col gap-1.5">
+              {lastThree.map((s) => (
+                <SessionRow
+                  key={s.id}
+                  s={s}
+                  onDelete={() => {
+                    setDeleteError(null);
+                    setPendingDelete(s.id);
+                  }}
+                />
+              ))}
+            </ul>
+            <Button
+              variant="ghost"
+              className="w-full mt-2"
+              onClick={openFullHistory}
+            >
+              Ver historial completo
+            </Button>
+          </div>
+
+          <WeeklyPlanCard
+            currentWeekPlanned={currentWeekPlanned}
+            saveError={setPlan.isError || setOverride.isError}
+            planStats={planStats}
+            expanded={planExpanded}
+            onToggleExpanded={() => setPlanExpanded((v) => !v)}
+            onDayClick={handleDayClick}
+            onToggleToday={(weekday) => requestToggle(thisWeekMs, weekday)}
+          />
+
+          {/* Portada específica del objetivo (métricas promovidas). Hasta
+              conocer el perfil se reserva el lugar con un skeleton de alto
+              fijo, así las cards no se reordenan bajo el dedo. */}
           <GoalMetrics
             trainingProfile={trainingProfile}
             sessions={data ?? []}
@@ -1088,7 +1298,9 @@ export default function RegistroPage() {
             }
           />
 
-          {!!achievements?.length && (
+          {achievementsPending ? (
+            <Skeleton className="h-24 w-full rounded-xl" />
+          ) : !!achievements?.length && (
             <SectionCard
               title="Logros"
               subtitle="Récords e hitos recientes"
@@ -1110,7 +1322,6 @@ export default function RegistroPage() {
             </SectionCard>
           )}
 
-
           {/* Series efectivas por grupo (MEV/MAV/MRV): en Hipertrofia va arriba
               (portada); acá abajo solo en Resistencia / sin perfil. En Fuerza no
               aplica (esos umbrales son de hipertrofia). */}
@@ -1130,7 +1341,7 @@ export default function RegistroPage() {
 
           {/* Más métricas (off-portada): tonelaje, músculos entrenados, récords. */}
           <button
-            onClick={() => setMoreOpen((v) => !v)}
+            onClick={() => setMoreOpen(!moreOpen)}
             className="card rounded-xl flex items-center justify-between w-full p-4"
             aria-expanded={moreOpen}
           >
@@ -1148,19 +1359,18 @@ export default function RegistroPage() {
                 title="Volumen (tonelaje)"
                 subtitle="Carga externa · no es tu progreso"
                 info="Series × reps × peso. Sirve para comparar la misma rutina en el tiempo, no como indicador de progreso: sube con más trabajo, no con mejor trabajo. Lo que impulsa la hipertrofia es el conteo de series efectivas."
-                action={
-                  <div className="w-40">
-                    <Tabs
-                      value={chartView}
-                      onChange={setChartView}
-                      options={[
-                        { value: "week", label: "Semanal" },
-                        { value: "month", label: "Anual" },
-                      ]}
-                    />
-                  </div>
-                }
               >
+                <div className="w-full mb-3">
+                  <Tabs
+                    value={chartView}
+                    onChange={setChartView}
+                    ariaLabel="Período del gráfico"
+                    options={[
+                      { value: "week", label: "Semanal" },
+                      { value: "month", label: "Anual" },
+                    ]}
+                  />
+                </div>
                 <VolumeChart
                   data={
                     chartView === "week" ? metrics.weekChart : metrics.monthChart
@@ -1171,7 +1381,7 @@ export default function RegistroPage() {
               {metrics.muscleDonut.length > 0 && (
                 <SectionCard
                   title="Músculos entrenados"
-                  subtitle="Sets · últimos 30 días"
+                  subtitle="Series · últimos 30 días"
                   info="Distribución de las series por grupo muscular en los últimos 30 días, con la misma capa de contribución que el resto de las métricas: cada serie cuenta 1 para el motor principal del ejercicio y 0,5 para cada secundario. Por eso los totales son fraccionales y suman más que la cantidad de series hechas — un compuesto alimenta varios grupos a la vez. A diferencia de 'Series efectivas por grupo', acá no se filtra por RIR: es en qué gastás las series, no cuánto volumen efectivo acumulaste."
                 >
                   <MuscleDonut data={metrics.muscleDonut} />
@@ -1206,7 +1416,7 @@ export default function RegistroPage() {
                           </span>
                         </span>
                         <span className="text-accent font-medium shrink-0">
-                          {pr.orm} kg
+                          {fmtNum(pr.orm)} kg
                         </span>
                       </li>
                     ))}
@@ -1225,15 +1435,15 @@ export default function RegistroPage() {
             </div>
           )}
 
-          <div>
+          <div id="historial" className="scroll-mt-16">
             <button
-              onClick={() => setHistoryOpen((v) => !v)}
-              className="flex items-center justify-between w-full mb-2"
+              onClick={() => setHistoryOpen(!historyOpen)}
+              className="flex items-center justify-between w-full min-h-11 mb-2"
               aria-expanded={historyOpen}
             >
-              <p className="text-sm font-medium">Historial</p>
+              <p className="text-sm font-semibold">Historial</p>
               <span className="flex items-center gap-2 text-xs text-muted">
-                {data.length} entrenos
+                {fmtNum(data.length)} entrenos
                 <ChevronDown
                   className={clsx(
                     "size-4 transition-transform",
@@ -1244,61 +1454,41 @@ export default function RegistroPage() {
             </button>
             {historyOpen && (
               <>
-            {historyGroups.map((g) => (
-              <div key={g.key}>
-                <p className="text-[11px] text-muted uppercase tracking-wide mt-3 mb-1.5 capitalize">
-                  {g.label} · {g.items.length}
-                </p>
-                <ul className="flex flex-col gap-1.5">
-                  {g.items.map((s) => (
-                    <li key={s.id}>
-                      <Link
-                        href={`/entrenar/${s.id}`}
-                        className="card flex items-center gap-3 px-3 py-2.5 hover:ring-1 hover:ring-primary transition"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-sm truncate">{s.name}</p>
-                          <p className="text-[11px] text-muted">
-                            {formatDate(sessionDate(s))} · {sessionSets(s)} series ·{" "}
-                            {formatVolume(sessionVolume(s))}
-                            {s.duration_seconds
-                              ? ` · ${formatDuration(s.duration_seconds)}`
-                              : ""}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
+                {historyGroups.map((g) => (
+                  <div key={g.key}>
+                    <p className="text-xs text-muted uppercase tracking-wide mt-3 mb-1.5 capitalize">
+                      {g.label} · {g.items.length}
+                    </p>
+                    <ul className="flex flex-col gap-1.5">
+                      {g.items.map((s) => (
+                        <SessionRow
+                          key={s.id}
+                          s={s}
+                          onDelete={() => {
+                            setDeleteError(null);
                             setPendingDelete(s.id);
                           }}
-                          aria-label="Eliminar entrenamiento"
-                          className="size-8 grid place-items-center rounded text-muted hover:text-danger shrink-0"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                        <ChevronRight className="size-4 text-muted shrink-0" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {!showAllHistory && data.length > HISTORY_PREVIEW && (
-              <Button
-                variant="ghost"
-                className="w-full mt-3"
-                onClick={() => setShowAllHistory(true)}
-              >
-                Ver todos ({data.length})
-              </Button>
-            )}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                {!showAllHistory && data.length > HISTORY_PREVIEW && (
+                  <Button
+                    variant="ghost"
+                    className="w-full mt-3"
+                    onClick={() => setShowAllHistory(true)}
+                  >
+                    Ver todos ({fmtNum(data.length)})
+                  </Button>
+                )}
               </>
             )}
           </div>
             </>
           )}
         </div>
+        </>
       )}
 
       <ExportModal
@@ -1308,31 +1498,19 @@ export default function RegistroPage() {
         daysAgo={daysAgo}
       />
 
-      <Modal
+      <ConfirmDialog
         open={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
         title="Eliminar entrenamiento"
-      >
-        <p className="text-sm text-muted mb-4">
-          Se va a borrar esta sesión del historial, con sus series y su volumen.
-          No se puede deshacer.
-        </p>
-        <div className="flex gap-2 justify-end">
-          <Button variant="secondary" onClick={() => setPendingDelete(null)}>
-            Cancelar
-          </Button>
-          <Button
-            variant="danger"
-            loading={deleteSession.isPending}
-            onClick={async () => {
-              if (pendingDelete) await deleteSession.mutateAsync(pendingDelete);
-              setPendingDelete(null);
-            }}
-          >
-            Eliminar
-          </Button>
-        </div>
-      </Modal>
+        description="Se va a borrar esta sesión del historial, con sus series y su volumen. No se puede deshacer."
+        confirmLabel="Eliminar"
+        loading={deleteSession.isPending}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => {
+          setPendingDelete(null);
+          setDeleteError(null);
+        }}
+      />
 
       <Modal
         open={monthOpen}
@@ -1366,34 +1544,61 @@ export default function RegistroPage() {
         )}
       </Modal>
 
-      <Modal
+      <ConfirmDialog
         open={pendingToggle !== null}
-        onClose={() => setPendingToggle(null)}
-        title="Solo te mentís a vos"
-      >
-        <p className="text-sm text-muted mb-4">
-          Estás editando el plan de esta semana, la que ya está en curso.
-          Cambiar la meta ahora no borra lo que ya entrenaste (o no
-          entrenaste) — solo ajusta cuánto te exigís de acá al domingo.
-          ¿Confirmás el cambio?
-        </p>
-        <div className="flex gap-2 justify-end">
-          <Button variant="secondary" onClick={() => setPendingToggle(null)}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={() => {
-              if (pendingToggle) {
-                toggleDayForWeek(pendingToggle.wkMs, pendingToggle.weekday);
-              }
-              setPendingToggle(null);
-            }}
-          >
-            Confirmar
-          </Button>
-        </div>
-      </Modal>
+        title="¿Cambiar la meta de esta semana?"
+        description="Vas a quitar un día de la semana en curso. Esto no borra lo que ya entrenaste: solo ajusta cuánto te exigís de acá al domingo."
+        confirmLabel="Confirmar"
+        tone="primary"
+        onConfirm={() => {
+          if (pendingToggle) {
+            toggleDayForWeek(pendingToggle.wkMs, pendingToggle.weekday);
+          }
+          setPendingToggle(null);
+        }}
+        onCancel={() => setPendingToggle(null)}
+      />
     </div>
+  );
+}
+
+/** Fila del historial: el Link y el botón de borrar son hermanos (un button
+ *  dentro de un a es HTML inválido y confunde al lector de pantalla). */
+function SessionRow({
+  s,
+  onDelete,
+}: {
+  s: HistorySession;
+  onDelete: () => void;
+}) {
+  const date = formatDate(sessionDate(s));
+  return (
+    <li>
+      <div className="card flex items-center pr-1 hover:ring-1 hover:ring-primary transition">
+        <Link
+          href={`/entrenar/${s.id}`}
+          className="flex min-w-0 flex-1 items-center gap-3 pl-3 py-2.5 min-h-11"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm truncate">{s.name}</p>
+            <p className="text-xs text-muted">
+              {date} · {fmtNum(sessionSets(s))} series · {formatVolume(sessionVolume(s))}
+              {s.duration_seconds
+                ? ` · ${fmtNum(Math.round(s.duration_seconds / 60))} min`
+                : ""}
+            </p>
+          </div>
+          <ChevronRight className="size-4 text-muted shrink-0" />
+        </Link>
+        <IconButton
+          label={`Eliminar entreno del ${date}`}
+          tone="danger"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4" />
+        </IconButton>
+      </div>
+    </li>
   );
 }
 
@@ -1409,21 +1614,38 @@ function ExportModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onExport: (from: Date | null, to: Date | null, tag: string) => void;
+  onExport: (from: Date | null, to: Date | null, tag: string) => Promise<string | null>;
   daysAgo: (n: number) => Date;
 }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // Tag del preset en curso: el sheet queda abierto con ese botón en loading.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const presets: { label: string; run: () => void }[] = [
-    { label: "Últimos 7 días", run: () => onExport(daysAgo(7), null, "7d") },
-    { label: "Últimos 30 días", run: () => onExport(daysAgo(30), null, "30d") },
-    { label: "Últimos 90 días", run: () => onExport(daysAgo(90), null, "90d") },
-    { label: "Todo", run: () => onExport(null, null, "todo") },
+  async function run(f: Date | null, t: Date | null, tag: string) {
+    setBusy(tag);
+    setError(null);
+    const err = await onExport(f, t, tag);
+    setBusy(null);
+    if (err) setError(err);
+    else onClose();
+  }
+
+  const presets: { label: string; tag: string; from: () => Date | null }[] = [
+    { label: "Últimos 7 días", tag: "7d", from: () => daysAgo(7) },
+    { label: "Últimos 30 días", tag: "30d", from: () => daysAgo(30) },
+    { label: "Últimos 90 días", tag: "90d", from: () => daysAgo(90) },
+    { label: "Todo", tag: "todo", from: () => null },
   ];
 
   return (
-    <Modal open={open} onClose={onClose} title="Exportar Excel">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Exportar Excel"
+      dismissible={busy === null}
+    >
       <p className="text-sm text-muted mb-3">
         Elegí un período. Se descarga un Excel con tus series (una fila por
         serie), sesiones, sueño, medidas, comentarios y métricas. La primera
@@ -1432,48 +1654,84 @@ function ExportModal({
       </p>
       <div className="flex flex-col gap-2">
         {presets.map((p) => (
-          <button
-            key={p.label}
-            onClick={p.run}
-            className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2.5 text-sm hover:text-fg text-left"
+          <Button
+            key={p.tag}
+            variant="secondary"
+            className="w-full justify-between"
+            loading={busy === p.tag}
+            disabled={busy !== null}
+            onClick={() => run(p.from(), null, p.tag)}
           >
             {p.label}
             <Download className="size-4 text-muted" />
-          </button>
+          </Button>
         ))}
       </div>
 
       <div className="mt-4 border-t border-border pt-4">
         <p className="text-xs text-muted mb-2">Rango personalizado</p>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="h-9 flex-1 rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
-          />
-          <span className="text-muted text-xs">a</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="h-9 flex-1 rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
-          />
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Desde">
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              className="h-11 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+            />
+          </Field>
+          <Field label="Hasta">
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className="h-11 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+            />
+          </Field>
         </div>
         <Button
           className="w-full mt-3"
-          disabled={!from && !to}
+          loading={busy === "rango"}
+          disabled={(!from && !to) || busy !== null}
           onClick={() => {
             const toEnd = toDate(to);
             if (toEnd) toEnd.setHours(23, 59, 59, 999);
-            onExport(toDate(from), toEnd, "rango");
+            run(toDate(from), toEnd, "rango");
           }}
         >
           Exportar rango
         </Button>
       </div>
+      {error && (
+        <p role="alert" className="text-xs text-danger mt-3">
+          {error}
+        </p>
+      )}
     </Modal>
   );
+}
+
+type DayState = "done" | "missed" | "extra" | "planned" | "none";
+function state(pd: PlanDay): DayState {
+  if (!pd.planned) return pd.completed ? "extra" : "none";
+  if (!pd.judged) return "none";
+  if (pd.completed) return "done";
+  return pd.isPast ? "missed" : "planned";
+}
+function dayStateLabel(pd: PlanDay): string {
+  switch (state(pd)) {
+    case "done":
+      return "cumplido";
+    case "missed":
+      return "faltó";
+    case "extra":
+      return "entrenaste sin plan";
+    case "planned":
+      return "planeado";
+    default:
+      return "sin plan";
+  }
 }
 
 function WeeklyPlanCard({
@@ -1516,20 +1774,23 @@ function WeeklyPlanCard({
         {currentWeekPlanned.length === 1 ? "día" : "días"}.
       </p>
       <div className="flex gap-1.5 mb-1">
-        {WEEKDAYS.map((label, weekday) => {
+        {WEEKDAYS.map(({ weekday, short, full }) => {
           const active = currentWeekPlanned.includes(weekday);
           return (
             <button
               key={weekday}
+              type="button"
               onClick={() => onToggleToday(weekday)}
+              aria-label={full}
+              aria-pressed={active}
               className={clsx(
-                "size-9 rounded-md text-sm font-medium transition",
+                "size-11 rounded-md text-sm font-medium transition",
                 active
                   ? "bg-primary text-primary-fg"
                   : "bg-surface-2 text-muted hover:text-fg",
               )}
             >
-              {label}
+              {short}
             </button>
           );
         })}
@@ -1543,8 +1804,10 @@ function WeeklyPlanCard({
       {expanded && (
         <div className="mt-4">
           <div className="grid grid-cols-7 gap-1.5 text-center text-xs text-muted mb-1.5">
-            {WEEKDAYS.map((d, i) => (
-              <span key={i}>{d}</span>
+            {WEEKDAYS.map((d) => (
+              <span key={d.weekday} aria-hidden="true">
+                {d.short}
+              </span>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1.5">
@@ -1555,10 +1818,11 @@ function WeeklyPlanCard({
               <button
                 key={pd.day}
                 type="button"
+                aria-label={`${pd.day}: ${dayStateLabel(pd)}${pd.isEditableWeek ? ". Tocá para cambiar el plan" : ""}`}
                 disabled={!pd.isEditableWeek}
                 onClick={() => onDayClick(pd)}
                 className={clsx(
-                  "aspect-square rounded-md grid place-items-center text-xs font-medium",
+                  "aspect-square rounded-md flex flex-col items-center justify-center text-xs font-medium",
                   pd.isEditableWeek && "cursor-pointer",
                   !pd.isEditableWeek && "cursor-default",
                   !pd.planned && !pd.completed && "bg-surface-2 text-muted",
@@ -1586,9 +1850,28 @@ function WeeklyPlanCard({
                 )}
               >
                 {pd.day}
+                {state(pd) === "done" && <Check className="size-2.5" aria-hidden="true" />}
+                {state(pd) === "missed" && <X className="size-2.5" aria-hidden="true" />}
               </button>
             ))}
           </div>
+          <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+            <li className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-sm bg-success/20" /> Cumplido
+            </li>
+            <li className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-sm bg-danger/20" /> Faltó
+            </li>
+            <li className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-sm ring-1 ring-success/50" /> Extra
+            </li>
+            <li className="inline-flex items-center gap-1">
+              <span className="size-2.5 rounded-sm ring-1 ring-primary/40" /> Planeado
+            </li>
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            Tocá un día de las próximas semanas para ajustar solo esa semana.
+          </p>
         </div>
       )}
     </div>

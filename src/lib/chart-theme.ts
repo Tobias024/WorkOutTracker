@@ -96,7 +96,9 @@ const girly: ChartColors = {
   neutral: "#917974",
   categorical: GIRLY_CAT,
   other: "#8c7a78",
-  series: ["#b25c7d", "#d98c6a", "#8a9a6b", "#c98fb0"],
+  // Familias distintas (malva / azul / verde / naranja): con dos rosados
+  // contiguos la barra empuje/tirón no se distinguía. Todos ≥3:1 vs surface.
+  series: ["#86395a", "#3d7fa8", "#2a7048", "#c4693f"],
   tip: {
     background: "#fdf6f0",
     border: "1px solid #e6c9c6",

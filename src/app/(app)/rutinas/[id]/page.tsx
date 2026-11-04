@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -14,19 +14,32 @@ import {
   ChevronDown,
   Play,
   Check,
-  Copy,
   CopyPlus,
   Repeat,
   X,
+  MoreHorizontal,
 } from "lucide-react";
-import { Button, Input, Spinner, Badge, Modal } from "@/components/ui";
+import {
+  Button,
+  buttonClasses,
+  iconButtonClasses,
+  IconButton,
+  Input,
+  Spinner,
+  Skeleton,
+  Badge,
+  Modal,
+  ConfirmDialog,
+  EmptyState,
+} from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
-import { copyToClipboard } from "@/lib/clipboard";
+import { undoable } from "@/lib/toast";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
+import { ShareLinkModal, SheetMenuItem } from "@/components/ShareLinkModal";
 import { DurationField } from "@/components/DurationField";
 import type { MetricKind, TrainingProfile } from "@/lib/types";
 import { planOutOfRange, repRangeLabel } from "@/lib/goal-params";
@@ -49,19 +62,24 @@ import { useTrainingProfile } from "@/hooks/useGoal";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { primaryMuscle } from "@/lib/muscle-contributions";
+import { clsx } from "@/lib/clsx";
 import type { Exercise } from "@/lib/types";
 
 export default function RoutineEditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
-  const { data, isLoading } = useRoutine(id);
+  const routineQuery = useRoutine(id);
+  const { data } = routineQuery;
   const exMap = useExerciseMap();
   const updateRoutine = useUpdateRoutine(id);
   const ops = useRoutineExerciseOps(id);
   const del = useDeleteRoutine();
   const share = useShareRoutine();
   const start = useStartWorkout();
+  // Cualquier mutación en vuelo cuenta como "guardando": las de la rutina son
+  // las únicas que se disparan desde esta pantalla.
+  const saving = useIsMutating() > 0;
   // Último peso/reps por ejercicio (sesión terminada más reciente). Solo se
   // muestra como referencia: no pisa el plan de la rutina.
   const { data: lastLogs } = useLastExerciseLogs(
@@ -71,44 +89,117 @@ export default function RoutineEditorPage() {
   const trainingProfile = prefs?.trainingProfile ?? null;
 
   const [picker, setPicker] = useState(false);
-  const [shareModal, setShareModal] = useState<string | null>(null);
-  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
+  const [menu, setMenu] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
-  const [copyError, setCopyError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Ejercicios "quitados" mientras corre el toast de Deshacer: se esconden
+  // acá y la mutación real recién sale al vencer el toast.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // Card recién movida: ring breve para que se vea adónde fue.
+  const [movedId, setMovedId] = useState<string | null>(null);
+  const movedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (movedTimer.current) clearTimeout(movedTimer.current);
+    },
+    [],
+  );
 
-  if (isLoading || !data) {
+  if (!data) {
+    if (routineQuery.isPending) {
+      return (
+        <div className="flex flex-col gap-3" aria-busy="true">
+          <Skeleton className="h-11 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      );
+    }
     return (
-      <div className="grid place-items-center py-16">
-        <Spinner />
-      </div>
+      <EmptyState
+        title="No encontramos esta rutina"
+        description="Puede que la hayas borrado o que no tengas acceso. Si fue un problema de conexión, reintentá."
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link href="/rutinas" className={buttonClasses({ variant: "secondary" })}>
+              Volver a rutinas
+            </Link>
+            <Button
+              loading={routineQuery.isFetching}
+              onClick={() => void routineQuery.refetch()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        }
+      />
     );
   }
 
-  const { routine, exercises } = data;
+  const { routine } = data;
+  const exercises = data.exercises.filter((r) => !hidden.has(r.id));
+  const addedIds = new Set(exercises.map((r) => r.exercise_id));
 
   async function handleShare() {
-    const code = await share.mutateAsync(routine);
-    const base =
-      process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
-    setCopyState("idle");
-    setShareModal(`${base}/r/${code}`);
-  }
-
-  async function handleCopyShare() {
-    if (!shareModal) return;
-    const ok = await copyToClipboard(shareModal);
-    setCopyState(ok ? "ok" : "fail");
+    setMenu(false);
+    setActionError(null);
+    try {
+      const code = await share.mutateAsync(routine);
+      const base = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
+      setShareUrl(`${base}/r/${code}`);
+    } catch {
+      setActionError("No pudimos generar el link. Probá de nuevo.");
+    }
   }
 
   async function handleStart() {
     if (!exercises.length) return;
-    const sessionId = await start.mutateAsync(id);
-    router.push(`/entrenar/${sessionId}`);
+    try {
+      const sessionId = await start.mutateAsync(id);
+      router.push(`/entrenar/${sessionId}`);
+    } catch {
+      // El toast global de mutaciones ya avisa del error.
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteError(null);
+    try {
+      await del.mutateAsync(id);
+      router.push("/rutinas");
+    } catch {
+      setDeleteError("No pudimos eliminar la rutina. Probá de nuevo.");
+    }
+  }
+
+  function removeExercise(rex: RoutineExerciseWithSets) {
+    setHidden((h) => new Set(h).add(rex.id));
+    undoable({
+      message: "Ejercicio quitado",
+      commit: () => ops.remove.mutate(rex.id),
+      undo: () =>
+        setHidden((h) => {
+          const next = new Set(h);
+          next.delete(rex.id);
+          return next;
+        }),
+    });
+  }
+
+  function move(rex: RoutineExerciseWithSets, other: RoutineExerciseWithSets) {
+    ops.swap.mutate({ a: rex, b: other });
+    setMovedId(rex.id);
+    if (movedTimer.current) clearTimeout(movedTimer.current);
+    movedTimer.current = setTimeout(() => setMovedId(null), 1000);
   }
 
   async function handleCopy() {
+    setMenu(false);
     setCopying(true);
-    setCopyError(null);
+    setActionError(null);
     try {
       const supabase = createClient();
       // duplicate_routine aún no está en los tipos generados de la DB.
@@ -145,56 +236,81 @@ export default function RoutineEditorPage() {
       qc.invalidateQueries({ queryKey: ["routines"] });
       router.push(`/rutinas/${targetId}`);
     } catch {
-      setCopyError("No pudimos duplicar la rutina. Probá de nuevo.");
+      setActionError("No pudimos duplicar la rutina. Probá de nuevo.");
       setCopying(false);
     }
   }
 
   return (
-    <div className="pb-20">
-      <div className="flex items-center gap-2 mb-4">
-        <Link href="/rutinas" className="text-muted hover:text-fg">
+    <div className="pb-44">
+      <div className="flex items-center gap-1">
+        <Link
+          href="/rutinas"
+          aria-label="Volver a rutinas"
+          className={iconButtonClasses({ size: "md", tone: "muted" })}
+        >
           <ArrowLeft className="size-5" />
         </Link>
-        <Input
+        {/* Nombre con estilo de título; el borde aparece recién en foco. */}
+        <input
+          key={routine.name}
+          aria-label="Nombre de la rutina"
           defaultValue={routine.name}
+          maxLength={60}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
           onBlur={(e) => {
             const v = e.target.value.trim();
-            if (v && v !== routine.name) updateRoutine.mutate({ name: v });
-          }}
-          className="font-semibold"
-        />
-      </div>
-
-      <div className="flex gap-2 mb-4">
-        <Button variant="secondary" size="sm" onClick={handleShare} loading={share.isPending}>
-          <Share2 className="size-4" /> Compartir
-        </Button>
-        <Button variant="secondary" size="sm" onClick={handleCopy} loading={copying}>
-          <CopyPlus className="size-4" /> Duplicar
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          onClick={async () => {
-            if (confirm("¿Eliminar esta rutina?")) {
-              await del.mutateAsync(id);
-              router.push("/rutinas");
+            if (!v) {
+              // Vacío no es un nombre válido: se vuelve al anterior.
+              e.target.value = routine.name;
+              return;
             }
+            if (v !== routine.name) updateRoutine.mutate({ name: v });
           }}
-        >
-          <Trash2 className="size-4" /> Eliminar
-        </Button>
+          className="min-h-11 min-w-0 flex-1 rounded-md bg-transparent px-2 text-2xl font-bold text-fg outline-none focus:ring-2 focus:ring-primary"
+        />
+        <IconButton label="Más opciones" onClick={() => setMenu(true)}>
+          <MoreHorizontal className="size-5" />
+        </IconButton>
       </div>
-      {copyError && (
-        <p role="alert" className="text-sm text-danger -mt-2 mb-4">
-          {copyError}
+      <div
+        className="mb-4 mt-1 flex items-center justify-between gap-2 px-2 text-xs text-muted"
+        aria-live="polite"
+      >
+        <span>Los cambios se guardan solos</span>
+        <span className="inline-flex items-center gap-1">
+          {copying ? (
+            "Duplicando…"
+          ) : saving ? (
+            <>
+              <Spinner className="size-3" /> Guardando…
+            </>
+          ) : (
+            <>
+              <Check className="size-3.5" /> Guardado
+            </>
+          )}
+        </span>
+      </div>
+      {actionError && (
+        <p role="alert" className="mb-4 text-sm text-danger">
+          {actionError}
         </p>
       )}
 
       {exercises.length === 0 ? (
-        <div className="card p-8 text-center text-muted text-sm mb-4">
-          Agregá ejercicios a esta rutina.
+        <div className="mb-4">
+          <EmptyState
+            title="Esta rutina está vacía"
+            description="Agregá los ejercicios que querés hacer."
+            action={
+              <Button onClick={() => setPicker(true)}>
+                <Plus className="size-4" /> Agregar ejercicio
+              </Button>
+            }
+          />
         </div>
       ) : (
         <ul className="flex flex-col gap-2.5 mb-4">
@@ -207,77 +323,108 @@ export default function RoutineEditorPage() {
               profile={trainingProfile}
               isFirst={i === 0}
               isLast={i === exercises.length - 1}
+              moved={movedId === rex.id}
               onSaveSets={(plans) =>
                 ops.saveSets.mutate({ rexId: rex.id, plans })
               }
-              onRemove={() => ops.remove.mutate(rex.id)}
+              onRemove={() => removeExercise(rex)}
               onReplace={(newEx) =>
                 ops.replace.mutate({ id: rex.id, exerciseId: newEx.id })
               }
-              onMoveUp={() => ops.swap.mutate({ a: rex, b: exercises[i - 1] })}
-              onMoveDown={() => ops.swap.mutate({ a: rex, b: exercises[i + 1] })}
+              onMoveUp={() => move(rex, exercises[i - 1])}
+              onMoveDown={() => move(rex, exercises[i + 1])}
             />
           ))}
         </ul>
       )}
 
-      <Button
-        variant="secondary"
-        className="w-full"
-        onClick={() => setPicker(true)}
-      >
-        <Plus className="size-4" /> Agregar ejercicio
-      </Button>
-
       {exercises.length > 0 && (
-        <div className="fixed bottom-20 inset-x-0 px-4">
-          <div className="mx-auto max-w-2xl">
-            <Button
-              size="lg"
-              className="w-full shadow-lg"
-              onClick={handleStart}
-              loading={start.isPending}
-            >
-              <Play className="size-5" /> Empezar entrenamiento
-            </Button>
+        <>
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setPicker(true)}
+          >
+            <Plus className="size-4" /> Agregar ejercicio
+          </Button>
+
+          <div className="fixed bottom-20 inset-x-0 px-4">
+            <div className="mx-auto max-w-2xl">
+              <Button
+                size="lg"
+                className="w-full shadow-lg"
+                onClick={handleStart}
+                loading={start.isPending}
+              >
+                <Play className="size-5" /> Empezar entrenamiento
+              </Button>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       <ExercisePickerModal
         open={picker}
         onClose={() => setPicker(false)}
+        multi
+        addedIds={addedIds}
         onSelect={(ex) =>
-          ops.add.mutate({ exerciseId: ex.id, position: exercises.length })
+          ops.add.mutate({
+            exerciseId: ex.id,
+            position:
+              exercises.reduce((m, r) => Math.max(m, r.position), -1) + 1,
+          })
         }
       />
 
-      <Modal
-        open={!!shareModal}
-        onClose={() => setShareModal(null)}
-        title="Compartir rutina"
-      >
-        <p className="text-sm text-muted mb-3">
-          Cualquiera con este link puede copiar tu rutina (sin tus pesos).
-        </p>
-        <div className="flex gap-2">
-          <Input readOnly value={shareModal ?? ""} />
-          <Button onClick={handleCopyShare}>
-            {copyState === "ok" ? (
-              <Check className="size-4" />
-            ) : (
-              <Copy className="size-4" />
-            )}
-            {copyState === "ok" ? "Copiado" : "Copiar"}
-          </Button>
+      <Modal open={menu} onClose={() => setMenu(false)} title="Opciones de la rutina">
+        <div className="flex flex-col">
+          <SheetMenuItem
+            icon={<Share2 className="size-5" />}
+            onClick={handleShare}
+          >
+            Compartir
+          </SheetMenuItem>
+          <SheetMenuItem
+            icon={<CopyPlus className="size-5" />}
+            onClick={handleCopy}
+          >
+            Duplicar
+          </SheetMenuItem>
+          <div className="my-1 border-t border-border" />
+          <SheetMenuItem
+            danger
+            icon={<Trash2 className="size-5" />}
+            onClick={() => {
+              setMenu(false);
+              setDeleteError(null);
+              setConfirmDelete(true);
+            }}
+          >
+            Eliminar rutina
+          </SheetMenuItem>
         </div>
-        {copyState === "fail" && (
-          <p className="text-xs text-muted mt-2">
-            No se pudo copiar automáticamente. Mantené presionado el link de
-            arriba para copiarlo a mano.
-          </p>
-        )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`¿Eliminar «${routine.name}»?`}
+        description="Se borra el plan. Tus entrenamientos registrados se mantienen."
+        confirmLabel="Eliminar"
+        tone="danger"
+        loading={del.isPending}
+        error={deleteError}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
+
+      <ShareLinkModal
+        open={!!shareUrl}
+        onClose={() => setShareUrl(null)}
+        url={shareUrl ?? ""}
+        title="Compartir rutina"
+        privacyNote="Cualquiera con este link puede copiar tu rutina (sin tus pesos ni notas)."
+      />
     </div>
   );
 }
@@ -289,6 +436,7 @@ function RoutineExerciseRow({
   profile,
   isFirst,
   isLast,
+  moved,
   onSaveSets,
   onRemove,
   onReplace,
@@ -302,6 +450,8 @@ function RoutineExerciseRow({
   profile?: TrainingProfile | null;
   isFirst: boolean;
   isLast: boolean;
+  /** Se acaba de mover: resalta la card un instante. */
+  moved: boolean;
   onSaveSets: (plans: SetPlan[]) => void;
   onRemove: () => void;
   onReplace: (newExercise: Exercise) => void;
@@ -313,50 +463,69 @@ function RoutineExerciseRow({
   const { data: note } = useExerciseNote(rex.exercise_id);
 
   return (
-    <li className="card p-3">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setDetail(true)}
-          className="flex items-center gap-3 min-w-0 flex-1 text-left"
-        >
-          <ExerciseImage
-            src={exercise?.images[0]}
-            alt={exercise?.name ?? ""}
-            className="size-12 rounded shrink-0"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
-            {exercise && primaryMuscle(exercise) && (
-              <Badge>{muscleEs(primaryMuscle(exercise))}</Badge>
-            )}
-          </div>
-        </button>
-        <div className="flex flex-col">
-          <button
+    <li
+      className={clsx(
+        "card p-3 transition-shadow",
+        moved && "ring-1 ring-primary",
+      )}
+    >
+      <button
+        onClick={() => setDetail(true)}
+        className="flex w-full items-center gap-3 min-w-0 text-left"
+      >
+        <ExerciseImage
+          src={exercise?.images[0]}
+          alt={exercise?.name ?? ""}
+          className="size-12 rounded shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
+          {exercise && primaryMuscle(exercise) && (
+            <Badge>{muscleEs(primaryMuscle(exercise))}</Badge>
+          )}
+        </div>
+      </button>
+      {/* Controles en su propia fila: a 360px cuatro botones al lado del
+          nombre lo dejaban en ~90px. Reemplazar y Quitar van separados. */}
+      <div className="mt-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <IconButton
+            size="sm"
+            label="Mover arriba"
             disabled={isFirst}
             onClick={onMoveUp}
-            className="text-muted hover:text-fg disabled:opacity-30 p-0.5"
+            className="disabled:opacity-40"
           >
             <ChevronUp className="size-4" />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            size="sm"
+            label="Mover abajo"
             disabled={isLast}
             onClick={onMoveDown}
-            className="text-muted hover:text-fg disabled:opacity-30 p-0.5"
+            className="disabled:opacity-40"
           >
             <ChevronDown className="size-4" />
-          </button>
+          </IconButton>
         </div>
-        <button
-          onClick={() => setReplace(true)}
-          aria-label="Reemplazar ejercicio"
-          className="text-muted hover:text-fg p-1"
-        >
-          <Repeat className="size-4" />
-        </button>
-        <button onClick={onRemove} className="text-muted hover:text-danger p-1">
-          <Trash2 className="size-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <IconButton
+            size="sm"
+            label="Reemplazar ejercicio"
+            onClick={() => setReplace(true)}
+          >
+            <Repeat className="size-4" />
+          </IconButton>
+          <IconButton
+            size="sm"
+            tone="danger"
+            label="Quitar ejercicio"
+            onClick={onRemove}
+            className="ml-2"
+          >
+            <Trash2 className="size-4" />
+          </IconButton>
+        </div>
       </div>
 
       <SetPlanner
@@ -430,6 +599,15 @@ function SetPlanner({
         ],
   );
 
+  // Últimos valores para el commit/undo del toast, que se ejecutan segundos
+  // después (y quizá con la fila ya desmontada).
+  const rowsRef = useRef(rows);
+  const onSaveRef = useRef(onSave);
+  useEffect(() => {
+    rowsRef.current = rows;
+    onSaveRef.current = onSave;
+  });
+
   function updateRow(i: number, patch: Partial<SetPlan>) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
@@ -468,12 +646,24 @@ function SetPlanner({
     });
   }
 
+  /**
+   * Quita la serie de la UI al instante; el guardado real espera al toast.
+   * Si se deshace, se reinserta en su lugar y se vuelve a guardar por si algún
+   * blur de otra celda ya había mandado el plan sin ella.
+   */
   function removeRow(i: number) {
-    setRows((rs) => {
-      if (rs.length <= 1) return rs;
-      const next = rs.filter((_, idx) => idx !== i);
-      onSave(next);
-      return next;
+    if (rows.length <= 1) return;
+    const removed = rows[i];
+    setRows(rows.filter((_, idx) => idx !== i));
+    undoable({
+      message: "Serie quitada",
+      commit: () => onSaveRef.current(rowsRef.current),
+      undo: () => {
+        const restored = [...rowsRef.current];
+        restored.splice(Math.min(i, restored.length), 0, removed);
+        setRows(restored);
+        onSaveRef.current(restored);
+      },
     });
   }
 
@@ -492,7 +682,7 @@ function SetPlanner({
 
   return (
     <div className="mt-3 flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-muted">
+      <div className="flex items-center gap-2 px-1 text-xs uppercase tracking-wide text-muted">
         <span className="w-8">Serie</span>
         {/* Peso primero: es el orden que usa el resto de la app ("75 kg x 10"),
             el chip del plan y el "ult." de abajo. Aca estaba al reves, asi que
@@ -501,7 +691,7 @@ function SetPlanner({
         {showsDistance && <span className="flex-1 text-center">km</span>}
         {showsDuration && <span className="flex-1 text-center">mm:ss</span>}
         {showsReps && <span className="flex-1 text-center">Reps</span>}
-        <span className="w-7" />
+        <span className="w-9" />
       </div>
       {rows.map((r, i) => {
         const hint = lastFor(i + 1);
@@ -529,7 +719,7 @@ function SetPlanner({
                     })
                   }
                   onBlur={() => onSave(rows)}
-                  className="h-9 flex-1 text-center"
+                  className="flex-1 text-center"
                 />
               )}
               {showsDistance && (
@@ -551,7 +741,7 @@ function SetPlanner({
                     })
                   }
                   onBlur={() => onSave(rows)}
-                  className="h-9 flex-1 text-center"
+                  className="flex-1 text-center"
                 />
               )}
               {showsDuration && (
@@ -578,31 +768,28 @@ function SetPlanner({
                     })
                   }
                   onBlur={() => onSave(rows)}
-                  className="h-9 flex-1 text-center"
+                  className="flex-1 text-center"
                 />
               )}
-              <button
+              <IconButton
+                size="sm"
+                tone="danger"
+                label="Quitar serie"
                 onClick={() => removeRow(i)}
                 disabled={rows.length <= 1}
-                className="w-7 text-muted hover:text-danger disabled:opacity-30"
-                aria-label="Quitar serie"
+                className="w-9 disabled:opacity-40"
               >
-                <X className="size-4 mx-auto" />
-              </button>
+                <X className="size-4" />
+              </IconButton>
             </div>
             {(hint || outOfRange) && (
-              <div className="flex gap-2 mt-0.5">
-                <span className="w-8" />
-                <span className="flex-1 text-center text-[11px] tabular-nums">
-                  {hint && <span className="text-muted">{hint}</span>}
-                  {hint && outOfRange && " · "}
-                  {outOfRange && (
-                    <span className="text-warning">
-                      fuera del rango de tu objetivo ({repRangeLabel(profile)})
-                    </span>
-                  )}
-                </span>
-                <span className="w-7" />
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-10 text-xs tabular-nums">
+                {hint && <span className="text-muted">{hint}</span>}
+                {outOfRange && (
+                  <Badge className="bg-warning/15 text-warning-fg ring-warning/30">
+                    Fuera de tu rango ({repRangeLabel(profile)})
+                  </Badge>
+                )}
               </div>
             )}
           </div>

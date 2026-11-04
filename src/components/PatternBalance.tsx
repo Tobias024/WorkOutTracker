@@ -2,6 +2,7 @@
 "use client";
 
 import { useChartColors } from "@/lib/chart-theme";
+import { fmtNum } from "@/lib/format";
 
 export interface BalanceData {
   push: number;
@@ -16,11 +17,17 @@ function pct(a: number, b: number): [number, number] {
   return [Math.round((a / total) * 100), Math.round((b / total) * 100)];
 }
 
-function ratioLabel(a: number, b: number): string {
-  if (a === 0 || b === 0) return "sin datos";
+/** Veredicto explícito (sin "primero/segundo"). Un lado en 0 es el peor
+ *  desbalance posible, así que lo nombra en vez de decir "sin datos". */
+function verdict(a: number, b: number, la: string, lb: string): string {
+  if (a === 0 && b === 0) return "Sin datos";
+  if (b === 0) return `Sin ${lb.toLowerCase()} registrado`;
+  if (a === 0) return `Sin ${la.toLowerCase()} registrado`;
   const r = a / b;
-  if (r >= 0.8 && r <= 1.25) return "equilibrado";
-  return a > b ? "sesgo al primero" : "sesgo al segundo";
+  if (r >= 0.8 && r <= 1.25) return "Equilibrado";
+  return a > b
+    ? `Más ${la.toLowerCase()} que ${lb.toLowerCase()} (×${fmtNum(r, 1)})`
+    : `Más ${lb.toLowerCase()} que ${la.toLowerCase()} (×${fmtNum(1 / r, 1)})`;
 }
 
 function SplitBar({
@@ -30,7 +37,6 @@ function SplitBar({
   b,
   leftColor,
   rightColor,
-  note,
 }: {
   leftLabel: string;
   rightLabel: string;
@@ -38,24 +44,37 @@ function SplitBar({
   b: number;
   leftColor: string;
   rightColor: string;
-  note: string;
 }) {
   const [la, lb] = pct(a, b);
+  const text = verdict(a, b, leftLabel, rightLabel);
   return (
     <div>
-      <div className="flex justify-between text-[11.5px] mb-1.5">
-        <span className="font-semibold text-accent">
+      <div className="flex justify-between gap-2 text-xs text-fg mb-1.5">
+        <span className="inline-flex items-center gap-1.5 font-semibold">
+          <span
+            className="size-2.5 rounded-sm shrink-0"
+            style={{ background: leftColor }}
+          />
           {leftLabel} {la}%
         </span>
-        <span className="text-muted">{note}</span>
-        <span className="font-semibold text-primary">
+        <span className="inline-flex items-center gap-1.5 font-semibold">
           {rightLabel} {lb}%
+          <span
+            className="size-2.5 rounded-sm shrink-0"
+            style={{ background: rightColor }}
+          />
         </span>
       </div>
-      <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2">
+      {/* gap-0.5: separa los segmentos aunque los colores sean parecidos. */}
+      <div
+        role="img"
+        aria-label={`${leftLabel} ${la}%, ${rightLabel} ${lb}%. ${text}`}
+        className="flex gap-0.5 h-2.5 rounded-full overflow-hidden bg-surface-2"
+      >
         <div style={{ width: `${la}%`, background: leftColor }} />
         <div style={{ width: `${lb}%`, background: rightColor }} />
       </div>
+      <p className="text-xs text-muted mt-1">{text}</p>
     </div>
   );
 }
@@ -79,18 +98,16 @@ export function PatternBalance({ data }: { data: BalanceData }) {
         rightLabel="Tirón"
         a={data.push}
         b={data.pull}
-        leftColor={c.accent}
-        rightColor={c.primary}
-        note={ratioLabel(data.push, data.pull)}
+        leftColor={c.series[0]}
+        rightColor={c.series[1]}
       />
       <SplitBar
         leftLabel="Compuesto"
         rightLabel="Aislamiento"
         a={data.compound}
         b={data.isolation}
-        leftColor={c.accent}
+        leftColor={c.series[0]}
         rightColor={c.neutral}
-        note={ratioLabel(data.compound, data.isolation)}
       />
     </div>
   );

@@ -2,14 +2,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
-import { Button } from "@/components/ui";
+import Link from "next/link";
+import { Button, Modal } from "@/components/ui";
 import {
   CURRENT_VERSION,
   SEEN_VERSION_KEY,
   releasesSince,
   type Release,
 } from "@/lib/changelog";
+
+/** Ítems por versión en el popup; el resto se lee en /novedades. */
+const MAX_ITEMS = 4;
 
 /**
  * Popup de novedades al abrir la app después de una actualización.
@@ -69,51 +72,43 @@ export function WhatsNewModal() {
     setPending([]);
   }
 
-  if (pending.length === 0) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 backdrop-blur-sm"
-      onClick={dismiss}
-    >
-      <div
-        className="card w-full sm:max-w-lg rounded-t-3xl rounded-b-none p-6 pb-8"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="size-11 rounded-full bg-primary/15 grid place-items-center shrink-0">
-            <Sparkles className="size-5 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold tracking-[0.12em] text-primary">
-              NOVEDADES
-            </p>
-            <h2 className="text-lg font-extrabold tracking-tight">
-              Qué hay de nuevo
-            </h2>
-          </div>
-        </div>
-
-        {pending.map((r) => (
-          <div key={r.version} className="mb-4 last:mb-0">
-            {pending.length > 1 && (
-              <p className="text-xs text-muted mb-1.5">v{r.version}</p>
-            )}
-            <ul className="flex flex-col gap-2">
-              {r.items.map((item) => (
-                <li key={item} className="flex gap-2 text-sm">
-                  <span className="text-primary shrink-0">·</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-
-        <Button className="mt-5 w-full" onClick={dismiss}>
+    <Modal
+      open={pending.length > 0}
+      onClose={dismiss}
+      title="Qué hay de nuevo"
+      // Tocar el fondo (o Escape) no la cierra: un toque accidental no tiene
+      // que marcarla como vista. Sólo la X y "Entendido" la dan por leída.
+      // Modal no distingue el origen del cierre, así que se bloquean ambos.
+      dismissible={false}
+      footer={
+        <Button className="w-full" onClick={dismiss}>
           Entendido
         </Button>
-      </div>
-    </div>
+      }
+    >
+      {pending.map((r) => (
+        <div key={r.version} className="mb-4 last:mb-0">
+          {pending.length > 1 && (
+            <p className="text-xs text-muted mb-1.5">v{r.version}</p>
+          )}
+          <ul className="flex flex-col gap-2">
+            {r.items.slice(0, MAX_ITEMS).map((item) => (
+              <li key={item} className="flex gap-2 text-sm">
+                <span className="text-primary shrink-0">·</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <Link
+        href="/novedades"
+        onClick={dismiss}
+        className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-2 hover:underline"
+      >
+        Ver todas las novedades
+      </Link>
+    </Modal>
   );
 }

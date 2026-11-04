@@ -1,20 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Flag, Clock, Timer } from "lucide-react";
-import { Button, Input, Spinner, Modal } from "@/components/ui";
+import {
+  onlineManager,
+  useIsMutating,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  Plus,
+  Clock,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  WifiOff,
+} from "lucide-react";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Modal,
+  Skeleton,
+} from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
-import { StopwatchFab } from "@/components/Stopwatch";
 import { PrCelebrationModal } from "@/components/PrCelebrationModal";
+import { RestTimer } from "@/components/RestTimer";
+import { FinishWorkoutSheet } from "@/components/FinishWorkoutSheet";
 import {
   useWorkoutSession,
   useLastExerciseLogs,
   useDeleteSession,
   rememberActiveSession,
+  type FullSession,
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
@@ -27,10 +48,16 @@ import {
   useRestStore,
   useRestSeconds,
   useRestHydrated,
+  restTargetSeconds,
+  REST_DEFAULT_SECONDS,
   REST_MAX_SECONDS,
 } from "@/hooks/useRestTimer";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
+import { flushUndoables, undoable } from "@/lib/toast";
 import type { SessionPr } from "@/lib/types";
+
+/** Sesión abierta hace más que esto al entrar = probablemente olvidada. */
+const STALE_SESSION_MS = 4 * 3600 * 1000;
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";
@@ -39,10 +66,75 @@ function toLocalInput(iso: string | null): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
 }
 
+/** Error de "no existe" de PostgREST (.single() sin filas). */
+function isNotFound(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; message?: string };
+  return e.code === "PGRST116" || /0 rows/i.test(e.message ?? "");
+}
+
+function SessionSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Cargando entreno" className="flex flex-col gap-3">
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
 export default function WorkoutPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const router = useRouter();
-  const { data, isLoading } = useWorkoutSession(sessionId);
+  const qc = useQueryClient();
+  const query = useWorkoutSession(sessionId);
+
+  // Nunca usar `!data` como "cargando": un error dejaba el spinner infinito y,
+  // con el id en localStorage, el candado rebotaba al usuario acá sin salida.
+  if (!query.data) {
+    if (query.isError) {
+      if (isNotFound(query.error)) {
+        return (
+          <EmptyState
+            title="Este entreno ya no existe"
+            description="Puede que lo hayas descartado desde otro dispositivo."
+            action={
+              <Button
+                onClick={() => {
+                  rememberActiveSession(null);
+                  qc.setQueryData(["active-session"], null);
+                  router.replace("/rutinas");
+                }}
+              >
+                Ir a mis rutinas
+              </Button>
+            }
+          />
+        );
+      }
+      return (
+        <ErrorState
+          title="No pudimos cargar el entreno"
+          onRetry={() => query.refetch()}
+          retrying={query.isFetching}
+        />
+      );
+    }
+    return <SessionSkeleton />;
+  }
+  return <SessionView sessionId={sessionId} data={query.data} />;
+}
+
+function SessionView({
+  sessionId,
+  data,
+}: {
+  sessionId: string;
+  data: FullSession;
+}) {
+  const router = useRouter();
+  const qc = useQueryClient();
   // Último peso registrado (de "Registro") para la fuerza relativa del PR. La
   // rutina ya no pide peso: se registra solo en Registro.
   const { data: bwLogs } = useBodyWeight();
@@ -50,7 +142,7 @@ export default function WorkoutPage() {
     ? Number(bwLogs[bwLogs.length - 1].weight_kg)
     : null;
   const { data: lastLogs } = useLastExerciseLogs(
-    (data?.exercises ?? []).map((e) => e.exercise_id),
+    data.exercises.map((e) => e.exercise_id),
     sessionId,
   );
   const exMap = useExerciseMap();
@@ -59,17 +151,28 @@ export default function WorkoutPage() {
   const profile = prefs?.trainingProfile ?? null;
   const m = useSessionMutations(sessionId);
   const deleteSession = useDeleteSession();
-  const qc = useQueryClient();
+
+  const { session } = data;
+  const ended = !!session.ended_at;
+
+  // Ejercicios quitados con "Deshacer" pendiente: se esconden del render y de
+  // los conteos hasta que vence el toast y se ejecuta el borrado real.
+  const [hiddenExercises, setHiddenExercises] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const exercises = useMemo(
+    () => data.exercises.filter((e) => !hiddenExercises.has(e.id)),
+    [data.exercises, hiddenExercises],
+  );
 
   // Resumen de la sesión (para la vista de una sesión finalizada del historial):
   // tonelaje como carga externa + series efectivas + Δ vs la misma rutina.
   const summary = useMemo(() => {
-    if (!data) return null;
-    const sets = data.exercises.flatMap((e) => e.sets);
+    const sets = exercises.flatMap((e) => e.sets);
     const tonnage = totalVolume(sets.filter(isCountableSet));
     const hardSets = sets.filter((s) => isHardSet(s, profile)).length;
     let prevTonnage: number | null = null;
-    const rid = data.session.routine_id;
+    const rid = session.routine_id;
     if (rid && history) {
       const prev = history.find(
         (h) => h.routine_id === rid && h.ended_at && h.id !== sessionId,
@@ -82,14 +185,49 @@ export default function WorkoutPage() {
         );
     }
     return { tonnage, hardSets, prevTonnage };
-  }, [data, history, sessionId, profile]);
+  }, [exercises, session.routine_id, history, sessionId, profile]);
+
+  // Progreso: solo series de trabajo (los calentamientos no cuentan).
+  const progress = useMemo(() => {
+    const work = exercises.flatMap((e) => e.sets).filter((s) => !s.is_warmup);
+    return { done: work.filter((s) => s.completed).length, total: work.length };
+  }, [exercises]);
+
   const [picker, setPicker] = useState(false);
   const [now, setNow] = useState(0);
-  const [prModal, setPrModal] = useState<SessionPr | null>(null);
+  const [prs, setPrs] = useState<SessionPr[]>([]);
   // #2 reordenar: id del ejercicio seleccionado para mover (null = sin mover).
   const [movingId, setMovingId] = useState<string | null>(null);
-  // #1 candado: modal de "Descartar entrenamiento".
+  const [menuOpen, setMenuOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  // Editar horario de inicio (solo en curso): borrador del datetime-local.
+  const [startOpen, setStartOpen] = useState(false);
+  const [startDraft, setStartDraft] = useState("");
+
+  // Detección de sesión olvidada: se evalúa UNA vez al abrir (no a las 4 h de
+  // un entreno largo y legítimo).
+  const [staleAtOpen] = useState(
+    () =>
+      !ended &&
+      !!session.started_at &&
+      Date.now() - new Date(session.started_at).getTime() > STALE_SESSION_MS,
+  );
+  const [staleDismissed, setStaleDismissed] = useState(false);
+  const staleOpen = staleAtOpen && !staleDismissed && !ended;
+
+  // Acordeón de ejercicios: el estado vive acá para poder avanzar solo al
+  // siguiente. Se calcula una vez al montar (esta vista solo monta con data).
+  const [openIds, setOpenIds] = useState<Set<string>>(() => {
+    if (ended) return new Set(data.exercises.map((e) => e.id));
+    const first = data.exercises.find((e) =>
+      e.sets.some((s) => !s.is_warmup && !s.completed),
+    );
+    return new Set(first ? [first.id] : []);
+  });
+
   // Cronómetro de descanso: vive en un store persistido (ver useRestTimer).
   const rest = useRestStore();
   const restNow = useRestSeconds();
@@ -98,7 +236,13 @@ export default function WorkoutPage() {
   const restOfThisSession =
     rest.startedAt != null && rest.setId != null && rest.sessionId === sessionId;
 
-  const ended = !!data?.session.ended_at;
+  // Indicador offline: cambios en pausa esperando red.
+  const online = useSyncExternalStore(
+    (cb) => onlineManager.subscribe(cb),
+    () => onlineManager.isOnline(),
+    () => true,
+  );
+  const pendingMutations = useIsMutating();
 
   useEffect(() => {
     const tick = () => setNow(Date.now());
@@ -121,32 +265,25 @@ export default function WorkoutPage() {
   // En un entrenamiento activo (cargado y sin finalizar) ocultamos la TabBar
   // inferior para aprovechar la pantalla. Al finalizar o salir, reaparece.
   useEffect(() => {
-    if (!data || ended) return;
+    if (ended) return;
     document.body.dataset.hideTabbar = "1";
     return () => {
       delete document.body.dataset.hideTabbar;
     };
-  }, [data, ended]);
-
-  if (isLoading || !data) {
-    return (
-      <div className="grid place-items-center py-16">
-        <Spinner />
-      </div>
-    );
-  }
-
-  const { session, exercises } = data;
+  }, [ended]);
 
   const elapsed = session.started_at
     ? ended && session.duration_seconds != null
       ? session.duration_seconds
-      : Math.floor(
-          ((ended && session.ended_at
-            ? new Date(session.ended_at).getTime()
-            : now) -
-            new Date(session.started_at).getTime()) /
-            1000,
+      : Math.max(
+          0,
+          Math.floor(
+            ((ended && session.ended_at
+              ? new Date(session.ended_at).getTime()
+              : now) -
+              new Date(session.started_at).getTime()) /
+              1000,
+          ),
         )
     : 0;
 
@@ -169,19 +306,38 @@ export default function WorkoutPage() {
     m.updateSession.mutate({ [field]: iso, duration_seconds: duration });
   }
 
-  async function finish() {
-    const endIso = new Date().toISOString();
+  /**
+   * Cierra la sesión. `endIso` permite fijar un fin distinto de "ahora" (sesión
+   * olvidada). Devuelve false si no se pudo cerrar, para que el llamador deje
+   * el sheet abierto con el error.
+   */
+  async function finish(endIso: string = new Date().toISOString()): Promise<boolean> {
     const duration = session.started_at
-      ? Math.floor(
-          (new Date(endIso).getTime() -
-            new Date(session.started_at).getTime()) /
-            1000,
+      ? Math.max(
+          0,
+          Math.floor(
+            (new Date(endIso).getTime() -
+              new Date(session.started_at).getTime()) /
+              1000,
+          ),
         )
       : null;
-    await m.updateSession.mutateAsync({
-      ended_at: endIso,
-      duration_seconds: duration,
-    });
+    setFinishing(true);
+    setFinishError(null);
+    try {
+      // Borrados con "Deshacer" todavía pendientes se aplican antes de cerrar.
+      await flushUndoables();
+      await m.updateSession.mutateAsync({
+        ended_at: endIso,
+        duration_seconds: duration,
+      });
+    } catch {
+      setFinishError(
+        "No pudimos cerrar el entreno. Revisá la conexión y probá de nuevo.",
+      );
+      setFinishing(false);
+      return false;
+    }
     // Ya no es una sesión activa: soltamos el candado (ActiveSessionGuard) sin
     // esperar un refetch, para no rebotar al navegar a /registro.
     qc.setQueryData(["active-session"], null);
@@ -203,27 +359,44 @@ export default function WorkoutPage() {
     // modal de celebración antes de volver (la navegación ocurre al cerrarlo).
     try {
       const supabase = createClient();
-      const { data: prs } = await supabase.rpc("record_session_achievements", {
+      const { data: found } = await supabase.rpc("record_session_achievements", {
         p_session_id: sessionId,
       });
       qc.invalidateQueries({ queryKey: ["achievements"] });
-      const best = (prs ?? [])
-        .slice()
-        .sort((a, b) => b.orm - a.orm)[0];
-      if (best) {
-        setPrModal(best);
-        return;
+      const best = (found ?? []).slice().sort((a, b) => b.orm - a.orm);
+      if (best.length > 0) {
+        setFinishOpen(false);
+        setFinishing(false);
+        setPrs(best);
+        return true;
       }
     } catch {
       // no bloquear el cierre de la sesión por un fallo de logros
     }
     router.push("/registro");
+    return true;
   }
 
-  // #1 candado: descartar borra la sesión (con reconfirmación) y libera el candado.
+  /** "Terminarlo ahora" de una sesión olvidada: fin = última serie completada. */
+  async function finishStale() {
+    const started = session.started_at
+      ? new Date(session.started_at).getTime()
+      : 0;
+    const last = data.exercises
+      .flatMap((e) => e.sets)
+      .map((s) => (s.completed_at ? new Date(s.completed_at).getTime() : 0))
+      .reduce((a, b) => Math.max(a, b), 0);
+    // Sin series con hora: asumimos un entreno de 1 h en vez de inflar métricas.
+    const endMs = last > started ? last : started + 3600 * 1000;
+    setStaleDismissed(true);
+    await finish(new Date(endMs).toISOString());
+  }
+
+  // Descartar borra la sesión (con reconfirmación) y libera el candado.
   async function discard() {
     await deleteSession.mutateAsync(sessionId);
     rememberActiveSession(null);
+    qc.setQueryData(["active-session"], null);
     rest.clear();
     setDiscardOpen(false);
     router.replace("/rutinas");
@@ -236,8 +409,8 @@ export default function WorkoutPage() {
   // adentro del "descanso" (~20-45 s de sobreestimación sistemática, del mismo
   // orden que la banda objetivo de 30-60 s del perfil de resistencia).
   //
-  // La ÚNICA señal de arranque es el botón "Comenzar" del banner. Antes también
-  // lo cerraba el foco en cualquier campo de otra serie, y eso lo volvía
+  // La ÚNICA señal de arranque es el botón "Arrancar serie" del banner. Antes
+  // también lo cerraba el foco en cualquier campo de otra serie, y eso lo volvía
   // inservible: mirar el peso de un ejercicio de más abajo —o pifiarle a un
   // campo— daba el descanso por terminado. Nada fuera del botón lo interrumpe.
   //
@@ -248,9 +421,13 @@ export default function WorkoutPage() {
       m.updateSet.mutate({ id: setId, patch: { rest_seconds: sec } });
   }
 
-  /** Se tildó una serie: arranca su descanso (el previo, si sigue vivo, se descarta). */
-  function onSetCompleted(setId: string) {
-    rest.start(sessionId, setId);
+  /** Se tildó una serie de trabajo: arranca su descanso (el previo se descarta). */
+  function onSetCompleted(
+    setId: string,
+    info: { isWarmup: boolean; mechanic: string | null },
+  ) {
+    if (info.isWarmup) return;
+    rest.start(sessionId, setId, restTargetSeconds(info.mechanic, profile));
   }
 
   /** Botón del banner: es la señal explícita de que arrancó la serie siguiente. */
@@ -261,80 +438,204 @@ export default function WorkoutPage() {
     rest.clear();
   }
 
+  /** Mecánica del ejercicio de la serie en descanso, para el subtítulo. */
+  const restMechanic = (() => {
+    if (!restOfThisSession) return null;
+    const we = data.exercises.find((e) => e.sets.some((s) => s.id === rest.setId));
+    return we ? (exMap.get(we.exercise_id)?.mechanic ?? null) : null;
+  })();
+  const restHint =
+    restMechanic === "compound"
+      ? "compuesto 2–3 min"
+      : restMechanic === "isolation"
+        ? "aislamiento 1–2 min"
+        : null;
+
+  /** Al completar un ejercicio, abre el próximo con series pendientes y baja a él. */
+  function onExerciseCompleted(index: number) {
+    const hasPending = (i: number) =>
+      exercises[i].sets.some((s) => !s.is_warmup && !s.completed);
+    let next: number | null = null;
+    for (let k = 1; k < exercises.length; k++) {
+      const i = (index + k) % exercises.length;
+      if (hasPending(i)) {
+        next = i;
+        break;
+      }
+    }
+    if (next == null) {
+      setOpenIds(new Set());
+      return;
+    }
+    const id = exercises[next].id;
+    setOpenIds(new Set([id]));
+    // Esperamos al re-render (la card anterior se pliega y mueve el layout).
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => {
+      document
+        .getElementById(`ex-${id}`)
+        ?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+    }, 120);
+  }
+
+  function setExpanded(id: string, v: boolean) {
+    setOpenIds((prev) => {
+      // En curso es un acordeón; terminada se pueden abrir varias a la vez.
+      if (!ended) return new Set(v ? [id] : []);
+      const next = new Set(prev);
+      if (v) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function removeExercise(we: FullSession["exercises"][number]) {
+    const name = exMap.get(we.exercise_id)?.name ?? "ejercicio";
+    const setHidden = (hide: boolean) =>
+      setHiddenExercises((prev) => {
+        const next = new Set(prev);
+        if (hide) next.add(we.id);
+        else next.delete(we.id);
+        return next;
+      });
+    setHidden(true);
+    undoable({
+      message: `Quitaste «${name}»`,
+      commit: () => m.removeExercise.mutateAsync(we.id),
+      undo: () => setHidden(false),
+    });
+  }
+
+  /** Info para el modal de PR: nombre y reps del mejor set de ese peso. */
+  function prInfo(pr: SessionPr) {
+    const sets =
+      data.exercises.find((e) => e.exercise_id === pr.exercise_id)?.sets ?? [];
+    const reps = sets
+      .filter((s) => s.completed && s.weight === pr.weight && s.reps != null)
+      .reduce<number | null>((a, s) => Math.max(a ?? 0, s.reps ?? 0), null);
+    return { name: exMap.get(pr.exercise_id)?.name ?? "Ejercicio", reps };
+  }
+
+  const subtitle = `${formatClock(elapsed)} · ${progress.done}/${progress.total} series`;
+  const showRest = restHydrated && restOfThisSession && !ended;
+
   return (
-    <div className="pb-24">
-      <div className="flex items-center gap-2 mb-3">
-        <button
-          onClick={() => (ended ? router.push("/rutinas") : setDiscardOpen(true))}
-          className="text-muted hover:text-fg"
-          aria-label={ended ? "Volver" : "Descartar entrenamiento"}
-        >
-          <ArrowLeft className="size-5" />
-        </button>
-        <Input
-          defaultValue={session.name}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v && v !== session.name) m.updateSession.mutate({ name: v });
-          }}
-          className="font-semibold"
-        />
+    <div className={ended ? "pb-24" : "pb-8"}>
+      {/* Header sticky: nombre, progreso y Terminar; el descanso va pegado abajo. */}
+      <div className="sticky top-0 z-20 -mx-4 -mt-5 px-4 pt-5 pb-2 bg-bg/85 backdrop-blur border-b border-border">
+        <div className="flex items-center gap-2">
+          {ended ? (
+            <IconButton label="Volver" onClick={() => router.push("/rutinas")}>
+              <ArrowLeft className="size-5" />
+            </IconButton>
+          ) : (
+            <IconButton label="Más opciones" onClick={() => setMenuOpen(true)}>
+              <MoreVertical className="size-5" />
+            </IconButton>
+          )}
+          <div className="min-w-0 flex-1">
+            <input
+              aria-label="Nombre del entreno"
+              defaultValue={session.name}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v && v !== session.name) m.updateSession.mutate({ name: v });
+              }}
+              className="block w-full min-w-0 truncate rounded bg-transparent px-1 text-base font-bold text-fg outline-none focus:ring-1 focus:ring-primary"
+            />
+            <p className="px-1 font-mono tabular-nums text-xs text-muted">
+              {subtitle}
+            </p>
+          </div>
+          {!ended && (
+            <Button
+              variant="success"
+              size="sm"
+              onClick={() => {
+                setFinishError(null);
+                setFinishOpen(true);
+              }}
+            >
+              Terminar
+            </Button>
+          )}
+        </div>
+        {!ended && !online && (
+          <p className="mt-1 flex items-center gap-1 px-1 text-xs text-warning-fg">
+            <WifiOff className="size-3.5" aria-hidden />
+            Sin conexión
+            {pendingMutations > 0
+              ? ` · ${pendingMutations} ${pendingMutations === 1 ? "cambio pendiente" : "cambios pendientes"}`
+              : ""}
+          </p>
+        )}
+        {!ended && online && pendingMutations > 0 && (
+          <p className="mt-1 px-1 text-xs text-muted">Guardando…</p>
+        )}
+        {showRest && (
+          <div className="mt-2">
+            <RestTimer
+              elapsed={restNow}
+              startedAt={rest.startedAt ?? 0}
+              targetSeconds={rest.targetSeconds ?? REST_DEFAULT_SECONDS}
+              hint={restHint}
+              onAdd={(sec) => rest.addTarget(sec)}
+              onStart={stopRest}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Tiempo de sesión */}
-      <div className="card p-3 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-muted text-sm">
-            <Clock className="size-4" />
-            Duración
+      {/* Horarios: solo con la sesión terminada. En curso, el inicio se edita
+          desde el menú ⋯ y el fin lo fija finish(). */}
+      {ended && (
+        <div className="card p-3 my-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-muted text-sm">
+              <Clock className="size-4" />
+              Duración
+            </div>
+            <span className="font-mono text-lg tabular-nums">
+              {formatClock(elapsed)}
+            </span>
           </div>
-          <span className="font-mono text-lg tabular-nums">
-            {formatClock(elapsed)}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 mt-3">
-          <label className="text-xs text-muted">
-            Inicio
-            <input
-              type="datetime-local"
-              defaultValue={toLocalInput(session.started_at)}
-              onBlur={(e) => editTime("started_at", e.target.value)}
-              className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
-            />
-          </label>
-          <label className="text-xs text-muted">
-            Fin
-            {ended ? (
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <label className="text-xs text-muted">
+              Inicio
+              <input
+                type="datetime-local"
+                defaultValue={toLocalInput(session.started_at)}
+                onBlur={(e) => editTime("started_at", e.target.value)}
+                className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              />
+            </label>
+            <label className="text-xs text-muted">
+              Fin
               <input
                 type="datetime-local"
                 defaultValue={toLocalInput(session.ended_at)}
                 onBlur={(e) => editTime("ended_at", e.target.value)}
                 className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
               />
-            ) : (
-              // En curso: el fin sólo se fija con finish(), no se edita a mano.
-              <span className="mt-1 flex h-9 items-center px-2 text-sm text-muted">
-                En curso
-              </span>
-            )}
-          </label>
+            </label>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Resumen (solo al ver una sesión ya finalizada del historial). */}
       {ended && summary && (
         <div className="card p-3 mb-4">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-[10px] text-muted">Volumen (tonelaje)</p>
+              <p className="text-xs text-muted">Volumen (tonelaje)</p>
               <p className="text-base font-bold mt-0.5">
                 {formatVolume(summary.tonnage)}
               </p>
               {summary.prevTonnage != null && summary.prevTonnage > 0 && (
                 <p
-                  className={`text-[10px] font-semibold ${
+                  className={`text-xs font-semibold ${
                     summary.tonnage >= summary.prevTonnage
-                      ? "text-success"
+                      ? "text-success-fg"
                       : "text-danger"
                   }`}
                 >
@@ -349,11 +650,11 @@ export default function WorkoutPage() {
               )}
             </div>
             <div>
-              <p className="text-[10px] text-muted">Series efectivas</p>
+              <p className="text-xs text-muted">Series efectivas</p>
               <p className="text-base font-bold mt-0.5">{summary.hardSets}</p>
             </div>
             <div>
-              <p className="text-[10px] text-muted">Duración</p>
+              <p className="text-xs text-muted">Duración</p>
               <p className="text-base font-bold mt-0.5">
                 {session.duration_seconds
                   ? formatDuration(session.duration_seconds)
@@ -361,63 +662,72 @@ export default function WorkoutPage() {
               </p>
             </div>
           </div>
-          <p className="text-[10px] text-muted mt-2 text-center">
+          <p className="text-xs text-muted mt-2 text-center">
             El tonelaje es carga externa (comparar la misma rutina en el tiempo),
             no un indicador de progreso.
           </p>
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 mt-3">
         {exercises.map((we, i) => (
-          <SessionExerciseCard
-            key={we.id}
-            we={we}
-            exercise={exMap.get(we.exercise_id)}
-            lastLog={lastLogs?.get(we.exercise_id)}
-            moving={movingId === we.id}
-            moveMode={movingId !== null}
-            isFirst={i === 0}
-            isLast={i === exercises.length - 1}
-            onSetCompleted={ended ? undefined : onSetCompleted}
-            onStartMove={() => setMovingId(we.id)}
-            onEndMove={() => setMovingId(null)}
-            onMove={(dir) => {
-              const j = dir === "up" ? i - 1 : i + 1;
-              if (j < 0 || j >= exercises.length) return;
-              m.reorder.mutate({ a: we, b: exercises[j] });
-            }}
-            originalExercise={
-              we.replaced_from_exercise_id
-                ? exMap.get(we.replaced_from_exercise_id)
-                : undefined
-            }
-            onUpdateSet={(id, patch) => m.updateSet.mutate({ id, patch })}
-            onAddSet={() =>
-              m.addSet.mutate({
-                workoutExerciseId: we.id,
-                setNumber: we.sets.length + 1,
-                // Serie extra agregada a mano: no tiene plan contra el cual
-                // comparar, así que nace vacía y sin planned_*. El ghost de la
-                // última vez sigue apareciendo como placeholder.
-                reps: null,
-                weight: null,
-                durationSeconds: null,
-                distanceM: null,
-              })
-            }
-            onDeleteSet={(id) => m.deleteSet.mutate(id)}
-            onRemove={() => m.removeExercise.mutate(we.id)}
-            onReplace={(newEx, saveForFuture) =>
-              m.replaceExercise.mutate({
-                workoutExerciseId: we.id,
-                originalExerciseId: we.replaced_from_exercise_id ?? we.exercise_id,
-                newExerciseId: newEx.id,
-                routineExerciseId: we.routine_exercise_id,
-                saveForFuture,
-              })
-            }
-          />
+          // scroll-mt: deja libre el header sticky (+ banner de descanso) al
+          // hacer scrollIntoView del próximo ejercicio.
+          <div key={we.id} id={`ex-${we.id}`} className="scroll-mt-40">
+            <SessionExerciseCard
+              we={we}
+              exercise={exMap.get(we.exercise_id)}
+              lastLog={lastLogs?.get(we.exercise_id)}
+              moving={movingId === we.id}
+              moveMode={movingId !== null}
+              isFirst={i === 0}
+              isLast={i === exercises.length - 1}
+              expanded={openIds.has(we.id)}
+              onExpandedChange={(v) => setExpanded(we.id, v)}
+              onSetCompleted={ended ? undefined : onSetCompleted}
+              onExerciseCompleted={ended ? undefined : () => onExerciseCompleted(i)}
+              onStartMove={() => setMovingId(we.id)}
+              onEndMove={() => setMovingId(null)}
+              onMove={(dir) => {
+                const j = dir === "up" ? i - 1 : i + 1;
+                if (j < 0 || j >= exercises.length) return;
+                m.reorder.mutate({ a: we, b: exercises[j] });
+              }}
+              originalExercise={
+                we.replaced_from_exercise_id
+                  ? exMap.get(we.replaced_from_exercise_id)
+                  : undefined
+              }
+              onUpdateSet={(id, patch) => m.updateSet.mutate({ id, patch })}
+              onAddSet={() =>
+                m.addSet.mutate({
+                  workoutExerciseId: we.id,
+                  // max + 1 y no length + 1: con series borradas (o escondidas
+                  // esperando el "Deshacer") el length repetiría un número.
+                  setNumber:
+                    Math.max(0, ...we.sets.map((s) => s.set_number)) + 1,
+                  // Serie extra agregada a mano: no tiene plan contra el cual
+                  // comparar, así que nace vacía y sin planned_*. El ghost de la
+                  // última vez sigue apareciendo como placeholder.
+                  reps: null,
+                  weight: null,
+                  durationSeconds: null,
+                  distanceM: null,
+                })
+              }
+              onDeleteSet={(id) => m.deleteSet.mutateAsync(id)}
+              onRemove={() => removeExercise(we)}
+              onReplace={(newEx, saveForFuture) =>
+                m.replaceExercise.mutate({
+                  workoutExerciseId: we.id,
+                  originalExerciseId: we.replaced_from_exercise_id ?? we.exercise_id,
+                  newExerciseId: newEx.id,
+                  routineExerciseId: we.routine_exercise_id,
+                  saveForFuture,
+                })
+              }
+            />
+          </div>
         ))}
       </div>
 
@@ -429,41 +739,22 @@ export default function WorkoutPage() {
         <Plus className="size-4" /> Agregar ejercicio
       </Button>
 
-      {restHydrated && restOfThisSession && !ended && (
-        <div className="fixed inset-x-0 bottom-20 px-4 z-40">
+      {/* Única capa inferior: solo con la sesión terminada (en curso, Terminar
+          vive en el header). */}
+      {ended && (
+        <div className="fixed inset-x-0 bottom-20 px-4">
           <div className="mx-auto max-w-2xl">
-            <div className="card flex items-center gap-3 p-3 shadow-lg ring-1 ring-primary/40">
-              <Timer className="size-5 text-primary shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted">Descanso</p>
-                <p className="font-mono text-lg tabular-nums leading-none">
-                  {formatClock(restNow)}
-                </p>
-              </div>
-              <Button size="sm" onClick={stopRest}>
-                Comenzar
-              </Button>
-            </div>
+            <Button
+              size="lg"
+              variant="secondary"
+              className="w-full shadow-lg"
+              onClick={() => router.push("/registro")}
+            >
+              Ver registro
+            </Button>
           </div>
         </div>
       )}
-
-      <div className={`fixed inset-x-0 px-4 ${ended ? "bottom-20" : "bottom-4"}`}>
-        <div className="mx-auto max-w-2xl">
-          <Button
-            size="lg"
-            variant={ended ? "secondary" : "success"}
-            className="w-full shadow-lg"
-            onClick={ended ? () => router.push("/registro") : finish}
-            loading={m.updateSession.isPending}
-          >
-            <Flag className="size-5" />
-            {ended ? "Ver registro" : "Finalizar entrenamiento"}
-          </Button>
-        </div>
-      </div>
-
-      <StopwatchFab />
 
       <ExercisePickerModal
         open={picker}
@@ -476,35 +767,161 @@ export default function WorkoutPage() {
         }
       />
 
+      <FinishWorkoutSheet
+        open={finishOpen}
+        durationSeconds={elapsed}
+        doneSets={progress.done}
+        totalSets={progress.total}
+        tonnage={summary.tonnage}
+        loading={finishing}
+        error={finishError}
+        onCancel={() => setFinishOpen(false)}
+        onConfirm={() => void finish()}
+      />
+
       <PrCelebrationModal
-        pr={prModal}
-        exerciseName={
-          prModal ? exMap.get(prModal.exercise_id)?.name ?? "Ejercicio" : ""
-        }
+        prs={prs}
+        info={prInfo}
         bodyWeightKg={lastLoggedWeight}
         onClose={() => {
-          setPrModal(null);
+          setPrs([]);
           router.push("/registro");
         }}
       />
+
+      {/* Menú ⋯ */}
+      <Modal open={menuOpen} onClose={() => setMenuOpen(false)} title="Más opciones">
+        <div className="flex flex-col">
+          <button
+            type="button"
+            className="flex min-h-12 items-center gap-3 rounded-lg px-2 text-left text-sm hover:bg-surface-2"
+            onClick={() => {
+              setMenuOpen(false);
+              setStartDraft(toLocalInput(session.started_at));
+              setStartOpen(true);
+            }}
+          >
+            <Pencil className="size-4 text-muted" />
+            Editar horario de inicio
+          </button>
+          <div className="my-2 border-t border-border" />
+          <button
+            type="button"
+            className="flex min-h-12 items-center gap-3 rounded-lg px-2 text-left text-sm text-danger hover:bg-surface-2"
+            onClick={() => {
+              setMenuOpen(false);
+              setDiscardOpen(true);
+            }}
+          >
+            <Trash2 className="size-4" />
+            Descartar entreno
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={startOpen}
+        onClose={() => setStartOpen(false)}
+        title="Horario de inicio"
+        footer={
+          <div className="flex gap-3">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setStartOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!startDraft}
+              onClick={() => {
+                editTime("started_at", startDraft);
+                setStartOpen(false);
+              }}
+            >
+              Guardar
+            </Button>
+          </div>
+        }
+      >
+        <label className="text-sm text-muted">
+          Inicio
+          <input
+            type="datetime-local"
+            value={startDraft}
+            onChange={(e) => setStartDraft(e.target.value)}
+            className="mt-1 h-11 w-full rounded bg-surface-2 px-2 text-base text-fg outline-none ring-1 ring-border focus:ring-primary"
+          />
+        </label>
+      </Modal>
 
       <Modal
         open={discardOpen}
         onClose={() => setDiscardOpen(false)}
         title="Descartar entrenamiento"
+        center
+        dismissible={!deleteSession.isPending}
       >
         <p className="text-sm text-muted mb-4">
           Se va a eliminar esta sesión y todo lo que cargaste. No se puede
-          deshacer. Si querés guardarlo, mejor tocá “Finalizar”.
+          deshacer. Si querés guardarlo, mejor tocá “Terminar”.
         </p>
-        <div className="flex gap-2 justify-end">
-          <Button variant="secondary" onClick={() => setDiscardOpen(false)}>
+        <div className="flex flex-col gap-2">
+          <Button className="w-full" onClick={() => setDiscardOpen(false)}>
             Seguir entrenando
           </Button>
           <Button
-            variant="danger"
+            variant="ghost"
+            className="w-full text-danger"
             loading={deleteSession.isPending}
             onClick={discard}
+          >
+            Descartar
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={staleOpen}
+        onClose={() => setStaleDismissed(true)}
+        title={`Tenés un entreno abierto desde ${
+          session.started_at
+            ? new Date(session.started_at).toLocaleString("es-AR", {
+                weekday: "long",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "hace un rato"
+        }`}
+      >
+        <p className="text-sm text-muted mb-4">
+          Si ya terminaste, lo cerramos con la hora de tu última serie para no
+          inflar la duración.
+        </p>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="success"
+            className="w-full"
+            loading={finishing}
+            onClick={() => void finishStale()}
+          >
+            Terminarlo ahora
+          </Button>
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setStaleDismissed(true)}
+          >
+            Seguir entrenando
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full text-danger"
+            onClick={() => {
+              setStaleDismissed(true);
+              setDiscardOpen(true);
+            }}
           >
             Descartar
           </Button>

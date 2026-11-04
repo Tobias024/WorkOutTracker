@@ -251,6 +251,27 @@ export function useSessionMutations(sessionId: string) {
         );
       }
     },
+    // Optimista: la card cambia de ejercicio al toque; si falla vuelve el snapshot.
+    onMutate: async ({
+      workoutExerciseId,
+      originalExerciseId,
+      newExerciseId,
+    }) => {
+      await qc.cancelQueries({ queryKey: sessionKey });
+      return optimistic((s) => ({
+        ...s,
+        exercises: s.exercises.map((ex) =>
+          ex.id === workoutExerciseId
+            ? {
+                ...ex,
+                exercise_id: newExerciseId,
+                replaced_from_exercise_id: originalExerciseId,
+              }
+            : ex,
+        ),
+      }));
+    },
+    onError: (_e, _v, ctx) => rollback(ctx),
     onSuccess: () => {
       refetchSession();
       markStaleBackground();

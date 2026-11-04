@@ -61,12 +61,49 @@ export function formatPace(
   return `${m}:${String(s).padStart(2, "0")}/km`;
 }
 
+const NUM_FMT = new Map<number, Intl.NumberFormat>();
+
+/** Número en formato es-AR: "24.850", "12,5". `decimals` = máximo de decimales
+ *  (no rellena con ceros). Usar SIEMPRE esto y no `toFixed`: en es-AR "24.9" se
+ *  lee como veinticuatro mil novecientos. */
+export function fmtNum(n: number, decimals = 0): string {
+  let f = NUM_FMT.get(decimals);
+  if (!f) {
+    f = new Intl.NumberFormat("es-AR", { maximumFractionDigits: decimals });
+    NUM_FMT.set(decimals, f);
+  }
+  return f.format(n);
+}
+
 export function formatWeight(kg: number | null): string {
   if (kg == null) return "—";
-  return `${Number.isInteger(kg) ? kg : kg.toFixed(1)} kg`;
+  return `${fmtNum(kg, 1)} kg`;
 }
 
 export function formatVolume(kg: number): string {
-  if (kg >= 1000) return `${(kg / 1000).toFixed(1)} t`;
-  return `${Math.round(kg)} kg`;
+  if (kg >= 1000) return `${fmtNum(kg / 1000, 1)} t`;
+  return `${fmtNum(Math.round(kg))} kg`;
+}
+
+/** "1 serie" / "12,5 series": unidad concordada para conteos de series. */
+export function fmtSeries(n: number, decimals = 1): string {
+  return `${fmtNum(n, decimals)} ${n === 1 ? "serie" : "series"}`;
+}
+
+const COMPACT_FMT = new Intl.NumberFormat("es-AR", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/** Número compacto para ticks de ejes: 2500 → "2,5 mil". Evita los ticks
+ *  duplicados que salían de redondear a miles enteros. */
+export function fmtCompact(n: number): string {
+  return COMPACT_FMT.format(n);
+}
+
+/** Recencia en lenguaje natural: "hoy", "ayer", "hace 3 días". */
+export function fmtDaysAgo(days: number): string {
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  return `hace ${days} días`;
 }

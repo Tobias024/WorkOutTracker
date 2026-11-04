@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bell, BellOff } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Bell, BellOff, ChevronRight } from "lucide-react";
 import {
   enablePush,
   disablePush,
@@ -20,7 +20,76 @@ const REASONS: Record<string, string> = {
   unsupported: "Este navegador no soporta notificaciones.",
 };
 
-/** Botón + modal para activar/probar/desactivar las notificaciones del ranking. */
+type Env = "ios-installed" | "ios-browser" | "android-installed" | "android-browser" | "other-installed" | "other-browser";
+
+/**
+ * Plataforma y si la PWA está instalada (standalone). Cambia las instrucciones
+ * para un permiso bloqueado: instalada no hay barra de direcciones ni candado.
+ * Devuelve un string primitivo para que useSyncExternalStore tenga un snapshot
+ * estable; en el servidor es null (no hay navigator).
+ */
+function readEnv(): Env {
+  const ua = navigator.userAgent;
+  const nav = navigator as Navigator & { standalone?: boolean };
+  const ios =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  const installed =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    nav.standalone === true;
+  const os = ios ? "ios" : android ? "android" : "other";
+  return `${os}-${installed ? "installed" : "browser"}` as Env;
+}
+const noopSubscribe = () => () => {};
+
+/** Instrucciones para reactivar un permiso bloqueado, según la plataforma. */
+function DeniedHelp({ env }: { env: Env | null }) {
+  if (env === "android-installed") {
+    return (
+      <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
+        <li>
+          Abrí los <span className="text-fg">Ajustes</span> del teléfono y entrá a{" "}
+          <span className="text-fg">Apps</span>.
+        </li>
+        <li>
+          Elegí <span className="text-fg">WOLF</span> y después{" "}
+          <span className="text-fg">Notificaciones</span>.
+        </li>
+        <li>Activalas y volvé a abrir WOLF.</li>
+      </ol>
+    );
+  }
+  if (env === "ios-installed") {
+    return (
+      <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
+        <li>
+          Abrí los <span className="text-fg">Ajustes</span> del iPhone y entrá a{" "}
+          <span className="text-fg">Notificaciones</span>.
+        </li>
+        <li>
+          Buscá <span className="text-fg">WOLF</span> y activá{" "}
+          <span className="text-fg">Permitir notificaciones</span>.
+        </li>
+        <li>Volvé a abrir WOLF.</li>
+      </ol>
+    );
+  }
+  return (
+    <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
+      <li>
+        Tocá el candado / ícono a la izquierda de la dirección del sitio.
+      </li>
+      <li>
+        Entrá a <span className="text-fg">Notificaciones</span> (o Permisos del
+        sitio) y ponelo en <span className="text-fg">Permitir</span>.
+      </li>
+      <li>Recargá la página y activá de nuevo.</li>
+    </ol>
+  );
+}
+
+/** Fila + modal para activar/probar/desactivar los avisos del ranking (vive en Perfil). */
 export function NotificationToggle() {
   const [perm, setPerm] = useState<PushState | null>(null);
   const [subscribed, setSubscribed] = useState(false);
@@ -35,10 +104,28 @@ export function NotificationToggle() {
     isSubscribed().then(setSubscribed);
   }, []);
 
-  if (perm === null || perm === "unsupported") return null;
+  const env = useSyncExternalStore<Env | null>(noopSubscribe, readEnv, () => null);
+
+  if (perm === null) return null;
+
+  if (perm === "unsupported") {
+    // iOS en Safari no soporta push hasta instalar la PWA: se lo decimos en
+    // vez de esconder la opción.
+    const text =
+      env === "ios-browser"
+        ? "Instalá WOLF en tu pantalla de inicio para recibir avisos."
+        : "Este navegador no soporta avisos.";
+    return (
+      <div className="min-h-11 flex items-center gap-3 text-sm text-muted">
+        <BellOff className="size-5 shrink-0" />
+        <span>{text}</span>
+      </div>
+    );
+  }
 
   const active = perm === "granted" && subscribed;
   const denied = perm === "denied";
+  const stateLabel = active ? "Activados" : denied ? "Bloqueados" : "Desactivados";
 
   async function activate() {
     setBusy(true);
@@ -89,28 +176,43 @@ export function NotificationToggle() {
   return (
     <>
       <button
+        type="button"
         onClick={() => {
           setMsg(null);
           setOpen(true);
         }}
-        title="Notificaciones del ranking"
-        className={clsx(
-          "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium ring-1 transition",
-          active
-            ? "text-primary ring-primary/40 bg-primary/10"
-            : denied
-              ? "text-muted ring-border opacity-60"
-              : "text-muted ring-border hover:text-fg",
-        )}
+        aria-haspopup="dialog"
+        aria-label={`Avisos del ranking: ${stateLabel}`}
+        className="min-h-11 w-full flex items-center gap-3 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        {denied ? <BellOff className="size-4" /> : <Bell className="size-4" />}
-        <span>{active ? "Activadas" : denied ? "Bloqueadas" : "Notificar"}</span>
+        {denied ? (
+          <BellOff className="size-5 shrink-0 text-warning-fg" />
+        ) : (
+          <Bell
+            className={clsx("size-5 shrink-0", active ? "text-primary" : "text-muted")}
+          />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm text-fg">Avisos del ranking</span>
+          <span className="block text-xs text-muted">
+            Te avisamos cuando un amigo te pasa
+          </span>
+        </span>
+        <span
+          className={clsx(
+            "text-sm shrink-0",
+            denied ? "text-warning-fg" : active ? "text-primary" : "text-muted",
+          )}
+        >
+          {stateLabel}
+        </span>
+        <ChevronRight className="size-4 text-muted shrink-0" />
       </button>
 
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Notificaciones del ranking"
+        title="Avisos del ranking"
       >
         <div className="flex flex-col gap-3">
           {denied ? (
@@ -119,18 +221,7 @@ export function NotificationToggle() {
                 Bloqueaste las notificaciones para este sitio, así que no se
                 pueden reactivar desde acá. Para volver a permitirlas:
               </p>
-              <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
-                <li>
-                  Tocá el candado / ícono a la izquierda de la dirección del
-                  sitio.
-                </li>
-                <li>
-                  Entrá a <span className="text-fg">Notificaciones</span> (o
-                  Permisos del sitio) y ponelo en{" "}
-                  <span className="text-fg">Permitir</span>.
-                </li>
-                <li>Recargá la página y activá de nuevo.</li>
-              </ol>
+              <DeniedHelp env={env} />
             </>
           ) : active ? (
             <>
@@ -169,7 +260,7 @@ export function NotificationToggle() {
             </>
           )}
 
-          {msg && <p className="text-sm text-fg">{msg}</p>}
+          {msg && <p role="status" className="text-sm text-fg">{msg}</p>}
         </div>
       </Modal>
     </>

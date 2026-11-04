@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export type Theme = "classic" | "girly";
 
@@ -30,26 +30,35 @@ function readTheme(): Theme {
   return "classic";
 }
 
+const THEME_EVENT = "wot-theme-change";
+
+function subscribe(cb: () => void) {
+  window.addEventListener(THEME_EVENT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(THEME_EVENT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
 /**
  * Preferencia de paleta, persistida en localStorage (por dispositivo, sin
- * backend). El estado inicial es "classic" para no romper la hidratación SSR;
- * tras montar se sincroniza con lo que el script inline ya aplicó al DOM.
+ * backend). La fuente de verdad es el DOM (`data-theme`, que el script inline
+ * del layout aplica antes del primer paint): se lee con useSyncExternalStore,
+ * con "classic" como snapshot del servidor para no romper la hidratación, y
+ * sin el efecto + setState de antes (render en cascada al montar).
  */
 export function useTheme(): { theme: Theme; setTheme: (t: Theme) => void } {
-  const [theme, setThemeState] = useState<Theme>("classic");
-
-  useEffect(() => {
-    setThemeState(readTheme());
-  }, []);
+  const theme = useSyncExternalStore<Theme>(subscribe, readTheme, () => "classic");
 
   function setTheme(t: Theme) {
-    setThemeState(t);
     try {
       localStorage.setItem(THEME_KEY, t);
     } catch {
       // localStorage no disponible (modo privado, etc.): igual aplicamos.
     }
     applyTheme(t);
+    window.dispatchEvent(new Event(THEME_EVENT));
   }
 
   return { theme, setTheme };
