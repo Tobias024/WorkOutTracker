@@ -1677,7 +1677,7 @@ function ExportModal({
               value={from}
               max={to || undefined}
               onChange={(e) => setFrom(e.target.value)}
-              className="h-11 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              className="h-11 w-full rounded-md bg-surface-2 px-2 text-base text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </Field>
           <Field label="Hasta">
@@ -1686,7 +1686,7 @@ function ExportModal({
               value={to}
               min={from || undefined}
               onChange={(e) => setTo(e.target.value)}
-              className="h-11 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              className="h-11 w-full rounded-md bg-surface-2 px-2 text-base text-fg outline-none ring-1 ring-border focus:ring-primary"
             />
           </Field>
         </div>

@@ -24,7 +24,8 @@ export const viewport: Viewport = {
   themeColor: "#09090b",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Sin maximumScale: bloquear el zoom incumple WCAG 1.4.4. El auto-zoom de
+  // iOS al enfocar se evita con inputs de 16px (text-base en todos).
 };
 
 export default function RootLayout({

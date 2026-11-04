@@ -606,7 +606,7 @@ function SessionView({
                 type="datetime-local"
                 defaultValue={toLocalInput(session.started_at)}
                 onBlur={(e) => editTime("started_at", e.target.value)}
-                className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+                className="mt-1 h-11 w-full rounded-md bg-surface-2 px-2 text-base text-fg outline-none ring-1 ring-border focus:ring-primary"
               />
             </label>
             <label className="text-xs text-muted">
@@ -615,7 +615,7 @@ function SessionView({
                 type="datetime-local"
                 defaultValue={toLocalInput(session.ended_at)}
                 onBlur={(e) => editTime("ended_at", e.target.value)}
-                className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+                className="mt-1 h-11 w-full rounded-md bg-surface-2 px-2 text-base text-fg outline-none ring-1 ring-border focus:ring-primary"
               />
             </label>
           </div>
