@@ -41,7 +41,7 @@ export default function RootLayout({
             para evitar el flash del tema oscuro al recargar. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("wot-theme")==="girly"){document.documentElement.dataset.theme="girly";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#f6ebe1")}}catch(e){}`,
+            __html: `try{if(localStorage.getItem("wot-theme")==="girly"){document.documentElement.dataset.theme="girly";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#f6ebe1")}}catch(e){}try{if(localStorage.getItem("wot-cb")==="1")document.documentElement.dataset.cb="1"}catch(e){}`,
           }}
         />
       </head>

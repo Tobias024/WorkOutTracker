@@ -44,6 +44,13 @@ export function ExercisePickerModal({
 
   // Filtrado + orden: realizados primero (más reciente arriba), luego el resto
   // en su orden alfabético original (Array.sort estable).
+  // Al cerrar el picker se limpian búsqueda y filtro.
+  function handleClose() {
+    setQuery("");
+    setMuscle("");
+    onClose();
+  }
+
   const list = useMemo(() => {
     const filtered = filterExercises(data ?? [], query, muscle || undefined);
     return [...filtered]
@@ -53,7 +60,7 @@ export function ExercisePickerModal({
 
   return (
     <>
-    <Modal open={open} onClose={onClose} title={title}>
+    <Modal open={open} onClose={handleClose} title={title}>
       <div className="flex flex-col gap-3">
         {/* Búsqueda + filtro pegados arriba: el teclado no tapa los resultados
             (la hoja usa dvh y esto queda sticky mientras scrolleás la lista). */}
@@ -98,7 +105,7 @@ export function ExercisePickerModal({
                 <button
                   onClick={() => {
                     onSelect(ex);
-                    onClose();
+                    handleClose();
                   }}
                   className="w-full flex items-center gap-3 rounded-md p-2 hover:bg-surface-2 text-left transition"
                 >
@@ -143,13 +150,14 @@ export function ExercisePickerModal({
     </Modal>
 
       <CreateExerciseModal
+        key={creating ? `open-${query.trim()}` : "closed"}
         open={creating}
         onClose={() => setCreating(false)}
         initialName={query.trim()}
         onCreated={(ex) => {
           setCreating(false);
           onSelect(ex);
-          onClose();
+          handleClose();
         }}
       />
     </>

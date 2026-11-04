@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeNext } from "@/lib/safe-next";
 
 // Intercambia el código OAuth / OTP por una sesión y redirige.
 export async function GET(request: Request) {
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/rutinas";
+  const next = safeNext(searchParams.get("next"));
 
   const supabase = await createClient();
 

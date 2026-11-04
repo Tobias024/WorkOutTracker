@@ -13,8 +13,24 @@ import { clsx } from "@/lib/clsx";
 import { useChartColors } from "@/lib/chart-theme";
 
 export interface LinePoint {
+  /** Epoch ms del bucket/medición: ordena y alinea (la etiqueta d/m no tiene año). */
+  t: number;
+  /** Etiqueta para mostrar (d/m). */
   label: string;
   value: number;
+}
+
+const fmtDM = (t: number) => {
+  const d = new Date(t);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+/** Devuelve el formateador de ticks/tooltip: "d/m" y, sólo si los datos cruzan
+ *  un año calendario, "d/m 'aa". */
+function makeDateFmt(ts: number[]): (t: number) => string {
+  const years = new Set(ts.map((t) => new Date(t).getFullYear()));
+  if (years.size <= 1) return fmtDM;
+  return (t) => `${fmtDM(t)} '${String(new Date(t).getFullYear()).slice(-2)}`;
 }
 
 /** Línea simple (dorada). `faint` dibuja una serie tenue detrás (ej. peso crudo). */
@@ -33,8 +49,9 @@ export function MiniLine({
   domain?: [number | string, number | string];
 }) {
   const c = useChartColors();
+  const fmt = makeDateFmt(data.map((d) => d.t));
   const merged = data.map((d, i) => ({
-    label: d.label,
+    t: d.t,
     value: d.value,
     faint: faint?.[i]?.value,
   }));
@@ -42,7 +59,8 @@ export function MiniLine({
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={merged} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
         <XAxis
-          dataKey="label"
+          dataKey="t"
+          tickFormatter={(t) => fmt(Number(t))}
           stroke={c.axis}
           fontSize={11}
           tickLine={false}
@@ -60,6 +78,7 @@ export function MiniLine({
         <Tooltip
           contentStyle={c.tip}
           labelStyle={{ color: c.tipLabel }}
+          labelFormatter={(t) => fmt(Number(t))}
           formatter={(v) => [`${v}${unit ? ` ${unit}` : ""}`, ""]}
         />
         {faint && (
@@ -78,12 +97,7 @@ export function MiniLine({
   );
 }
 
-function labelKey(l: string): number {
-  const [d, m] = l.split("/").map(Number);
-  return (m || 0) * 100 + (d || 0);
-}
-
-/** Varias líneas (una por serie). Alinea por etiqueta de semana. */
+/** Varias líneas (una por serie). Alinea por fecha (t). */
 export function MultiLine({
   series,
   height = 190,
@@ -94,16 +108,14 @@ export function MultiLine({
   unit?: string;
 }) {
   const c = useChartColors();
-  const labelSet = new Map<string, number>();
-  for (const s of series)
-    for (const p of s.points) labelSet.set(p.label, labelKey(p.label));
-  const labels = [...labelSet.entries()]
-    .sort((a, b) => a[1] - b[1])
-    .map((e) => e[0]);
-  const rows = labels.map((label) => {
-    const row: Record<string, string | number | null> = { label };
+  const times = [...new Set(series.flatMap((s) => s.points.map((p) => p.t)))].sort(
+    (a, b) => a - b,
+  );
+  const fmt = makeDateFmt(times);
+  const rows = times.map((t) => {
+    const row: Record<string, number | null> = { t };
     series.forEach((s, i) => {
-      row["s" + i] = s.points.find((p) => p.label === label)?.value ?? null;
+      row["s" + i] = s.points.find((p) => p.t === t)?.value ?? null;
     });
     return row;
   });
@@ -111,7 +123,8 @@ export function MultiLine({
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={rows} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
         <XAxis
-          dataKey="label"
+          dataKey="t"
+          tickFormatter={(t) => fmt(Number(t))}
           stroke={c.axis}
           fontSize={11}
           tickLine={false}
@@ -128,6 +141,7 @@ export function MultiLine({
         <Tooltip
           contentStyle={c.tip}
           labelStyle={{ color: c.tipLabel }}
+          labelFormatter={(t) => fmt(Number(t))}
           formatter={(v, _n, p) => [
             `${v}${unit ? ` ${unit}` : ""}`,
             (p as { name?: string })?.name ?? "",

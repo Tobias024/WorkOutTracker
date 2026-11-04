@@ -502,7 +502,17 @@ function NumberField({
       key={value ?? "empty"}
       placeholder={placeholder}
       onBlur={(e) => {
+        // Entrada no parseable por el navegador (ej. "72,5"): restaura sin borrar.
+        if (e.target.validity.badInput) {
+          e.currentTarget.value = value == null ? "" : String(value);
+          return;
+        }
         const v = e.target.value === "" ? null : Number(e.target.value);
+        // Negativos: no se guardan, se restaura el valor previo.
+        if (v != null && v < 0) {
+          e.currentTarget.value = value == null ? "" : String(value);
+          return;
+        }
         if (v !== value) onCommit(v);
       }}
       className={clsx(

@@ -33,26 +33,38 @@ export default function PerfilPage() {
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState(false);
+
+  async function loadProfile() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("display_name, sex, training_profile, height_cm, weight_kg")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (error) {
+      // No mostramos el form vacío: guardar pisaría los datos con null.
+      setLoadError(true);
+      setChecking(false);
+      return;
+    }
+    setDisplayName(data?.display_name ?? "");
+    setSex(data?.sex ?? null);
+    setTrainingProfile((data?.training_profile as TrainingProfile | null) ?? null);
+    setHeightCm(data?.height_cm != null ? String(data.height_cm) : "");
+    setWeightKg(data?.weight_kg != null ? String(data.weight_kg) : "");
+    setChecking(false);
+  }
+
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-      const { data } = await supabase
-        .from("profiles")
-        .select("display_name, sex, training_profile, height_cm, weight_kg")
-        .eq("id", user.id)
-        .maybeSingle();
-      setDisplayName(data?.display_name ?? "");
-      setSex(data?.sex ?? null);
-      setTrainingProfile((data?.training_profile as TrainingProfile | null) ?? null);
-      setHeightCm(data?.height_cm != null ? String(data.height_cm) : "");
-      setWeightKg(data?.weight_kg != null ? String(data.weight_kg) : "");
-      setChecking(false);
+      await loadProfile();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -74,7 +86,11 @@ export default function PerfilPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      router.replace("/login");
+      return;
+    }
 
     const { error } = await supabase
       .from("profiles")
@@ -104,6 +120,20 @@ export default function PerfilPage() {
       <main className="min-h-dvh grid place-items-center">
         <Spinner />
       </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="card p-6 flex flex-col gap-3 items-start">
+        <p className="font-semibold">No pudimos cargar tu perfil.</p>
+        <p className="text-sm text-muted">Revisá tu conexión. No se cambió nada.</p>
+        <Button onClick={() => {
+            setLoadError(false);
+            setChecking(true);
+            loadProfile();
+          }}>Reintentar</Button>
+      </div>
     );
   }
 

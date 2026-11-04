@@ -3,6 +3,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input } from "@/components/ui";
 
@@ -32,7 +33,7 @@ function translateError(message: string) {
 function LoginForm() {
   const params = useSearchParams();
   const router = useRouter();
-  const next = params.get("next") ?? "/rutinas";
+  const next = safeNext(params.get("next"));
   const [mode, setMode] = useState<"password" | "magic">("password");
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");

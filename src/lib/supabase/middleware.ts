@@ -2,6 +2,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/types";
+import { safeNext } from "@/lib/safe-next";
 
 // Rutas accesibles sin sesión.
 const PUBLIC_PATHS = ["/login", "/auth", "/invite", "/r"];
@@ -75,6 +76,21 @@ export async function updateSession(request: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  // Con sesión, /login no tiene nada que mostrar: se va al destino pedido.
+  // Las cookies refrescadas viajan en la redirección.
+  if (user && pathname === "/login") {
+    const target = safeNext(request.nextUrl.searchParams.get("next"));
+    // `URL` en este archivo es la URL de Supabase (pisa al global): se arma
+    // el destino clonando nextUrl. safeNext garantiza path + query internos.
+    const dest = request.nextUrl.clone();
+    const [path, query = ""] = target.split("?");
+    dest.pathname = path;
+    dest.search = query ? `?${query}` : "";
+    const redirect = NextResponse.redirect(dest);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
   }
 
   return response;

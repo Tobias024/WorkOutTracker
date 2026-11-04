@@ -304,12 +304,19 @@ export default function WorkoutPage() {
           </label>
           <label className="text-xs text-muted">
             Fin
-            <input
-              type="datetime-local"
-              defaultValue={toLocalInput(session.ended_at)}
-              onBlur={(e) => editTime("ended_at", e.target.value)}
-              className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
-            />
+            {ended ? (
+              <input
+                type="datetime-local"
+                defaultValue={toLocalInput(session.ended_at)}
+                onBlur={(e) => editTime("ended_at", e.target.value)}
+                className="mt-1 h-9 w-full rounded bg-surface-2 px-2 text-sm text-fg outline-none ring-1 ring-border focus:ring-primary"
+              />
+            ) : (
+              // En curso: el fin sólo se fija con finish(), no se edita a mano.
+              <span className="mt-1 flex h-9 items-center px-2 text-sm text-muted">
+                En curso
+              </span>
+            )}
           </label>
         </div>
       </div>

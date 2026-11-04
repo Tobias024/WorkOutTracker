@@ -118,7 +118,14 @@ export function useImportRoutine() {
         const it = items[i];
         const plans = it.plans.length
           ? it.plans
-          : [{ target_reps: null, target_weight: null }];
+          : [
+              {
+                target_reps: null,
+                target_weight: null,
+                target_duration_seconds: null,
+                target_distance_m: null,
+              } as SetPlan,
+            ];
         const { data: rex, error: e1 } = await supabase
           .from("routine_exercises")
           .insert({
@@ -137,6 +144,8 @@ export function useImportRoutine() {
             set_number: si + 1,
             target_reps: p.target_reps,
             target_weight: p.target_weight,
+            target_duration_seconds: p.target_duration_seconds ?? null,
+            target_distance_m: p.target_distance_m ?? null,
           })),
         );
         if (e2) throw e2;

@@ -933,7 +933,8 @@ export default function RegistroPage() {
               value={weekMetrics.workoutStats.current}
               unit="días"
               sub="entrenados"
-              delta={weekMetrics.workoutStats.deltaPct}
+              delta={weekMetrics.workoutStats.currentVsLastPct}
+              deltaSuffix="vs sem. pasada"
               secondary={
                 weekMetrics.workoutStats.lastCompleted != null
                   ? `sem. anterior: ${weekMetrics.workoutStats.lastCompleted}`
@@ -941,7 +942,7 @@ export default function RegistroPage() {
               }
               info={
                 "Días distintos entrenados en la semana en curso. La constancia es el driver base: sin adherencia no hay volumen.\n\n" +
-                "El % compara las dos últimas semanas anteriores."
+                "El % compara lunes→hoy con el mismo tramo de la semana pasada."
               }
             />
             <Stat
@@ -949,7 +950,8 @@ export default function RegistroPage() {
               value={weekMetrics.hardStats.current}
               unit="sets"
               sub="hasta ahora"
-              delta={weekMetrics.hardStats.deltaPct}
+              delta={weekMetrics.hardStats.currentVsLastPct}
+              deltaSuffix="vs sem. pasada"
               secondary={
                 weekMetrics.hardStats.lastCompleted != null
                   ? `sem. anterior: ${weekMetrics.hardStats.lastCompleted} sets`
@@ -961,7 +963,7 @@ export default function RegistroPage() {
                   reps y cerca del fallo, según tu objetivo) acumuladas en la
                   semana en curso. Es el mejor indicador de estímulo para
                   hipertrofia (<Ref id="1" />, <Ref id="7" />).{"\n\n"}
-                  El % compara las dos últimas semanas anteriores.
+                  El % compara lunes→hoy con el mismo tramo de la semana pasada.
                 </>
               }
             />
@@ -1026,11 +1028,9 @@ export default function RegistroPage() {
                   : "—"
               }
               unit="/sem"
-              delta={weekMetrics.workoutStats.deltaPct}
               secondary={`${weekMetrics.workoutStats.completedCount} semanas anteriores`}
               info={
-                "Promedio de entrenos por semana sobre las semanas anteriores (ya terminadas): Σ(entrenos por semana) / cantidad de semanas anteriores.\n\n" +
-                "El % compara la última semana anterior con la previa."
+                "Promedio de entrenos por semana sobre las semanas anteriores (ya terminadas): Σ(entrenos por semana) / cantidad de semanas anteriores."
               }
             />
             <Stat

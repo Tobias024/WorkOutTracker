@@ -220,7 +220,8 @@ export function SessionExerciseCard({
     onUpdateSet(set.id, adopt(set, patch));
     if (!patch.completed) return;
     // Tildó una serie: arranca el cronómetro de descanso (solo el tick real).
-    onSetCompleted?.(set.id);
+    // Las series de calentamiento no disparan el descanso.
+    if (!set.is_warmup && patch.is_warmup !== true) onSetCompleted?.(set.id);
     const sorted = [...we.sets].sort((a, b) => a.set_number - b.set_number);
     const isLast = sorted[sorted.length - 1]?.id === set.id;
     if (!isLast) return;

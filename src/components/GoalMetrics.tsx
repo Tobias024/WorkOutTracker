@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { SectionCard } from "@/components/ui";
-import { MiniLine, MultiLine, Sparkline, StackedBar, HBars } from "@/components/charts";
+import { MiniLine, MultiLine, Sparkline, StackedBar, HBars, type LinePoint } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { formatClock } from "@/lib/format";
@@ -274,7 +274,7 @@ function PatternCard({ rows }: { rows: { label: string; value: number }[] }) {
   );
 }
 
-function HeavyRirCard({ data }: { data: { label: string; value: number }[] }) {
+function HeavyRirCard({ data }: { data: LinePoint[] }) {
   return (
     <SectionCard
       title="RIR de series pesadas"
@@ -476,7 +476,7 @@ function RecencyCard({
   );
 }
 
-function RepsCard({ data }: { data: { label: string; value: number }[] }) {
+function RepsCard({ data }: { data: LinePoint[] }) {
   return (
     <SectionCard
       title="Reps por serie"
@@ -493,7 +493,7 @@ function RepsCard({ data }: { data: { label: string; value: number }[] }) {
   );
 }
 
-function DensityCard({ data }: { data: { label: string; value: number }[] }) {
+function DensityCard({ data }: { data: LinePoint[] }) {
   const last = data[data.length - 1]?.value;
   return (
     <SectionCard

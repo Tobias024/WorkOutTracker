@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -14,6 +15,7 @@ import {
   Play,
   Check,
   Copy,
+  CopyPlus,
   Repeat,
   X,
 } from "lucide-react";
@@ -52,6 +54,7 @@ import type { Exercise } from "@/lib/types";
 export default function RoutineEditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
   const { data, isLoading } = useRoutine(id);
   const exMap = useExerciseMap();
   const updateRoutine = useUpdateRoutine(id);
@@ -71,6 +74,7 @@ export default function RoutineEditorPage() {
   const [shareModal, setShareModal] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
   const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   if (isLoading || !data) {
     return (
@@ -104,16 +108,44 @@ export default function RoutineEditorPage() {
 
   async function handleCopy() {
     setCopying(true);
+    setCopyError(null);
     try {
-      // Copia = compartir a uno mismo: aseguramos share_code e importamos.
-      const code = await share.mutateAsync(routine);
       const supabase = createClient();
-      const { data: newId, error } = await supabase.rpc("import_routine", {
-        p_share_code: code,
-      });
-      if (error) throw error;
-      router.push(`/rutinas/${newId}`);
+      // duplicate_routine aún no está en los tipos generados de la DB.
+      const { data: newId, error } = await (
+        supabase.rpc as unknown as (
+          fn: string,
+          args: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: { code?: string; status?: number } | null }>
+      ).call(supabase, "duplicate_routine", { p_routine_id: routine.id });
+      let targetId = newId as string | null;
+      if (error) {
+        const missing =
+          error.code === "PGRST202" ||
+          error.code === "42883" ||
+          error.status === 404;
+        if (!missing) throw error;
+        // Fallback (migración 0036 sin aplicar): compartir a uno mismo e importar.
+        // Si la rutina no tenía share_code, se lo sacamos después para no dejarla pública.
+        const hadCode = !!routine.share_code;
+        const code = await share.mutateAsync(routine);
+        const { data: importedId, error: e2 } = await supabase.rpc(
+          "import_routine",
+          { p_share_code: code },
+        );
+        if (!hadCode) {
+          await supabase
+            .from("routines")
+            .update({ share_code: null })
+            .eq("id", routine.id);
+        }
+        if (e2) throw e2;
+        targetId = importedId as string;
+      }
+      qc.invalidateQueries({ queryKey: ["routines"] });
+      router.push(`/rutinas/${targetId}`);
     } catch {
+      setCopyError("No pudimos duplicar la rutina. Probá de nuevo.");
       setCopying(false);
     }
   }
@@ -139,7 +171,7 @@ export default function RoutineEditorPage() {
           <Share2 className="size-4" /> Compartir
         </Button>
         <Button variant="secondary" size="sm" onClick={handleCopy} loading={copying}>
-          <Copy className="size-4" /> Copiar
+          <CopyPlus className="size-4" /> Duplicar
         </Button>
         <Button
           variant="danger"
@@ -154,6 +186,11 @@ export default function RoutineEditorPage() {
           <Trash2 className="size-4" /> Eliminar
         </Button>
       </div>
+      {copyError && (
+        <p role="alert" className="text-sm text-danger -mt-2 mb-4">
+          {copyError}
+        </p>
+      )}
 
       {exercises.length === 0 ? (
         <div className="card p-8 text-center text-muted text-sm mb-4">

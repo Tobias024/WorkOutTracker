@@ -28,11 +28,12 @@ import {
   useScoreboard,
   type Metric,
   type Period,
+  withRanksAndMoves,
 } from "@/hooks/useScoreboard";
 import { useCurrentUserId } from "@/hooks/useFriendProfile";
 import { useFriends } from "@/hooks/useFriends";
 import { useGoal } from "@/hooks/useGoal";
-import { formatVolume, formatWeight } from "@/lib/format";
+import { formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
 import type { Exercise, Sex, Goal } from "@/lib/types";
 
@@ -138,13 +139,17 @@ export default function ScoreboardPage() {
   const caption = BOARDS.find((b) => b.key === activeBoard)?.caption ?? "";
 
   // Filtro "solo mi objetivo": recorta y reindexa el podio.
+  // Los puestos y el movimiento se recalculan sobre la lista filtrada.
   const rows =
     sameGoal && myGoal
-      ? (data ?? []).filter((r) => goalOf.get(r.user_id) === myGoal)
+      ? withRanksAndMoves(
+          (data ?? []).filter((r) => goalOf.get(r.user_id) === myGoal),
+        )
       : data ?? [];
 
-  const myIndex = rows.findIndex((r) => r.user_id === meId);
-  const myRow = myIndex >= 0 ? rows[myIndex] : null;
+  const myRow = rows.find((r) => r.user_id === meId) ?? null;
+  const myTied =
+    !!myRow && rows.some((r) => r.user_id !== myRow.user_id && r.rank === myRow.rank);
 
   function fmt(v: number) {
     if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
@@ -178,7 +183,7 @@ export default function ScoreboardPage() {
       {myRow && Number(myRow.value) > 0 && (
         <div className="card flex items-center gap-3 p-3 mb-3">
           <span className="text-xs text-muted">Tu puesto</span>
-          <span className="font-bold text-lg">{myIndex + 1}º</span>
+          <span className="font-bold text-lg">{myRow.rank}º{myTied ? " (empate)" : ""}</span>
           {myRow.move != null && <MoveChip move={myRow.move} />}
           {myGoal && (
             <span className="ml-auto text-xs text-muted">
@@ -305,7 +310,7 @@ export default function ScoreboardPage() {
         />
       ) : (
         <ul className="flex flex-col gap-2">
-          {rows.map((row, i) => {
+          {rows.map((row) => {
             const isMe = row.user_id === meId;
             const g = goalOf.get(row.user_id);
             return (
@@ -314,24 +319,24 @@ export default function ScoreboardPage() {
                   href={isMe ? "/perfil" : `/amigos/${row.user_id}`}
                   className={clsx(
                     "card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition",
-                    i === 0 && Number(row.value) > 0 && "ring-1 ring-accent/40",
+                    row.rank === 1 && Number(row.value) > 0 && "ring-1 ring-accent/40",
                     isMe && "bg-primary/5",
                   )}
                 >
                   <div className="w-7 text-center shrink-0">
-                    {i < 3 && Number(row.value) > 0 ? (
+                    {row.rank <= 3 && Number(row.value) > 0 ? (
                       <Medal
                         className={clsx(
                           "size-5 mx-auto",
-                          i === 0
+                          row.rank === 1
                             ? "text-accent"
-                            : i === 1
+                            : row.rank === 2
                               ? "text-muted"
                               : "text-amber-700",
                         )}
                       />
                     ) : (
-                      <span className="text-muted text-sm">{i + 1}</span>
+                      <span className="text-muted text-sm">{row.rank}</span>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

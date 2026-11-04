@@ -19,6 +19,8 @@ export default function SharedBundlePage() {
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [failMsg, setFailMsg] = useState<string | null>(null);
   const [codesParam, setCodesParam] = useState("");
 
   useEffect(() => {
@@ -69,12 +71,40 @@ export default function SharedBundlePage() {
       return;
     }
     setImporting(true);
-    const supabase = createClient();
-    for (const it of chosen) {
-      await supabase.rpc("import_routine", { p_share_code: it.code });
+    setFailMsg(null);
+    setProgress({ done: 0, total: chosen.length });
+    const okCodes: string[] = [];
+    const failed: Item[] = [];
+    try {
+      const supabase = createClient();
+      for (let i = 0; i < chosen.length; i++) {
+        const it = chosen[i];
+        const { error } = await supabase.rpc("import_routine", {
+          p_share_code: it.code,
+        });
+        if (error) failed.push(it);
+        else okCodes.push(it.code);
+        setProgress({ done: i + 1, total: chosen.length });
+      }
+    } catch {
+      // Si algo explota a mitad de camino, lo que no se procesó cuenta como fallido.
+      for (const it of chosen) {
+        if (!okCodes.includes(it.code) && !failed.includes(it)) failed.push(it);
+      }
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
-    router.push("/rutinas");
+    if (failed.length === 0) {
+      router.push("/rutinas");
+      return;
+    }
+    // Las copiadas se destildan; las fallidas quedan para reintentar.
+    setSelected(new Set(failed.map((f) => f.code)));
+    setFailMsg(
+      `Se copiaron ${okCodes.length} de ${chosen.length}. No pudimos copiar: ${failed
+        .map((f) => f.preview?.name ?? f.code)
+        .join(", ")}.`,
+    );
   }
 
   if (loading) {
@@ -114,7 +144,7 @@ export default function SharedBundlePage() {
           </div>
           <div>
             <p className="text-xs text-muted">Rutinas compartidas</p>
-            <h1 className="text-2xl font-bold">{valid.length} rutinas</h1>
+            <h1 className="text-2xl font-bold">{valid.length} {valid.length === 1 ? "rutina" : "rutinas"}</h1>
           </div>
         </div>
         <p className="text-sm text-muted mb-4">
@@ -170,6 +200,11 @@ export default function SharedBundlePage() {
 
       <div className="fixed inset-x-0 bottom-4 px-4">
         <div className="mx-auto max-w-2xl">
+          {failMsg && (
+            <p role="alert" className="text-sm text-danger mb-2">
+              {failMsg}
+            </p>
+          )}
           <Button
             size="lg"
             className="w-full shadow-lg"
@@ -178,7 +213,9 @@ export default function SharedBundlePage() {
             onClick={importSelected}
           >
             <Download className="size-5" />
-            {authed
+            {importing
+              ? `Copiando ${Math.min(progress.done + 1, progress.total)} de ${progress.total}…`
+              : authed
               ? `Copiar ${selected.size || ""} a mis rutinas`
               : "Iniciar sesión y copiar"}
           </Button>

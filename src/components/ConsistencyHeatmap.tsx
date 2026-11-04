@@ -38,7 +38,7 @@ export function ConsistencyHeatmap({
             return (
               <div
                 key={cell.key}
-                title={`${cell.key}${cell.value > 0 ? ` · ${Math.round(cell.value)} kg` : ""}`}
+                title={`${cell.key}${cell.value > 0 ? ` · ${Math.round(cell.value)} ${Math.round(cell.value) === 1 ? "serie" : "series"}` : ""}`}
                 className="aspect-square rounded-[3px]"
                 style={{
                   background:
