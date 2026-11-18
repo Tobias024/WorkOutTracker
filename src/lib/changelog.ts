@@ -20,6 +20,16 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.0",
+    date: "2026-11-18",
+    notable: true,
+    items: [
+      "Ya podés conectar tu propia IA (Claude, ChatGPT, etc.) a WOLF: entrá a Mi perfil, copiá el link y pegalo en los conectores de tu asistente. Te va a pedir iniciar sesión y confirmar el acceso.",
+      "Una vez conectada, tu IA puede ver tu catálogo de ejercicios y tu progreso, armar o editar tus rutinas, y registrar tus entrenamientos por vos — reemplaza tener que descargar el Excel y volver a subirlo a mano.",
+      "Desde Mi perfil vas a ver qué IA están conectadas a tu cuenta, y podés desconectarlas cuando quieras.",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-09-20",
     notable: true,
