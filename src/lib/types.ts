@@ -291,6 +291,76 @@ export type SessionPr = {
   prev_orm: number;
 };
 
+// ───────────────── Servidor MCP / bridge OAuth ─────────────────
+
+export type McpProgressRow = {
+  exercise_id: string;
+  best_e1rm: number;
+  last_weight: number | null;
+  last_reps: number | null;
+  last_date: string | null;
+  times: number;
+};
+
+export type McpRoutineSetItem = {
+  reps?: number | null;
+  weight?: number | null;
+  duration_seconds?: number | null;
+  distance_m?: number | null;
+};
+
+export type McpRoutineItem = {
+  slug: string;
+  sets: McpRoutineSetItem[];
+};
+
+export type McpRoutineDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  exercises: {
+    exercise_id: string;
+    slug: string;
+    name: string;
+    position: number;
+    notes: string | null;
+    sets: {
+      set_number: number;
+      target_reps: number | null;
+      target_weight: number | null;
+      target_duration_seconds: number | null;
+      target_distance_m: number | null;
+    }[];
+  }[];
+};
+
+export type McpLogSetItem = {
+  reps?: number | null;
+  weight?: number | null;
+  duration_seconds?: number | null;
+  distance_m?: number | null;
+  comment?: string | null;
+};
+
+export type McpLogExerciseItem = {
+  slug: string;
+  notes?: string | null;
+  sets: McpLogSetItem[];
+};
+
+export type OAuthTokenPair = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+};
+
+export type OAuthConnection = {
+  id: string;
+  client_name: string;
+  created_at: string;
+  access_token_expires_at: string;
+};
+
 type Table<T extends Record<string, unknown>> = {
   Row: T;
   Insert: Partial<T>;
@@ -371,6 +441,104 @@ export type Database = {
       record_session_achievements: {
         Args: { p_session_id: string };
         Returns: SessionPr[];
+      };
+
+      // ── Bridge OAuth (servidor MCP) ──
+      register_oauth_client: {
+        Args: { p_client_name: string; p_redirect_uris: string[] };
+        Returns: string;
+      };
+      get_oauth_client_public_info: {
+        Args: { p_client_id: string };
+        Returns: string | null;
+      };
+      create_oauth_code: {
+        Args: {
+          p_client_id: string;
+          p_redirect_uri: string;
+          p_code_challenge: string;
+          p_code_challenge_method?: string;
+          p_resource?: string | null;
+        };
+        Returns: string;
+      };
+      exchange_oauth_code: {
+        Args: {
+          p_code: string;
+          p_code_verifier: string;
+          p_client_id: string;
+          p_redirect_uri: string;
+          p_resource?: string | null;
+        };
+        Returns: OAuthTokenPair[];
+      };
+      refresh_oauth_token: {
+        Args: { p_refresh_token: string; p_client_id: string };
+        Returns: OAuthTokenPair[];
+      };
+      list_my_oauth_connections: {
+        Args: Record<string, never>;
+        Returns: OAuthConnection[];
+      };
+      revoke_oauth_connection: {
+        Args: { p_id: string };
+        Returns: null;
+      };
+
+      // ── Tools del servidor MCP ──
+      mcp_authenticate: {
+        Args: { p_access_token: string };
+        Returns: string;
+      };
+      mcp_list_exercises: {
+        Args: { p_access_token: string };
+        Returns: Exercise[];
+      };
+      mcp_get_progress: {
+        Args: { p_access_token: string };
+        Returns: McpProgressRow[];
+      };
+      mcp_list_routines: {
+        Args: { p_access_token: string };
+        Returns: Routine[];
+      };
+      mcp_get_routine: {
+        Args: { p_access_token: string; p_routine_id: string };
+        Returns: McpRoutineDetail;
+      };
+      mcp_create_routine: {
+        Args: {
+          p_access_token: string;
+          p_name: string;
+          p_description: string | null;
+          p_items: McpRoutineItem[];
+        };
+        Returns: string;
+      };
+      mcp_update_routine: {
+        Args: {
+          p_access_token: string;
+          p_routine_id: string;
+          p_name: string;
+          p_description: string | null;
+          p_items: McpRoutineItem[];
+        };
+        Returns: null;
+      };
+      mcp_delete_routine: {
+        Args: { p_access_token: string; p_routine_id: string };
+        Returns: null;
+      };
+      mcp_log_workout_session: {
+        Args: {
+          p_access_token: string;
+          p_name: string | null;
+          p_started_at: string | null;
+          p_ended_at: string | null;
+          p_routine_id: string | null;
+          p_exercises: McpLogExerciseItem[];
+        };
+        Returns: string;
       };
     };
   };

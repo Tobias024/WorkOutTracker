@@ -11,6 +11,7 @@ import { bmi, bmiCategory, dateKey } from "@/lib/metrics";
 import { useAddMeasurement } from "@/hooks/useBodyData";
 import { goalFromPrefs } from "@/hooks/useGoal";
 import { useTheme, type Theme } from "@/hooks/useTheme";
+import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
 import { clsx } from "@/lib/clsx";
 import type { Sex, TrainingProfile } from "@/lib/types";
 
@@ -211,6 +212,8 @@ export default function PerfilPage() {
       <MeasurementsForm />
 
       <ThemeSection />
+
+      <ConnectedAppsSection />
 
       <SourceNotice />
     </div>
