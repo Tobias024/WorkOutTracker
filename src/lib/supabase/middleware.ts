@@ -6,8 +6,13 @@ import type { Database } from "@/lib/types";
 // Rutas accesibles sin sesión. /oauth/authorize y /oauth/authorize/approve
 // quedan deliberadamente FUERA: son páginas normales protegidas (requieren
 // sesión, como cualquier otra ruta) — /oauth/token, /oauth/register,
-// /api/well-known y /mcp en cambio son server-to-server (sin cookie de
-// sesión), cada uno valida su propio bearer/no necesita nada acá.
+// /.well-known y /mcp en cambio son server-to-server (sin cookie de sesión),
+// cada uno valida su propio bearer/no necesita nada acá.
+//
+// "/.well-known" (no sólo "/api/well-known"): el middleware corre ANTES que
+// los rewrites de next.config.ts, así que ve la ruta original. Sin esto el
+// descubrimiento OAuth devolvía un 307 a /login y los clientes MCP abortaban
+// con "Couldn't start, try signing in".
 const PUBLIC_PATHS = [
   "/login",
   "/auth",
@@ -15,6 +20,7 @@ const PUBLIC_PATHS = [
   "/r",
   "/oauth/token",
   "/oauth/register",
+  "/.well-known",
   "/api/well-known",
   "/mcp",
 ];
