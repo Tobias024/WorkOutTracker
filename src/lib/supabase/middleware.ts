@@ -4,8 +4,26 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/types";
 import { safeNext } from "@/lib/safe-next";
 
-// Rutas accesibles sin sesión.
-const PUBLIC_PATHS = ["/login", "/auth", "/invite", "/r"];
+// Rutas accesibles sin sesión. /oauth/authorize y /oauth/authorize/approve
+// quedan deliberadamente FUERA: son páginas normales protegidas (requieren
+// sesión, como cualquier otra ruta) — /oauth/token, /oauth/register,
+// /api/well-known y /mcp en cambio son server-to-server (sin cookie de
+// sesión), cada uno valida su propio bearer/no necesita nada acá.
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  "/invite",
+  "/r",
+  "/oauth/token",
+  "/oauth/register",
+  "/api/well-known",
+  // El middleware corre ANTES de los rewrites de next.config.ts: ve el path
+  // original "/.well-known/..." y no "/api/well-known/...". Sin esta entrada,
+  // el discovery de OAuth redirigía a /login y ningún cliente MCP podía
+  // descubrir cómo autenticarse.
+  "/.well-known",
+  "/mcp",
+];
 
 // Archivos que el navegador pide sin sesión (manifest/SW) para validar la
 // instalación de la PWA: si se redirigen a /login, Brave/Chrome descartan
@@ -85,10 +103,17 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (!user && !isPublic(pathname)) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    // .clone() + reset de "search" (no new URL(): la constante URL de arriba
+    // tapa el constructor global en este módulo). Antes, pisar sólo
+    // "pathname" dejaba los query params originales pegados sueltos en la
+    // URL de /login, y "next" se guardaba sin su propio query string —
+    // rompía cualquier flujo que dependa de params a través del login
+    // intermedio (p. ej. /oauth/authorize?client_id=...&code_challenge=...).
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
+    return NextResponse.redirect(loginUrl);
   }
 
   // Con sesión, /login no tiene nada que mostrar: se va al destino pedido.

@@ -29,6 +29,7 @@ import { useFriends } from "@/hooks/useFriends";
 import { useColorblind } from "@/hooks/useColorblind";
 import { goalFromPrefs } from "@/hooks/useGoal";
 import { useTheme, type Theme } from "@/hooks/useTheme";
+import { ConnectedAppsSection } from "@/components/ConnectedAppsSection";
 import { clsx } from "@/lib/clsx";
 import type { Sex, TrainingProfile } from "@/lib/types";
 
@@ -369,6 +370,9 @@ export default function PerfilPage() {
         <ColorblindSwitch />
         <NotificationToggle />
       </section>
+
+      {/* Conexiones de IA (servidor MCP) */}
+      <ConnectedAppsSection />
 
       {/* Novedades */}
       <section className="card p-4">
