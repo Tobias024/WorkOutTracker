@@ -41,6 +41,7 @@ export async function POST(request: Request) {
     // dudas no seguimos sin sesión.
     return NextResponse.redirect(
       `${siteOrigin(request)}/login?next=${encodeURIComponent("/oauth/authorize")}`,
+      303,
     );
   }
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     const url = new URL(redirectUri);
     url.searchParams.set("error", "access_denied");
     if (state) url.searchParams.set("state", state);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(url, 303);
   }
 
   const clientId = String(form.get("client_id") ?? "");
@@ -75,5 +76,9 @@ export async function POST(request: Request) {
   const url = new URL(redirectUri);
   url.searchParams.set("code", code);
   if (state) url.searchParams.set("state", state);
-  return NextResponse.redirect(url);
+  // 303 explícito: NextResponse.redirect() por defecto usa 307 (preserva el
+  // método). Esta ruta siempre se llega por POST (el form de consentimiento);
+  // sin forzar 303 ("See Other" → GET), el browser repite el POST contra el
+  // redirect_uri del cliente MCP, que sólo acepta GET en su callback → 405.
+  return NextResponse.redirect(url, 303);
 }
