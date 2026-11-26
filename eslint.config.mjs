@@ -13,6 +13,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Export del handoff de diseño (referencia, no código de la app: no se
+    // importa ni se deploya). Lintearlo sólo ensuciaba `npm run lint`.
+    // (Un "#" inicial en un glob es comentario: se matchea la carpeta interna.)
+    "**/design_handoff_metricas/**",
   ]),
 ]);
 
