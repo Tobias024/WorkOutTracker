@@ -512,7 +512,13 @@ function SessionView({
     setHidden(true);
     undoable({
       message: `Quitaste «${name}»`,
-      commit: () => m.removeExercise.mutateAsync(we.id),
+      // Si el borrado falla, el rollback devuelve el ejercicio al cache: hay
+      // que volver a mostrarlo, si no queda invisible pero vivo en la base.
+      commit: () =>
+        m.removeExercise.mutateAsync(we.id).catch((e) => {
+          setHidden(false);
+          throw e;
+        }),
       undo: () => setHidden(false),
     });
   }
@@ -778,7 +784,10 @@ function SessionView({
             id: newId(),
             setIds: [newId(), newId(), newId()],
             exerciseId: ex.id,
-            position: exercises.length,
+            // Máximo + 1 sobre TODOS (incluidos los escondidos con "Deshacer"
+            // pendiente): exercises.length repetía posiciones tras un borrado.
+            position:
+              Math.max(-1, ...data.exercises.map((e) => e.position)) + 1,
           })
         }
       />

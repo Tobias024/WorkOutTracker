@@ -207,6 +207,10 @@ export function useRoutineExerciseOps(routineId: string) {
   const qc = useQueryClient();
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["routine", routineId] });
+  // Todas las operaciones de la rutina comparten scope: TanStack las corre de
+  // a una, en orden. Así dos altas seguidas no leen el mismo max(position), y
+  // mover/quitar/editar una fila recién agregada espera a que exista.
+  const scope = { id: `routine-${routineId}` };
 
   /**
    * Agrega un ejercicio con 3×10 por defecto. Es optimista (el picker queda
@@ -214,9 +218,14 @@ export function useRoutineExerciseOps(routineId: string) {
    */
   const add = useMutation({
     mutationKey: ["routine-add", routineId],
+    scope,
     mutationFn: async ({
+      id,
       exerciseId,
     }: {
+      /** UUID generado en el cliente (newId): la fila optimista ya usa el id
+       *  real, así mover/quitar/editar no mandan un id falso a Postgres. */
+      id: string;
       exerciseId: string;
       /** Solo para la fila optimista; la real se calcula contra la base. */
       position: number;
@@ -234,6 +243,7 @@ export function useRoutineExerciseOps(routineId: string) {
       const { data: rex, error } = await supabase
         .from("routine_exercises")
         .insert({
+          id,
           routine_id: routineId,
           exercise_id: exerciseId,
           position,
@@ -253,11 +263,11 @@ export function useRoutineExerciseOps(routineId: string) {
       );
       if (e2) throw e2;
     },
-    onMutate: async ({ exerciseId, position }) => {
+    onMutate: async ({ id, exerciseId, position }) => {
       await qc.cancelQueries({ queryKey: ["routine", routineId] });
       const prev = qc.getQueryData<RoutineData>(["routine", routineId]);
       if (prev) {
-        const tempId = `tmp-${nanoid(8)}`;
+        const tempId = id;
         const row: RoutineExerciseWithSets = {
           id: tempId,
           routine_id: routineId,
@@ -303,6 +313,7 @@ export function useRoutineExerciseOps(routineId: string) {
    * compartir).
    */
   const saveSets = useMutation({
+    scope,
     mutationFn: async ({
       rexId,
       plans,
@@ -343,6 +354,7 @@ export function useRoutineExerciseOps(routineId: string) {
   });
 
   const update = useMutation({
+    scope,
     mutationFn: async ({
       id,
       patch,
@@ -361,6 +373,7 @@ export function useRoutineExerciseOps(routineId: string) {
   });
 
   const remove = useMutation({
+    scope,
     mutationFn: async (id: string) => {
       const supabase = createClient();
       const { error } = await supabase
@@ -374,6 +387,7 @@ export function useRoutineExerciseOps(routineId: string) {
 
   /** Cambia el ejercicio de una fila conservando sus series/reps/peso. */
   const replace = useMutation({
+    scope,
     mutationFn: async ({ id, exerciseId }: { id: string; exerciseId: string }) => {
       const supabase = createClient();
       const { error } = await supabase
@@ -388,6 +402,7 @@ export function useRoutineExerciseOps(routineId: string) {
   /** Intercambia la posición de dos ejercicios, con update optimista (la UI
    *  responde al instante; sin esto "se trababa" esperando el refetch). */
   const swap = useMutation({
+    scope,
     mutationFn: async ({
       a,
       b,

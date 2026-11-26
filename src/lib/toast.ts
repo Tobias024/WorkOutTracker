@@ -83,25 +83,30 @@ interface Pending {
 const pending = new Set<Pending>();
 let flushBound = false;
 
-function run(p: Pending): Promise<unknown> {
-  if (p.done) return Promise.resolve();
+/** Ejecuta el commit una sola vez. Resuelve `false` si falló (nunca rechaza:
+ *  el aviso al usuario lo da el caller, ej. mutationCache.onError). */
+function run(p: Pending): Promise<boolean> {
+  if (p.done) return Promise.resolve(true);
   p.done = true;
   pending.delete(p);
   clearTimer(`${p.toastId}:commit`);
   dismissToast(p.toastId);
   try {
     const r = p.commit();
-    if (r && typeof (r as Promise<unknown>).catch === "function") {
-      return (r as Promise<unknown>).catch(() => {});
+    if (r && typeof (r as Promise<unknown>).then === "function") {
+      return (r as Promise<unknown>).then(
+        () => true,
+        () => false,
+      );
     }
   } catch {
-    // el caller maneja sus errores (ej. mutationCache.onError)
+    return Promise.resolve(false);
   }
-  return Promise.resolve();
+  return Promise.resolve(true);
 }
 
 function flushAll() {
-  void flushUndoables();
+  flushUndoables().catch(() => {});
 }
 
 /**
@@ -111,7 +116,13 @@ function flushAll() {
  * sus series contarían en los logros/ranking.
  */
 export function flushUndoables(): Promise<void> {
-  return Promise.all([...pending].map(run)).then(() => undefined);
+  // Rechaza si algún commit falló: quien depende del estado del servidor (ej.
+  // terminar el entreno) tiene que frenar en vez de cerrar con datos que el
+  // usuario creía borrados.
+  return Promise.all([...pending].map(run)).then((ok) => {
+    if (ok.includes(false))
+      throw new Error("No se pudo aplicar un cambio pendiente");
+  });
 }
 
 function bindFlush() {

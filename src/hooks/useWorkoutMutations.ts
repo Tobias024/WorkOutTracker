@@ -73,8 +73,21 @@ export function useSessionMutations(sessionId: string) {
       apply((s) => patchSet(s, id, patch));
       return { prevValues };
     },
-    onError: (_e, { id }, ctx) => {
-      if (ctx?.prevValues) apply((s) => patchSet(s, id, ctx.prevValues!));
+    onError: (_e, { id, patch }, ctx) => {
+      const prev = ctx?.prevValues;
+      if (!prev) return;
+      // Sólo se revierten los campos que siguen valiendo lo que escribió ESTE
+      // patch: si una edición posterior de la misma serie ya los cambió (y se
+      // guardó), restaurar el valor viejo dejaría la pantalla distinta de la
+      // base — y con staleTime infinito no se corrige solo.
+      const cur = current();
+      const now = cur ? findSet(cur, id)?.set : undefined;
+      const revert: Record<string, unknown> = {};
+      for (const k of Object.keys(prev) as (keyof WorkoutSet)[]) {
+        if (!now || now[k] === patch[k]) revert[k] = prev[k];
+      }
+      if (Object.keys(revert).length > 0)
+        apply((s) => patchSet(s, id, revert as Partial<WorkoutSet>));
     },
     // Sin refetch de la sesión: el optimistic ya es correcto para un patch.
     onSettled: markStaleBackground,
@@ -185,7 +198,14 @@ export function useSessionMutations(sessionId: string) {
           set_number: i + 1,
         })),
       );
-      if (setsError && !isDuplicate(setsError)) throw setsError;
+      if (setsError && !isDuplicate(setsError)) {
+        // Sin sus series el ejercicio queda huérfano: el onError lo saca de la
+        // pantalla pero la fila seguiría en la base y reaparecería vacía (y en
+        // el historial). Best-effort: si este delete también falla, se pierde
+        // sólo la limpieza, no el aviso de error.
+        await supabase.from("workout_exercises").delete().eq("id", id);
+        throw setsError;
+      }
     },
     onMutate: async ({ id, setIds, exerciseId, position }) => {
       await qc.cancelQueries({ queryKey: sessionKey });

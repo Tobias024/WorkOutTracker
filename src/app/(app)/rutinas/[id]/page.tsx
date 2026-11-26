@@ -34,6 +34,7 @@ import {
 } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { undoable } from "@/lib/toast";
+import { newId } from "@/lib/uuid";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
@@ -370,6 +371,7 @@ export default function RoutineEditorPage() {
         addedIds={addedIds}
         onSelect={(ex) =>
           ops.add.mutate({
+            id: newId(),
             exerciseId: ex.id,
             position:
               exercises.reduce((m, r) => Math.max(m, r.position), -1) + 1,

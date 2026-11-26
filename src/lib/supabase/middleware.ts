@@ -127,12 +127,14 @@ export async function updateSession(request: NextRequest) {
   // Las cookies refrescadas viajan en la redirección.
   if (user && pathname === "/login") {
     const target = safeNext(request.nextUrl.searchParams.get("next"));
-    // `URL` en este archivo es la URL de Supabase (pisa al global): se arma
-    // el destino clonando nextUrl. safeNext garantiza path + query internos.
+    // `URL` en este archivo es la URL de Supabase (pisa al global): se usa
+    // globalThis.URL. safeNext garantiza un destino interno (path + query +
+    // hash); parsearlo evita que un #fragmento termine codificado en el path.
+    const parsed = new globalThis.URL(target, request.nextUrl.origin);
     const dest = request.nextUrl.clone();
-    const [path, query = ""] = target.split("?");
-    dest.pathname = path;
-    dest.search = query ? `?${query}` : "";
+    dest.pathname = parsed.pathname;
+    dest.search = parsed.search;
+    dest.hash = parsed.hash;
     const redirect = NextResponse.redirect(dest);
     response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
     return redirect;
