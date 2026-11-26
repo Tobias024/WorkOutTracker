@@ -9,6 +9,7 @@ import {
   Check,
   Info,
   MessageSquare,
+  MoreVertical,
   Plus,
   Trash2,
   X,
@@ -314,8 +315,9 @@ export function SetRow({
       )}
     >
       <div className="flex items-center gap-1.5">
-        {/* El número abre el menú de la serie (bajada, comentario, eliminar):
-            ahí cae menos el pulgar que sobre el check, y no queda pegado a él. */}
+        {/* El número también abre el menú (compat), pero no es un botón visible
+            como para confiar en que se descubra solo: los ⋮ son la entrada
+            explícita al mismo menú (bajada, comentario, eliminar). */}
         <button
           type="button"
           onClick={() => setMenu(true)}
@@ -324,6 +326,14 @@ export function SetRow({
         >
           {n}
         </button>
+
+        <IconButton
+          size="sm"
+          label={`Opciones de la serie ${n}`}
+          onClick={() => setMenu(true)}
+        >
+          <MoreVertical className="size-4" />
+        </IconButton>
 
         {showsLoad && (
           <NumberField
