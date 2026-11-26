@@ -30,13 +30,25 @@ function errorResponse(error: string, description: string, status = 400) {
   );
 }
 
-/** Mapea un error de Postgres ("invalid_grant: ...") a la forma OAuth estándar. */
-function toOAuthError(message: string) {
+/**
+ * Mapea el error de la RPC a la forma OAuth estándar. Sólo las excepciones
+ * que las funciones levantan a propósito ("invalid_grant: ...") son
+ * invalid_grant: ante eso el cliente MCP descarta sus credenciales y obliga a
+ * re-autorizar. Cualquier otra cosa (error de SQL, de red, de PostgREST) es
+ * un 500 reintentable — si no, un bug del server se disfraza de "sesión
+ * vencida" (así pasó con el 42702 de refresh_oauth_token, ver 0048).
+ */
+function toOAuthError(
+  grant: string,
+  error: { code?: string; message?: string } | null,
+) {
+  const message = error?.message ?? "";
   const prefix = "invalid_grant: ";
   if (message.startsWith(prefix)) {
     return errorResponse("invalid_grant", message.slice(prefix.length));
   }
-  return errorResponse("invalid_grant", message);
+  console.error(`[oauth/token] ${grant} falló`, error?.code, message);
+  return errorResponse("server_error", "Error interno al emitir el token", 500);
 }
 
 export async function OPTIONS() {
@@ -88,7 +100,7 @@ export async function POST(request: Request) {
       })
       .single();
 
-    if (error || !data) return toOAuthError(error?.message ?? "invalid_grant: desconocido");
+    if (error || !data) return toOAuthError("authorization_code", error);
 
     return NextResponse.json(
       {
@@ -108,7 +120,7 @@ export async function POST(request: Request) {
     })
     .single();
 
-  if (error || !data) return toOAuthError(error?.message ?? "invalid_grant: desconocido");
+  if (error || !data) return toOAuthError("refresh_token", error);
 
   return NextResponse.json(
     {

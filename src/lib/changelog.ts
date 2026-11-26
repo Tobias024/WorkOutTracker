@@ -20,6 +20,15 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.1",
+    date: "2026-11-25",
+    notable: true,
+    items: [
+      "La conexión con tu IA ya no se corta cada hora: una vez que la autorizás, queda conectada sin que tengas que volver a iniciar sesión.",
+      "Si tu IA dejó de responder en estos días, reconectala una vez desde los conectores de tu asistente y listo.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-11-18",
     notable: true,

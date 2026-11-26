@@ -7,14 +7,20 @@ import { siteOrigin } from "@/lib/site-origin";
 
 export const runtime = "nodejs";
 
-function unauthorized(request: Request): Response {
+function unauthorized(request: Request, tokenSent: boolean): Response {
   const origin = siteOrigin(request);
+  // error="invalid_token" (RFC 6750 §3) sólo si mandó un token y no sirve
+  // (vencido/revocado): así el cliente intenta un refresh antes de pedir
+  // re-autorizar. Sin token no va código de error, sólo el desafío.
+  const challenge = tokenSent
+    ? `Bearer error="invalid_token", resource_metadata="${origin}/.well-known/oauth-protected-resource"`
+    : `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
   return new Response(JSON.stringify({ error: "invalid_token" }), {
     status: 401,
     headers: {
       "Content-Type": "application/json",
       // Le dice al cliente MCP contra qué authorization server autenticarse.
-      "WWW-Authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      "WWW-Authenticate": challenge,
       ...corsHeaders(),
     },
   });
@@ -31,7 +37,7 @@ function withCors(response: Response): Response {
 async function handle(request: Request): Promise<Response> {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : null;
-  if (!token) return unauthorized(request);
+  if (!token) return unauthorized(request, false);
 
   // Chequeo temprano (antes de levantar el server/transport): un token
   // inválido no debería ni intentar negociar MCP. Cada tool igual vuelve a
@@ -41,7 +47,7 @@ async function handle(request: Request): Promise<Response> {
   const { data: userId, error } = await supabase.rpc("mcp_authenticate", {
     p_access_token: token,
   });
-  if (error || !userId) return unauthorized(request);
+  if (error || !userId) return unauthorized(request, true);
 
   const server = buildMcpServer(token);
   const transport = new WebStandardStreamableHTTPServerTransport({
