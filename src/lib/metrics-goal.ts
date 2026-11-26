@@ -850,6 +850,23 @@ export function readinessByMuscle(
   now: number = Date.now(),
   profile?: TrainingProfile | null,
 ): Readiness[] {
+  return readinessAll(sessions, exMap, now, profile)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+}
+
+/**
+ * Score de cada grupo trabajado en `sessions`, sin ordenar ni recortar. Un grupo
+ * ausente vale READY_MAX (sin series en la semana = rezago 1, y recuperado):
+ * por eso alcanza con pasarle una ventana corta de historial (≥ 7 días para el
+ * rezago; a partir de 3 días la recuperación ya satura).
+ */
+function readinessAll(
+  sessions: HistorySession[],
+  exMap: Map<string, Exercise>,
+  now: number,
+  profile?: TrainingProfile | null,
+): Readiness[] {
   const lastAt = new Map<string, number>();
   for (const s of sessions) {
     const t = ms(s);
@@ -888,7 +905,87 @@ export function readinessByMuscle(
       score: lag * LAG_WEIGHT + recovery * RECOVERY_WEIGHT,
     });
   }
-  return out.sort((a, b) => b.score - a.score).slice(0, 3);
+  return out;
+}
+
+const READY_MAX = LAG_WEIGHT + RECOVERY_WEIGHT;
+
+/** Ventana de "rotación": rutinas hechas en estos días compiten por la sugerencia. */
+export const SUGGEST_WINDOW_DAYS = 14;
+
+export interface RoutineSuggestion {
+  routineId: string;
+  /** Músculos de la rutina mejor puntuados en "listo para entrenar" (máx. 2). */
+  readyMuscles: string[];
+}
+
+/**
+ * Rutina para "Seguir entrenando". Mezcla dos señales, mitad y mitad:
+ * - qué tan listos están los músculos que trabaja (promedio ponderado del score
+ *   de "listo para entrenar" por contribución, así una rutina larga no gana
+ *   por tener más ejercicios);
+ * - hace cuánto no se hace, dentro de la rotación de las últimas 2 semanas
+ *   (la recién hecha vale 0, la de hace 14 días vale 1).
+ *
+ * Compiten sólo las hechas en la ventana: una rutina abandonada hace meses
+ * ganaría siempre por recencia. Si ninguna entra, se cae al score de músculos
+ * entre todas las que alguna vez se hicieron.
+ *
+ * `sessions` alcanza con las de los últimos SUGGEST_WINDOW_DAYS (ver readinessAll).
+ */
+export function suggestRoutine(
+  routines: { id: string; exercise_ids: string[] }[],
+  lastByRoutine: Map<string, number>,
+  sessions: HistorySession[],
+  exMap: Map<string, Exercise>,
+  now: number,
+  profile?: TrainingProfile | null,
+): RoutineSuggestion | null {
+  const ready = new Map(
+    readinessAll(sessions, exMap, now, profile).map((r) => [r.muscle, r.score]),
+  );
+  const scoreOf = (mu: string) => (ready.get(mu) ?? READY_MAX) / READY_MAX;
+
+  const candidates = routines.filter(
+    (r) => r.exercise_ids.length > 0 && lastByRoutine.has(r.id),
+  );
+  const inWindow = candidates.filter(
+    (r) => now - lastByRoutine.get(r.id)! <= SUGGEST_WINDOW_DAYS * DAY,
+  );
+  const pool = inWindow.length > 0 ? inWindow : candidates;
+
+  let best: { r: (typeof routines)[number]; total: number; muscles: Map<string, number> } | null =
+    null;
+  for (const r of pool) {
+    const muscles = new Map<string, number>();
+    for (const exId of r.exercise_ids) {
+      const ex = exMap.get(exId);
+      if (!ex) continue;
+      for (const c of muscleContributions(ex))
+        muscles.set(c.muscle, (muscles.get(c.muscle) ?? 0) + c.weight);
+    }
+    let weight = 0;
+    let sum = 0;
+    for (const [mu, w] of muscles) {
+      weight += w;
+      sum += w * scoreOf(mu);
+    }
+    const readiness = weight > 0 ? sum / weight : 0;
+    const days = (now - lastByRoutine.get(r.id)!) / DAY;
+    const recency =
+      inWindow.length > 0 ? Math.min(1, days / SUGGEST_WINDOW_DAYS) : 0;
+    const total = 0.5 * readiness + 0.5 * recency;
+    if (!best || total > best.total) best = { r, total, muscles };
+  }
+  if (!best) return null;
+
+  // Para el "por qué": los grupos con más peso en la rutina entre los más listos.
+  const readyMuscles = [...best.muscles.entries()]
+    .filter(([mu]) => scoreOf(mu) >= 0.75)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([mu]) => mu);
+  return { routineId: best.r.id, readyMuscles };
 }
 
 /** Descansos mínimos en la ventana para que el promedio signifique algo. */

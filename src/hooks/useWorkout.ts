@@ -3,6 +3,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient, getUserId } from "@/lib/supabase/client";
+import { makeSet } from "@/lib/session-cache";
+import { newId } from "@/lib/uuid";
 import type {
   WorkoutSession,
   WorkoutExercise,
@@ -19,16 +21,24 @@ export interface FullSession {
   exercises: SessionExercise[];
 }
 
-/** Crea una sesión a partir de una rutina, aplicando sustituciones guardadas. */
+export const START_WORKOUT_KEY = ["start-workout"];
+
+/**
+ * Crea una sesión a partir de una rutina, aplicando sustituciones guardadas.
+ * Viajes a la base fijos (lecturas en paralelo + sesión + ejercicios + series),
+ * no dos por ejercicio, y deja la sesión armada en el cache: la pantalla de
+ * entreno abre sin volver a pedirla.
+ */
 export function useStartWorkout() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: START_WORKOUT_KEY,
     mutationFn: async (routineId: string): Promise<string> => {
       const supabase = createClient();
       const userId = await getUserId();
       if (!userId) throw new Error("No autenticado");
 
-      const [{ data: routine }, { data: rexs }, { data: subs }] =
+      const [{ data: routine }, { data: rexs, error: rexError }, { data: subs }] =
         await Promise.all([
           supabase.from("routines").select("name").eq("id", routineId).single(),
           supabase
@@ -41,6 +51,7 @@ export function useStartWorkout() {
             .select("routine_exercise_id, substitute_exercise_id")
             .eq("user_id", userId),
         ]);
+      if (rexError) throw rexError;
 
       const subMap = new Map(
         (subs ?? []).map((s) => [
@@ -61,28 +72,20 @@ export function useStartWorkout() {
         .single();
       if (error) throw error;
 
+      // Ids generados acá: ejercicios y series van en un insert cada uno, y el
+      // cache de la sesión se arma con los mismos ids que quedan en la base.
+      const exercises: SessionExercise[] = [];
       for (const rex of rexs ?? []) {
         const sub = subMap.get(rex.id);
-        const exerciseId = sub ?? rex.exercise_id;
-        // Los errores de estos dos inserts se propagan a propósito. Antes se
-        // ignoraban y `we!.id` tapaba el null con un non-null assertion: si la
-        // fila no se creaba (columna faltante, RLS), la sesión nacía sin series
-        // y sin un solo mensaje. Vale más romper acá que dejar entrenar sobre
-        // una sesión vacía.
-        const { data: we, error: weError } = await supabase
-          .from("workout_exercises")
-          .insert({
-            session_id: session.id,
-            exercise_id: exerciseId,
-            routine_exercise_id: rex.id,
-            replaced_from_exercise_id: sub ? rex.exercise_id : null,
-            position: rex.position,
-            notes: rex.notes,
-          })
-          .select()
-          .single();
-        if (weError) throw weError;
-        if (!we) throw new Error("No se pudo crear el ejercicio de la sesión");
+        const we: WorkoutExercise = {
+          id: newId(),
+          session_id: session.id,
+          exercise_id: sub ?? rex.exercise_id,
+          routine_exercise_id: rex.id,
+          replaced_from_exercise_id: sub ? rex.exercise_id : null,
+          position: rex.position,
+          notes: rex.notes,
+        };
 
         // Usa el plan por serie (reps + peso) si existe; si no, cae a los
         // valores "flat" target_sets/target_reps.
@@ -102,40 +105,76 @@ export function useStartWorkout() {
         // vacía y lo que quede en reps/weight es siempre lo que el usuario
         // registró. Así el plan sigue disponible como referencia toda la sesión
         // (antes se pisaba al primer tecleo) y se puede comparar contra él.
-        const sets =
+        const plans =
           planned.length > 0
-            ? planned.map((p, i) => ({
-                workout_exercise_id: we.id,
-                set_number: i + 1,
-                reps: null,
-                weight: null,
-                duration_seconds: null,
-                distance_m: null,
+            ? planned.map((p) => ({
                 planned_reps: p.target_reps,
                 planned_weight: p.target_weight,
                 planned_duration_seconds: p.target_duration_seconds,
                 planned_distance_m: p.target_distance_m,
               }))
-            : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, (_, i) => ({
-                workout_exercise_id: we.id,
-                set_number: i + 1,
-                reps: null,
-                weight: null,
-                duration_seconds: null,
-                distance_m: null,
+            : Array.from({ length: Math.max(1, rex.target_sets ?? 3) }, () => ({
                 planned_reps: rex.target_reps,
                 planned_weight: null,
                 planned_duration_seconds: null,
                 planned_distance_m: null,
               }));
-        const { error: setsError } = await supabase
-          .from("workout_sets")
-          .insert(sets);
-        if (setsError) throw setsError;
+        const sets = plans.map((p, i) => ({
+          ...makeSet({ id: newId(), workout_exercise_id: we.id, set_number: i + 1 }),
+          ...p,
+        }));
+        exercises.push({ ...we, sets });
       }
 
+      // Los errores se propagan a propósito: vale más romper acá que dejar
+      // entrenar sobre una sesión vacía. Y si falla a mitad, la sesión se borra
+      // (las filas creadas caen por cascade): si no, quedaría como sesión activa
+      // y el candado obligaría a entrar a un entreno sin ejercicios.
+      try {
+        if (exercises.length > 0) {
+          const { error: weError } = await supabase
+            .from("workout_exercises")
+            .insert(
+              exercises.map((e) => ({
+                id: e.id,
+                session_id: e.session_id,
+                exercise_id: e.exercise_id,
+                routine_exercise_id: e.routine_exercise_id,
+                replaced_from_exercise_id: e.replaced_from_exercise_id,
+                position: e.position,
+                notes: e.notes,
+              })),
+            );
+          if (weError) throw weError;
+          const { error: setsError } = await supabase
+            .from("workout_sets")
+            .insert(
+              exercises.flatMap((e) =>
+                e.sets.map((s) => ({
+                  id: s.id,
+                  workout_exercise_id: s.workout_exercise_id,
+                  set_number: s.set_number,
+                  planned_reps: s.planned_reps,
+                  planned_weight: s.planned_weight,
+                  planned_duration_seconds: s.planned_duration_seconds,
+                  planned_distance_m: s.planned_distance_m,
+                })),
+              ),
+            );
+          if (setsError) throw setsError;
+        }
+      } catch (e) {
+        await supabase.from("workout_sessions").delete().eq("id", session.id);
+        throw e;
+      }
+
+      const full: FullSession = {
+        session: session as WorkoutSession,
+        exercises,
+      };
+      qc.setQueryData(["session", session.id], full);
       qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
-      qc.invalidateQueries({ queryKey: ["active-session"] });
+      qc.setQueryData(["active-session"], session.id);
       rememberActiveSession(session.id);
       return session.id;
     },

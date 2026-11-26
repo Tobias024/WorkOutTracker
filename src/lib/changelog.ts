@@ -20,6 +20,15 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.3",
+    date: "2026-11-26",
+    notable: true,
+    items: [
+      "“Seguir entrenando” ya no te sugiere la rutina que acabás de hacer: elige entre las de tus últimas 2 semanas la que hace más que no hacés y trabaja los músculos que tenés listos para entrenar.",
+      "Empezar una rutina es mucho más rápido, y ya no aparece “Guardando…” mientras arranca.",
+    ],
+  },
+  {
     version: "0.5.2",
     date: "2026-11-26",
     items: [

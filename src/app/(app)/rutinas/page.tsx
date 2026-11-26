@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -42,7 +42,12 @@ import {
 } from "@/hooks/useRoutines";
 import { useStartEmptyWorkout, useStartWorkout } from "@/hooks/useWorkout";
 import { useExercises, useExerciseMap } from "@/hooks/useExercises";
-import { historyQueryOptions } from "@/hooks/useHistory";
+import {
+  historyQueryOptions,
+  recentHistoryQueryOptions,
+} from "@/hooks/useHistory";
+import { useTrainingProfile } from "@/hooks/useGoal";
+import { SUGGEST_WINDOW_DAYS, suggestRoutine } from "@/lib/metrics-goal";
 import { readWorkbook } from "@/lib/import-xlsx";
 import { buildRoutineTemplate } from "@/lib/routine-template";
 import { downloadWorkbook } from "@/lib/export-xlsx";
@@ -130,6 +135,11 @@ export default function RoutinesPage() {
     },
   });
   const exMap = useExerciseMap();
+  const { data: recent } = useQuery(
+    recentHistoryQueryOptions(SUGGEST_WINDOW_DAYS),
+  );
+  const { data: prefs } = useTrainingProfile();
+  const profile = prefs?.trainingProfile ?? null;
   const fileRef = useRef<HTMLInputElement>(null);
   const [importState, setImportState] = useState<ImportState | null>(null);
   const [importName, setImportName] = useState("");
@@ -146,22 +156,33 @@ export default function RoutinesPage() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareCount, setShareCount] = useState(0);
 
-  // "Seguir entrenando": la rutina de la sesión más reciente (el historial
-  // viene ordenado de más nueva a más vieja) que todavía exista y tenga ejercicios.
-  const lastRoutine = (() => {
-    if (!data || !lastSessions) return null;
-    const byId = new Map(data.map((r) => [r.id, r]));
-    const sorted = [...lastSessions].sort((a, b) =>
-      a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
+  // "Seguir entrenando": no la última hecha (recién la hiciste), sino la que
+  // mejor combina músculos listos + más tiempo sin hacerla (ver suggestRoutine).
+  // Sólo baja las sesiones de la ventana, no el historial entero.
+  const lastRoutine = useMemo(() => {
+    if (!data || !lastSessions || !recent || exMap.size === 0) return null;
+    const lastBy = new Map(
+      lastSessions.map((s) => [s.routine_id, new Date(s.last_at).getTime()]),
     );
-    for (const s of sorted) {
-      const r = byId.get(s.routine_id);
-      if (r && r.exercise_ids.length > 0) {
-        return { routine: r, when: s.last_at };
-      }
-    }
-    return null;
-  })();
+    const pick = suggestRoutine(
+      data,
+      lastBy,
+      recent.sessions,
+      exMap,
+      recent.now,
+      profile,
+    );
+    const routine = pick && data.find((r) => r.id === pick.routineId);
+    if (!pick || !routine) return null;
+    const last = lastSessions.find((s) => s.routine_id === routine.id);
+    return {
+      routine,
+      when: last?.last_at ?? null,
+      readyMuscles: pick.readyMuscles.map((m, i) =>
+        i === 0 ? muscleEs(m) : muscleEs(m).toLowerCase(),
+      ),
+    };
+  }, [data, lastSessions, recent, exMap, profile]);
 
   const startingId = startRoutine.isPending ? startRoutine.variables : null;
 
@@ -378,7 +399,10 @@ export default function RoutinesPage() {
               {lastRoutine.routine.name}
             </p>
             <p className="text-xs text-muted">
-              Última vez: {formatDate(lastRoutine.when)}
+              {lastRoutine.when && `Última vez: ${formatDate(lastRoutine.when)}`}
+              {lastRoutine.when && lastRoutine.readyMuscles.length > 0 && " · "}
+              {lastRoutine.readyMuscles.length > 0 &&
+                `${lastRoutine.readyMuscles.join(" y ")} ${lastRoutine.readyMuscles.length > 1 ? "listos" : "listo"}`}
             </p>
           </div>
           <Button

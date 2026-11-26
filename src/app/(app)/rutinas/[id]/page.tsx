@@ -54,6 +54,7 @@ import {
   type SetPlan,
 } from "@/hooks/useRoutines";
 import {
+  START_WORKOUT_KEY,
   useStartWorkout,
   useLastExerciseLogs,
   type LastExerciseLog,
@@ -78,9 +79,13 @@ export default function RoutineEditorPage() {
   const del = useDeleteRoutine();
   const share = useShareRoutine();
   const start = useStartWorkout();
-  // Cualquier mutación en vuelo cuenta como "guardando": las de la rutina son
-  // las únicas que se disparan desde esta pantalla.
-  const saving = useIsMutating() > 0;
+  // Las mutaciones en vuelo de la rutina cuentan como "guardando". Arrancar el
+  // entreno no: no guarda cambios de la rutina, y mostrarlo como guardado hacía
+  // creer que "Empezar" esperaba a un guardado.
+  const saving =
+    useIsMutating({
+      predicate: (m) => m.options.mutationKey?.[0] !== START_WORKOUT_KEY[0],
+    }) > 0;
   // Último peso/reps por ejercicio (sesión terminada más reciente). Solo se
   // muestra como referencia: no pisa el plan de la rutina.
   const { data: lastLogs } = useLastExerciseLogs(
