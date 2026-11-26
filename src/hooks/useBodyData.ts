@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { SleepLog, BodyWeightLog, BodyMeasurement } from "@/lib/types";
 
 /** Registros de sueño recientes (para la card Sueño). */
@@ -11,10 +11,8 @@ export function useSleep() {
     queryKey: ["sleep"],
     queryFn: async (): Promise<SleepLog[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data } = await supabase
         .from("sleep_logs")
         .select("*")
@@ -31,14 +29,12 @@ export function useLogSleep() {
     meta: { silent: true },
     mutationFn: async ({ sleptOn, hours }: { sleptOn: string; hours: number }) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("sleep_logs")
         .upsert(
-          { user_id: user.id, slept_on: sleptOn, hours },
+          { user_id: uid, slept_on: sleptOn, hours },
           { onConflict: "user_id,slept_on" },
         );
       if (error) throw error;
@@ -53,10 +49,8 @@ export function useBodyWeight() {
     queryKey: ["body-weight"],
     queryFn: async (): Promise<BodyWeightLog[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data } = await supabase
         .from("body_weight_logs")
         .select("*")
@@ -81,19 +75,17 @@ export function useLogBodyWeight() {
       if (!(weightKg >= 25 && weightKg <= 400))
         throw new Error("Peso fuera de rango (25-400 kg).");
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("body_weight_logs")
         .upsert(
-          { user_id: user.id, weighed_on: weighedOn, weight_kg: weightKg },
+          { user_id: uid, weighed_on: weighedOn, weight_kg: weightKg },
           { onConflict: "user_id,weighed_on" },
         );
       if (error) throw error;
       // El peso actual del perfil sigue a lo último registrado (una sola verdad).
-      await supabase.from("profiles").update({ weight_kg: weightKg }).eq("id", user.id);
+      await supabase.from("profiles").update({ weight_kg: weightKg }).eq("id", uid);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["body-weight"] });
@@ -108,10 +100,8 @@ export function useMeasurements() {
     queryKey: ["measurements"],
     queryFn: async (): Promise<BodyMeasurement[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data } = await supabase
         .from("body_measurements")
         .select("*")
@@ -130,13 +120,11 @@ export function useAddMeasurement() {
       m: Omit<BodyMeasurement, "id" | "user_id" | "created_at">,
     ) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("body_measurements")
-        .insert({ ...m, user_id: user.id });
+        .insert({ ...m, user_id: uid });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["measurements"] }),

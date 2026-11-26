@@ -9,6 +9,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LineChart,
@@ -38,12 +40,17 @@ import {
   Tabs,
 } from "@/components/ui";
 import { toast } from "@/lib/toast";
-import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
-import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
+import type { ChartPoint } from "@/components/VolumeChart";
+import type { MusclePoint } from "@/components/MuscleDonut";
 import { MuscleSetsBar, type MuscleSetRow } from "@/components/MuscleSetsBar";
 import { PatternBalance, type BalanceData } from "@/components/PatternBalance";
 import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatmap";
-import { useHistory, type HistorySession } from "@/hooks/useHistory";
+import {
+  useHistory,
+  historyExportQueryOptions,
+  type HistorySession,
+  type HistorySessionFull,
+} from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useAchievements } from "@/hooks/useAchievements";
 import { useDeleteSession } from "@/hooks/useWorkout";
@@ -262,7 +269,18 @@ export default function RegistroPage() {
   );
 }
 
+// recharts se carga recién cuando el gráfico se va a mostrar.
+const VolumeChart = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.VolumeChart),
+  { ssr: false, loading: () => <div className="h-[180px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+const MuscleDonut = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MuscleDonut),
+  { ssr: false, loading: () => <div className="h-[132px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+
 function RegistroContent() {
+  const qc = useQueryClient();
   const history = useHistory();
   const { data, isPending, isError, isFetching, refetch } = history;
   const exMap = useExerciseMap();
@@ -646,7 +664,13 @@ function RegistroContent() {
     to: Date | null,
     tag: string,
   ): Promise<string | null> {
-    const sessions = (data ?? []).filter((s) => {
+    let all: HistorySessionFull[];
+    try {
+      all = await qc.fetchQuery(historyExportQueryOptions);
+    } catch {
+      return "No se pudo cargar el historial. Probá de nuevo.";
+    }
+    const sessions = all.filter((s) => {
       const d = new Date(sessionDate(s));
       if (from && d < from) return false;
       if (to && d > to) return false;
@@ -755,7 +779,7 @@ function RegistroContent() {
    * "series efectivas" no significa lo mismo para dos personas con objetivos
    * distintos. Todo eso se explica acá en vez de dejarlo a la inferencia.
    */
-  function buildReadmeSheet(sessions: HistorySession[]): SheetCell[][] {
+  function buildReadmeSheet(sessions: HistorySessionFull[]): SheetCell[][] {
     const gp = goalParams(trainingProfile);
     const objetivo = trainingProfile ?? "hipertrofia (por defecto)";
     return [

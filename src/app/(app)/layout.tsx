@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/server";
+import { getAuthClaims } from "@/lib/supabase/auth";
 import { TabBar } from "@/components/TabBar";
 import { ActiveSessionGuard } from "@/components/ActiveSessionGuard";
 import { PendingInviteHandler } from "@/components/PendingInviteHandler";
@@ -13,20 +14,23 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const claims = await getAuthClaims();
+  if (!claims?.sub) redirect("/login");
 
-  if (!user) redirect("/login");
+  // app_metadata.onboarded lo escribe la migración 0045 (también backfill).
+  // Tokens viejos sin el flag: fallback a consultar profiles.
+  let onboarded = claims.app_metadata?.onboarded === true;
+  if (!onboarded) {
+    const supabase = await createClient();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", claims.sub)
+      .maybeSingle();
+    onboarded = !!profile?.username;
+  }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile?.username) {
+  if (!onboarded) {
     // Conserva el destino (lo setea el middleware) para volver después del
     // onboarding en vez de caer siempre en /rutinas.
     const from = safeNext((await headers()).get("x-pathname"), "");

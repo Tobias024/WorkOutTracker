@@ -5,10 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 // Guarda (o actualiza) la suscripción push del usuario autenticado.
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return new NextResponse("Unauthorized", { status: 401 });
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
   let body: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
   try {
@@ -27,7 +26,7 @@ export async function POST(request: Request) {
 
   const { error } = await supabase.from("push_subscriptions").upsert(
     {
-      user_id: user.id,
+      user_id: userId,
       endpoint,
       p256dh: keys.p256dh,
       auth: keys.auth,
@@ -43,10 +42,9 @@ export async function POST(request: Request) {
 // Baja de la suscripción (al desactivar notificaciones).
 export async function DELETE(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return new NextResponse("Unauthorized", { status: 401 });
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
   let body: { endpoint?: string };
   try {

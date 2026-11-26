@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type {
   WorkoutSession,
   WorkoutExercise,
@@ -25,10 +25,8 @@ export function useStartWorkout() {
   return useMutation({
     mutationFn: async (routineId: string): Promise<string> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const userId = await getUserId();
+      if (!userId) throw new Error("No autenticado");
 
       const [{ data: routine }, { data: rexs }, { data: subs }] =
         await Promise.all([
@@ -41,7 +39,7 @@ export function useStartWorkout() {
           supabase
             .from("exercise_substitutions")
             .select("routine_exercise_id, substitute_exercise_id")
-            .eq("user_id", user.id),
+            .eq("user_id", userId),
         ]);
 
       const subMap = new Map(
@@ -54,7 +52,7 @@ export function useStartWorkout() {
       const { data: session, error } = await supabase
         .from("workout_sessions")
         .insert({
-          user_id: user.id,
+          user_id: userId,
           routine_id: routineId,
           name: routine?.name ?? "Entrenamiento",
           started_at: new Date().toISOString(),
@@ -136,7 +134,7 @@ export function useStartWorkout() {
         if (setsError) throw setsError;
       }
 
-      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
       qc.invalidateQueries({ queryKey: ["active-session"] });
       rememberActiveSession(session.id);
       return session.id;
@@ -150,14 +148,12 @@ export function useStartEmptyWorkout() {
   return useMutation({
     mutationFn: async (): Promise<string> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const userId = await getUserId();
+      if (!userId) throw new Error("No autenticado");
       const { data, error } = await supabase
         .from("workout_sessions")
         .insert({
-          user_id: user.id,
+          user_id: userId,
           name: "Entrenamiento libre",
           started_at: new Date().toISOString(),
         })
@@ -168,7 +164,7 @@ export function useStartEmptyWorkout() {
       return data.id;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
       qc.invalidateQueries({ queryKey: ["active-session"] });
     },
   });
@@ -286,6 +282,10 @@ export function useLastExerciseLogs(
 export function useWorkoutSession(sessionId: string) {
   return useQuery({
     queryKey: ["session", sessionId],
+    // Este dispositivo es el único que escribe: un refetch (foco) durante un
+    // PATCH en cola pisaría el estado optimista.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<FullSession> => {
       const supabase = createClient();
       const { data: session, error } = await supabase
@@ -334,17 +334,17 @@ export function rememberActiveSession(id: string | null) {
 export function useActiveSession() {
   return useQuery({
     queryKey: ["active-session"],
-    staleTime: 30_000,
+    // Cambia solo cuando esta app inicia/termina un entreno (setQueryData).
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<string | null> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
+      const userId = await getUserId();
+      if (!userId) return null;
       const { data, error } = await supabase
         .from("workout_sessions")
         .select("id")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .is("ended_at", null)
         .order("started_at", { ascending: false })
         .limit(1)
@@ -375,12 +375,23 @@ export function useDeleteSession() {
         .eq("id", sessionId);
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["history"] });
+    onSuccess: (_d, sessionId) => {
+      // Saca la sesión de la lista completa sin re-descargarla; las queries
+      // derivadas bajo ["history", ...] quedan stale.
+      qc.setQueryData<{ id: string }[]>(["history"], (old) =>
+        old?.filter((s) => s.id !== sessionId),
+      );
+      qc.invalidateQueries({ queryKey: ["history"], refetchType: "none" });
       qc.invalidateQueries({ queryKey: ["scoreboard"] });
       qc.invalidateQueries({ queryKey: ["achievements"] });
       // Se borró la sesión (activa al descartar): soltamos el candado ya.
       qc.setQueryData(["active-session"], null);
+      try {
+        if (localStorage.getItem(ACTIVE_SESSION_KEY) === sessionId)
+          rememberActiveSession(null);
+      } catch {
+        // sin localStorage: no hay nada que limpiar
+      }
     },
   });
 }

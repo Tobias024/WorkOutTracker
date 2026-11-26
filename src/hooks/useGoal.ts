@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { Goal, TrainingProfile } from "@/lib/types";
 
 export type TrainingPrefs = {
@@ -20,14 +20,12 @@ export function useTrainingProfile() {
     queryKey: ["training-profile"],
     queryFn: async (): Promise<TrainingPrefs> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return { trainingProfile: null };
+      const uid = await getUserId();
+      if (!uid) return { trainingProfile: null };
       const { data } = await supabase
         .from("profiles")
         .select("training_profile")
-        .eq("id", user.id)
+        .eq("id", uid)
         .maybeSingle();
       return {
         trainingProfile: (data?.training_profile as TrainingProfile | null) ?? null,
@@ -41,17 +39,15 @@ export function useSetTrainingProfile() {
   return useMutation({
     mutationFn: async (prefs: TrainingPrefs) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("profiles")
         .update({
           training_profile: prefs.trainingProfile,
           goal: goalFromPrefs(prefs), // sincroniza el legacy para el scoreboard
         })
-        .eq("id", user.id);
+        .eq("id", uid);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -67,14 +63,12 @@ export function useGoal() {
     queryKey: ["goal"],
     queryFn: async (): Promise<Goal | null> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
+      const uid = await getUserId();
+      if (!uid) return null;
       const { data } = await supabase
         .from("profiles")
         .select("goal")
-        .eq("id", user.id)
+        .eq("id", uid)
         .maybeSingle();
       return (data?.goal as Goal | null) ?? null;
     },
@@ -86,14 +80,12 @@ export function useSetGoal() {
   return useMutation({
     mutationFn: async (goal: Goal | null) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("profiles")
         .update({ goal })
-        .eq("id", user.id);
+        .eq("id", uid);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["goal"] }),

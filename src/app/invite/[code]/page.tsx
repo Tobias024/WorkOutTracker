@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserCheck } from "lucide-react";
 import { Spinner, buttonClasses } from "@/components/ui";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 
 type State =
   | { kind: "loading" }
@@ -45,10 +45,8 @@ export default function InvitePage() {
   useEffect(() => {
     (async () => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      const uid = await getUserId();
+      if (!uid) {
         // Persistimos el code: si la cadena de redirects del registro se corta
         // (confirmación cross-device, onboarding, etc.), PendingInviteHandler lo
         // consume al llegar autenticado. Antes se perdía → había que reclickear.
@@ -66,7 +64,7 @@ export default function InvitePage() {
       const { data: profile } = await supabase
         .from("profiles")
         .select("username")
-        .eq("id", user.id)
+        .eq("id", uid)
         .maybeSingle();
       if (!profile?.username) {
         router.replace(

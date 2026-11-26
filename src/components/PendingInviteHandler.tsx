@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import { toast } from "@/lib/toast";
 
 /** Errores de accept_invite que no se arreglan reintentando. */
@@ -43,10 +43,8 @@ export function PendingInviteHandler() {
     }
     (async () => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return; // aún no autenticado: se reintenta al próximo montaje
+      const uid = await getUserId();
+      if (!uid) return; // aún no autenticado: se reintenta al próximo montaje
 
       // Nombre del invitador (migración 0037); si no existe o falla, sin nombre.
       let inviter: string | null = null;

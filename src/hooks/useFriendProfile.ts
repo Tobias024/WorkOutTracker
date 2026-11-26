@@ -23,19 +23,7 @@ export function useFriendMetrics(friendId: string | undefined, period: Period) {
   });
 }
 
-export function useCurrentUserId() {
-  return useQuery({
-    queryKey: ["me"],
-    staleTime: Infinity,
-    queryFn: async (): Promise<string | null> => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      return user?.id ?? null;
-    },
-  });
-}
+export { useCurrentUserId } from "@/hooks/useUser";
 
 export function useCommonExercises(friendId: string | undefined) {
   return useQuery({

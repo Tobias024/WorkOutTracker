@@ -3,7 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { Routine, RoutineExercise, RoutineSet } from "@/lib/types";
 
 export type RoutineExerciseWithSets = RoutineExercise & { sets: RoutineSet[] };
@@ -90,13 +90,11 @@ export function useCreateRoutine() {
     meta: { silent: true },
     mutationFn: async (name: string): Promise<Routine> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { data, error } = await supabase
         .from("routines")
-        .insert({ name, owner_id: user.id })
+        .insert({ name, owner_id: uid })
         .select()
         .single();
       if (error) throw error;
@@ -120,14 +118,12 @@ export function useImportRoutine() {
       items: { exerciseId: string; plans: SetPlan[] }[];
     }): Promise<string> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
 
       const { data: routine, error } = await supabase
         .from("routines")
-        .insert({ name, owner_id: user.id })
+        .insert({ name, owner_id: uid })
         .select()
         .single();
       if (error) throw error;

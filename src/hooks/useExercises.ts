@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { nanoid } from "nanoid";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { Exercise, MetricKind } from "@/lib/types";
 import { worksMuscle } from "@/lib/muscle-contributions";
 
@@ -65,10 +65,8 @@ export function useCreateExercise() {
     meta: { silent: true },
     mutationFn: async (ex: NewExercise): Promise<Exercise> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const row = {
         slug: `${slugify(ex.name)}-${nanoid(6)}`,
         name: ex.name.trim(),
@@ -85,7 +83,7 @@ export function useCreateExercise() {
         instructions: ex.description ? [ex.description] : [],
         images: ex.imageUrl ? [ex.imageUrl] : [],
         is_custom: true,
-        created_by: user.id,
+        created_by: uid,
       };
       const { data, error } = await supabase
         .from("exercises")

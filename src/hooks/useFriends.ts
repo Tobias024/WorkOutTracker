@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { FriendSummary } from "@/lib/types";
 
 export function useFriends() {
@@ -50,15 +50,13 @@ export function useRemoveFriend() {
     meta: { silent: true },
     mutationFn: async (friendId: string) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("friendships")
         .delete()
         .or(
-          `and(requester_id.eq.${user.id},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${user.id})`,
+          `and(requester_id.eq.${uid},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${uid})`,
         );
       if (error) throw error;
     },

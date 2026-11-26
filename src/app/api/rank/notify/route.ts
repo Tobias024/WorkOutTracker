@@ -11,10 +11,9 @@ export const maxDuration = 60;
 // que alguien pudo haber sido superado. Requiere sesión (evita disparos anónimos).
 export async function POST() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return new NextResponse("Unauthorized", { status: 401 });
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
   try {
     const result = await runRankCheck();

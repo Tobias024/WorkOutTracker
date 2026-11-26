@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { FullSession } from "@/hooks/useWorkout";
 import type { WorkoutSession, WorkoutSet } from "@/lib/types";
 import {
@@ -252,9 +252,7 @@ export function useSessionMutations(sessionId: string) {
       saveForFuture: boolean;
     }) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const userId = await getUserId();
 
       const { error } = await supabase
         .from("workout_exercises")
@@ -265,12 +263,12 @@ export function useSessionMutations(sessionId: string) {
         .eq("id", workoutExerciseId);
       if (error) throw error;
 
-      if (saveForFuture && routineExerciseId && user) {
+      if (saveForFuture && routineExerciseId && userId) {
         const { error: subError } = await supabase
           .from("exercise_substitutions")
           .upsert(
           {
-            user_id: user.id,
+            user_id: userId,
             routine_exercise_id: routineExerciseId,
             substitute_exercise_id: newExerciseId,
           },

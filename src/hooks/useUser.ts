@@ -2,7 +2,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { getUserId } from "@/lib/supabase/client";
 
 /**
  * Id del usuario logueado.
@@ -17,11 +17,7 @@ export function useCurrentUserId() {
     queryKey: ["current-user-id"],
     staleTime: Infinity,
     queryFn: async (): Promise<string | null> => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      return user?.id ?? null;
+      return getUserId();
     },
   });
 }

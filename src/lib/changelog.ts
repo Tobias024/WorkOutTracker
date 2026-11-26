@@ -20,6 +20,17 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.2",
+    date: "2026-11-04",
+    notable: true,
+    items: [
+      "La app abre y cambia de pantalla más rápido: ya no consulta tu sesión en cada paso.",
+      "Durante el entreno la pantalla está más liviana: el reloj y el descanso ya no la redibujan entera cada segundo.",
+      "Rutinas y el buscador de ejercicios cargan sin bajar todo tu historial.",
+      "Arreglamos el ranking de fuerza relativa a tu peso, que no estaba cargando, y guardar tus días de entreno en Registro.",
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-11-04",
     notable: true,

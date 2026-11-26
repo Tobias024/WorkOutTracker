@@ -3,7 +3,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { REST_MAX_SECONDS } from "@/lib/metrics-goal";
 import type { TrainingProfile } from "@/lib/types";
 
@@ -112,13 +112,22 @@ function subscribeClock(onChange: () => void): () => void {
 /** Segundos transcurridos del descanso vivo. 0 si no hay ninguno corriendo. */
 export function useRestSeconds(): number {
   const startedAt = useRestStore((s) => s.startedAt);
-  const now = useSyncExternalStore(
-    subscribeClock,
-    () => nowMs,
+  // Sin descanso no se registra ningún listener (ni se arranca el intervalo).
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      startedAt == null ? () => {} : subscribeClock(onChange),
+    [startedAt],
+  );
+  // El snapshot es el entero derivado: React descarta el re-render si los
+  // segundos no cambiaron entre dos ticks de 500 ms.
+  return useSyncExternalStore(
+    subscribe,
+    () =>
+      startedAt == null || nowMs === 0
+        ? 0
+        : Math.max(0, Math.round((nowMs - startedAt) / 1000)),
     () => 0,
   );
-  if (startedAt == null || now === 0) return 0;
-  return Math.max(0, Math.round((now - startedAt) / 1000));
 }
 
 /**

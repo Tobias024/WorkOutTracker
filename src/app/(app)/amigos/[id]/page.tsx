@@ -19,7 +19,8 @@ import {
   Skeleton,
   buttonClasses,
 } from "@/components/ui";
-import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
+import dynamic from "next/dynamic";
+import type { ChartPoint } from "@/components/VolumeChart";
 import {
   useFriendMetrics,
   useCommonExercises,
@@ -31,6 +32,13 @@ import { fmtNum, formatVolume, formatWeight, formatDuration } from "@/lib/format
 import { toast } from "@/lib/toast";
 import { clsx } from "@/lib/clsx";
 import type { Period } from "@/lib/period";
+
+// recharts se carga recién cuando el gráfico se va a mostrar (chunk compartido
+// con Registro vía charts-entry).
+const VolumeChart = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.VolumeChart),
+  { ssr: false, loading: () => <div className="h-[180px] animate-pulse rounded-lg bg-surface-2" /> },
+);
 
 /** Deriva del listado de amigos (RPC my_friends): no lee profiles ajenos.
  *  data: undefined = cargando, null = no es amigo / no existe. */
