@@ -16,20 +16,34 @@ export type SetPlan = {
   target_distance_m?: number | null;
 };
 
+/** Rutina de la lista + ids de sus ejercicios (para contar y resumir músculos). */
+export type RoutineSummary = Routine & { exercise_ids: string[] };
+
 export function useRoutines() {
   return useQuery({
     queryKey: ["routines"],
-    queryFn: async (): Promise<Routine[]> => {
+    queryFn: async (): Promise<RoutineSummary[]> => {
       const supabase = createClient();
+      // Solo `exercise_id` de cada fila: es lo más barato que alcanza para
+      // mostrar "6 ejercicios · Pecho, Tríceps" (los músculos salen del
+      // catálogo, que ya está en cache).
       const { data, error } = await supabase
         .from("routines")
-        .select("*")
+        .select("*, routine_exercises(exercise_id)")
         .order("updated_at", { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      const rows = (data ?? []) as unknown as (Routine & {
+        routine_exercises: { exercise_id: string }[] | null;
+      })[];
+      return rows.map(({ routine_exercises, ...r }) => ({
+        ...r,
+        exercise_ids: (routine_exercises ?? []).map((x) => x.exercise_id),
+      }));
     },
   });
 }
+
+type RoutineData = { routine: Routine; exercises: RoutineExerciseWithSets[] };
 
 export function useRoutine(id: string) {
   return useQuery({
@@ -72,6 +86,8 @@ export function useRoutine(id: string) {
 export function useCreateRoutine() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en la pantalla, no como toast global.
+    meta: { silent: true },
     mutationFn: async (name: string): Promise<Routine> => {
       const supabase = createClient();
       const {
@@ -94,6 +110,8 @@ export function useCreateRoutine() {
 export function useImportRoutine() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en la pantalla, no como toast global.
+    meta: { silent: true },
     mutationFn: async ({
       name,
       items,
@@ -118,7 +136,14 @@ export function useImportRoutine() {
         const it = items[i];
         const plans = it.plans.length
           ? it.plans
-          : [{ target_reps: null, target_weight: null }];
+          : [
+              {
+                target_reps: null,
+                target_weight: null,
+                target_duration_seconds: null,
+                target_distance_m: null,
+              } as SetPlan,
+            ];
         const { data: rex, error: e1 } = await supabase
           .from("routine_exercises")
           .insert({
@@ -137,6 +162,8 @@ export function useImportRoutine() {
             set_number: si + 1,
             target_reps: p.target_reps,
             target_weight: p.target_weight,
+            target_duration_seconds: p.target_duration_seconds ?? null,
+            target_distance_m: p.target_distance_m ?? null,
           })),
         );
         if (e2) throw e2;
@@ -150,6 +177,8 @@ export function useImportRoutine() {
 export function useDeleteRoutine() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en la pantalla, no como toast global.
+    meta: { silent: true },
     mutationFn: async (id: string) => {
       const supabase = createClient();
       const { error } = await supabase.from("routines").delete().eq("id", id);
@@ -183,15 +212,29 @@ export function useRoutineExerciseOps(routineId: string) {
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["routine", routineId] });
 
+  /**
+   * Agrega un ejercicio con 3×10 por defecto. Es optimista (el picker queda
+   * abierto y la fila tiene que aparecer al toque) y con rollback si falla.
+   */
   const add = useMutation({
+    mutationKey: ["routine-add", routineId],
     mutationFn: async ({
       exerciseId,
-      position,
     }: {
       exerciseId: string;
+      /** Solo para la fila optimista; la real se calcula contra la base. */
       position: number;
     }) => {
       const supabase = createClient();
+      // Con varias altas seguidas el `position` del render puede repetirse:
+      // se toma el máximo real + 1.
+      const { data: last } = await supabase
+        .from("routine_exercises")
+        .select("position")
+        .eq("routine_id", routineId)
+        .order("position", { ascending: false })
+        .limit(1);
+      const position = (last?.[0]?.position ?? -1) + 1;
       const { data: rex, error } = await supabase
         .from("routine_exercises")
         .insert({
@@ -214,7 +257,47 @@ export function useRoutineExerciseOps(routineId: string) {
       );
       if (e2) throw e2;
     },
-    onSuccess: invalidate,
+    onMutate: async ({ exerciseId, position }) => {
+      await qc.cancelQueries({ queryKey: ["routine", routineId] });
+      const prev = qc.getQueryData<RoutineData>(["routine", routineId]);
+      if (prev) {
+        const tempId = `tmp-${nanoid(8)}`;
+        const row: RoutineExerciseWithSets = {
+          id: tempId,
+          routine_id: routineId,
+          exercise_id: exerciseId,
+          position,
+          target_sets: 3,
+          target_reps: 10,
+          notes: null,
+          superset_group: null,
+          sets: [1, 2, 3].map((n) => ({
+            id: `${tempId}-${n}`,
+            routine_exercise_id: tempId,
+            set_number: n,
+            target_reps: 10,
+            target_weight: null,
+            target_duration_seconds: null,
+            target_distance_m: null,
+          })),
+        };
+        qc.setQueryData<RoutineData>(["routine", routineId], {
+          ...prev,
+          exercises: [...prev.exercises, row],
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["routine", routineId], ctx.prev);
+    },
+    onSettled: () => {
+      // Con altas en vuelo, refetchear ahora pisaría las filas optimistas de
+      // las que todavía no terminaron: se espera a la última.
+      if (qc.isMutating({ mutationKey: ["routine-add", routineId] }) <= 1) {
+        invalidate();
+      }
+    },
   });
 
   /**
@@ -328,10 +411,7 @@ export function useRoutineExerciseOps(routineId: string) {
     },
     onMutate: async ({ a, b }) => {
       await qc.cancelQueries({ queryKey: ["routine", routineId] });
-      const prev = qc.getQueryData<{
-        routine: Routine;
-        exercises: RoutineExerciseWithSets[];
-      }>(["routine", routineId]);
+      const prev = qc.getQueryData<RoutineData>(["routine", routineId]);
       if (prev) {
         const exercises = prev.exercises
           .map((e) =>
@@ -362,6 +442,8 @@ export function useRoutineExerciseOps(routineId: string) {
 export function useEnsureShareCodes() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en la pantalla, no como toast global.
+    meta: { silent: true },
     mutationFn: async (routines: Routine[]): Promise<string[]> => {
       const supabase = createClient();
       const codes: string[] = [];
@@ -394,6 +476,8 @@ export function useEnsureShareCodes() {
 export function useShareRoutine() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en la pantalla, no como toast global.
+    meta: { silent: true },
     mutationFn: async (routine: Routine): Promise<string> => {
       if (routine.share_code) return routine.share_code;
       const supabase = createClient();

@@ -20,6 +20,8 @@ export function useOAuthConnections() {
 export function useRevokeOAuthConnection() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en el ConfirmDialog de ConnectedAppsSection.
+    meta: { silent: true },
     mutationFn: async (id: string) => {
       const supabase = createClient();
       const { error } = await supabase.rpc("revoke_oauth_connection", { p_id: id });

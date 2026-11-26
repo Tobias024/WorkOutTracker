@@ -2,6 +2,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/types";
+import { safeNext } from "@/lib/safe-next";
 
 // Rutas accesibles sin sesión. /oauth/authorize y /oauth/authorize/approve
 // quedan deliberadamente FUERA: son páginas normales protegidas (requieren
@@ -20,8 +21,12 @@ const PUBLIC_PATHS = [
   "/r",
   "/oauth/token",
   "/oauth/register",
-  "/.well-known",
   "/api/well-known",
+  // El middleware corre ANTES de los rewrites de next.config.ts: ve el path
+  // original "/.well-known/..." y no "/api/well-known/...". Sin esta entrada,
+  // el discovery de OAuth redirigía a /login y ningún cliente MCP podía
+  // descubrir cómo autenticarse.
+  "/.well-known",
   "/mcp",
 ];
 
@@ -43,6 +48,19 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-
 
 /** Refresca la sesión y protege rutas privadas. */
 export async function updateSession(request: NextRequest) {
+  // El layout de (app) es un server component y no conoce el pathname: se lo
+  // pasamos en un header de request para que mande a onboarding con ?next=
+  // (si no, un usuario nuevo que llegó por un link pierde el destino).
+  // Todas las respuestas de acá usan NextResponse.next({ request }), así que
+  // el header viaja upstream.
+  try {
+    request.headers.set(
+      "x-pathname",
+      request.nextUrl.pathname + request.nextUrl.search,
+    );
+  } catch {
+    // headers inmutables en algún runtime: sin next, onboarding va a /rutinas.
+  }
   // Los prefetch de Next.js (Link precargando otras tabs en segundo plano)
   // no deben disparar un refresh de sesión: si el access token está por
   // vencer, varias requests de prefetch en simultáneo pueden refrescarlo
@@ -101,6 +119,21 @@ export async function updateSession(request: NextRequest) {
     loginUrl.search = "";
     loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Con sesión, /login no tiene nada que mostrar: se va al destino pedido.
+  // Las cookies refrescadas viajan en la redirección.
+  if (user && pathname === "/login") {
+    const target = safeNext(request.nextUrl.searchParams.get("next"));
+    // `URL` en este archivo es la URL de Supabase (pisa al global): se arma
+    // el destino clonando nextUrl. safeNext garantiza path + query internos.
+    const dest = request.nextUrl.clone();
+    const [path, query = ""] = target.split("?");
+    dest.pathname = path;
+    dest.search = query ? `?${query}` : "";
+    const redirect = NextResponse.redirect(dest);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
   }
 
   return response;

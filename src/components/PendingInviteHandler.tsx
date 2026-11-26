@@ -2,8 +2,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "@/lib/toast";
+
+/** Errores de accept_invite que no se arreglan reintentando. */
+function isDefinitive(message: string): boolean {
+  return /inválida|vencida|vos mismo/i.test(message);
+}
 
 /**
  * Consume una invitación pendiente tras autenticarse. El invite/[code] guarda el
@@ -12,9 +19,12 @@ import { createClient } from "@/lib/supabase/client";
  * fallback al Site URL), este handler —montado en el layout autenticado— corre
  * `accept_invite` al llegar a cualquier pantalla y limpia el pendiente.
  * `accept_invite` es reintentar-seguro (on conflict do update). No renderiza nada.
+ * Avisa con un toast tanto del éxito como de un error definitivo (que además
+ * limpia el pendiente en vez de reintentar en silencio).
  */
 export function PendingInviteHandler() {
   const qc = useQueryClient();
+  const router = useRouter();
   useEffect(() => {
     let code: string | null = null;
     try {
@@ -23,22 +33,56 @@ export function PendingInviteHandler() {
       code = null;
     }
     if (!code) return;
+    const pending = code;
+    function clearPending() {
+      try {
+        localStorage.removeItem("wot-pending-invite");
+      } catch {
+        // no-op
+      }
+    }
     (async () => {
       const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return; // aún no autenticado: se reintenta al próximo montaje
-      const { error } = await supabase.rpc("accept_invite", { p_code: code });
-      if (error) return; // p.ej. offline: dejamos el pendiente para reintentar
+
+      // Nombre del invitador (migración 0037); si no existe o falla, sin nombre.
+      let inviter: string | null = null;
       try {
-        localStorage.removeItem("wot-pending-invite");
+        const res = await (
+          supabase.rpc as unknown as (
+            fn: string,
+            args: Record<string, unknown>,
+          ) => PromiseLike<{ data: unknown; error: unknown }>
+        ).call(supabase, "preview_invite", { p_code: pending });
+        if (!res.error && typeof res.data === "string") inviter = res.data;
       } catch {
-        // no-op
+        // sin nombre
       }
+
+      const { error } = await supabase.rpc("accept_invite", { p_code: pending });
+      if (error) {
+        if (isDefinitive(error.message)) {
+          clearPending();
+          toast(error.message, { tone: "danger" });
+        }
+        return; // p.ej. offline: dejamos el pendiente para reintentar
+      }
+      clearPending();
+      toast(
+        inviter
+          ? `Ya sos amigo de ${inviter} 🎉`
+          : "Se aceptó tu invitación 🎉",
+        {
+          tone: "success",
+          action: { label: "Ver ranking", onClick: () => router.push("/scoreboard") },
+        },
+      );
       qc.invalidateQueries({ queryKey: ["friends"] });
       qc.invalidateQueries({ queryKey: ["scoreboard"] });
     })();
-  }, [qc]);
+  }, [qc, router]);
   return null;
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Trophy,
   Medal,
@@ -11,30 +12,36 @@ import {
   ArrowUp,
   ArrowDown,
   Users,
+  UserPlus,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
   PageHeader,
-  Spinner,
   EmptyState,
   Button,
   Tabs,
   Modal,
+  Switch,
+  Skeleton,
+  QueryState,
 } from "@/components/ui";
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
-import { NotificationToggle } from "@/components/NotificationToggle";
-import { FriendsPanel } from "@/components/FriendsPanel";
+import { FriendsPanel, InviteCard } from "@/components/FriendsPanel";
 import {
   useScoreboard,
   type Metric,
   type Period,
+  withRanksAndMoves,
+  type ScoreboardRowWithMove,
 } from "@/hooks/useScoreboard";
 import { useCurrentUserId } from "@/hooks/useFriendProfile";
 import { useFriends } from "@/hooks/useFriends";
 import { useGoal } from "@/hooks/useGoal";
-import { formatVolume, formatWeight } from "@/lib/format";
+import { useExerciseMap } from "@/hooks/useExercises";
+import { fmtNum, formatWeight } from "@/lib/format";
 import { clsx } from "@/lib/clsx";
-import type { Exercise, Sex, Goal } from "@/lib/types";
+import type { Sex, Goal } from "@/lib/types";
 
 type BoardKey = "constancia" | "series" | "1rm" | "fuerza_rel" | "reps";
 
@@ -68,6 +75,8 @@ const BOARDS: { key: BoardKey; label: string; caption: string }[] = [
   },
 ];
 
+const BOARD_KEYS = BOARDS.map((b) => b.key);
+
 const PERIODS: { key: Period; label: string }[] = [
   { key: "week", label: "Semana" },
   { key: "month", label: "Mes" },
@@ -79,11 +88,11 @@ const SEXES: { key: Sex | ""; label: string }[] = [
   { key: "female", label: "Mujeres" },
 ];
 
-const GOAL_SHORT: Record<Goal, string> = {
-  fuerza: "Fue",
-  hipertrofia: "Hip",
-  resistencia: "Res",
-  perdida_grasa: "Grasa",
+const GOAL_LABEL: Record<Goal, string> = {
+  fuerza: "Fuerza",
+  hipertrofia: "Hipertrofia",
+  resistencia: "Resistencia",
+  perdida_grasa: "Pérdida de grasa",
 };
 
 function boardForGoal(goal: Goal | null): BoardKey {
@@ -93,22 +102,100 @@ function boardForGoal(goal: Goal | null): BoardKey {
   return "constancia";
 }
 
+const PERIOD_WORD: Record<Period, string> = {
+  week: "esta semana",
+  month: "este mes",
+  all: "todavía",
+};
+
+function plural(n: number, one: string, many: string): string {
+  return `${fmtNum(n, 0)} ${n === 1 ? one : many}`;
+}
+
+/** Valor mostrado según la métrica (también sirve para diferencias de valor). */
+function formatMetric(metric: Metric, v: number): string {
+  if (metric === "frequency") return plural(v, "día", "días");
+  if (metric === "hard_sets") return plural(v, "serie", "series");
+  if (metric === "reps") return plural(v, "rep", "reps");
+  if (metric === "strength_bw" || metric === "strength_rel")
+    return `${fmtNum(v, 2)}×`;
+  return formatWeight(v);
+}
+
+/**
+ * Los filtros viven en la URL (?board=&period=&ex=&sexo=&obj=&bw=) para que
+ * sobrevivan a un reload o a volver desde el perfil de un amigo. useSearchParams
+ * exige un Suspense (Next lo renderiza en cliente hasta esa frontera).
+ */
 export default function ScoreboardPage() {
-  const [board, setBoard] = useState<BoardKey | null>(null);
-  const [bwMode, setBwMode] = useState(false); // 1RM ÷ peso
-  const [period, setPeriod] = useState<Period>("week");
-  const [sex, setSex] = useState<Sex | "">("");
-  const [sameGoal, setSameGoal] = useState(false);
-  const [exercise, setExercise] = useState<Exercise | null>(null);
+  return (
+    <Suspense fallback={<ScoreboardFallback />}>
+      <Scoreboard />
+    </Suspense>
+  );
+}
+
+function ScoreboardFallback() {
+  return (
+    <div>
+      <PageHeader title="Ranking" subtitle="Competí con tus amigos" />
+      <RowsSkeleton />
+    </div>
+  );
+}
+
+function RowsSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      {Array.from({ length: 5 }, (_, i) => (
+        <Skeleton key={i} className="h-[60px] rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
+function Scoreboard() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+
   const [picker, setPicker] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
 
   const { data: meId } = useCurrentUserId();
   const { data: myGoal } = useGoal();
-  const { data: friends } = useFriends();
+  const friendsQuery = useFriends();
+  const friends = friendsQuery.data;
+  const exMap = useExerciseMap();
+
+  // Estado desde la URL, validado: un valor inválido cae al default.
+  const boardParam = params.get("board") as BoardKey | null;
+  const board = boardParam && BOARD_KEYS.includes(boardParam) ? boardParam : null;
+  const periodParam = params.get("period");
+  const period: Period =
+    periodParam === "month" || periodParam === "all" ? periodParam : "week";
+  const sexParam = params.get("sexo");
+  const sex: Sex | "" =
+    sexParam === "male" || sexParam === "female" ? sexParam : "";
+  const sameGoal = params.get("obj") === "1";
+  const bwMode = params.get("bw") === "1";
+  const exerciseId = params.get("ex");
+  const exercise = exerciseId ? (exMap.get(exerciseId) ?? null) : null;
+
+  function setParams(patch: Record<string, string | null>) {
+    const next = new URLSearchParams(params.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null || v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
 
   const activeBoard = board ?? boardForGoal(myGoal ?? null);
+  const needsExercise = activeBoard === "1rm";
+  const useBw = needsExercise && bwMode;
   const metric: Metric =
     activeBoard === "constancia"
       ? "frequency"
@@ -118,82 +205,91 @@ export default function ScoreboardPage() {
           ? "reps"
           : activeBoard === "fuerza_rel"
             ? "strength_rel"
-            : bwMode
+            : useBw
               ? "strength_bw"
               : "strength";
-  const needsExercise = activeBoard === "1rm";
 
-  const { data, isLoading, isError } = useScoreboard(
-    metric,
-    period,
-    exercise?.id,
-    sex || null,
-  );
+  const query = useScoreboard(metric, period, exerciseId ?? undefined, sex || null);
 
-  // Objetivo por usuario (para badges + filtro "mi objetivo").
+  // Objetivo por usuario (para el subtítulo de cada fila + filtro "mi objetivo").
   const goalOf = new Map<string, Goal | null>();
   (friends ?? []).forEach((f) => goalOf.set(f.id, f.goal));
   if (meId) goalOf.set(meId, myGoal ?? null);
 
   const caption = BOARDS.find((b) => b.key === activeBoard)?.caption ?? "";
 
-  // Filtro "solo mi objetivo": recorta y reindexa el podio.
-  const rows =
+  // Filtro "solo mi objetivo": recorta la lista y recalcula puestos y movimiento
+  // sobre lo que queda.
+  const rows: ScoreboardRowWithMove[] =
     sameGoal && myGoal
-      ? (data ?? []).filter((r) => goalOf.get(r.user_id) === myGoal)
-      : data ?? [];
+      ? withRanksAndMoves(
+          (query.data ?? []).filter((r) => goalOf.get(r.user_id) === myGoal),
+        )
+      : (query.data ?? []);
 
-  const myIndex = rows.findIndex((r) => r.user_id === meId);
-  const myRow = myIndex >= 0 ? rows[myIndex] : null;
+  // Filtros activos (para el badge del botón y los chips descartables).
+  const activeFilters: { key: string; label: string; clear: () => void }[] = [];
+  if (sex)
+    activeFilters.push({
+      key: "sexo",
+      label: sex === "male" ? "Varones" : "Mujeres",
+      clear: () => setParams({ sexo: null }),
+    });
+  if (sameGoal && myGoal)
+    activeFilters.push({
+      key: "obj",
+      label: `Mi objetivo: ${GOAL_LABEL[myGoal]}`,
+      clear: () => setParams({ obj: null }),
+    });
+  if (useBw)
+    activeFilters.push({
+      key: "bw",
+      label: "÷ peso corporal",
+      clear: () => setParams({ bw: null }),
+    });
 
-  function fmt(v: number) {
-    if (metric === "frequency") return `${v} ${v === 1 ? "día" : "días"}`;
-    if (metric === "hard_sets") return `${v} ${v === 1 ? "set" : "sets"}`;
-    if (metric === "reps") return `${v} reps`;
-    if (metric === "strength_bw" || metric === "strength_rel")
-      return `${Number(v).toFixed(2)}×`;
-    return formatWeight(v);
-  }
+  const noFriends = friendsQuery.isSuccess && friendsQuery.data.length === 0;
+  const listReady = !needsExercise || !!exerciseId;
 
   return (
     <div>
       <PageHeader
         title="Ranking"
-        subtitle="Competí con tus amigos · ▲▼ vs el período anterior"
+        subtitle="Competí con tus amigos"
         action={
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setFriendsOpen(true)}
-              aria-label="Amigos"
-              className="size-9 grid place-items-center rounded-md text-muted hover:text-fg ring-1 ring-border"
-            >
-              <Users className="size-4" />
-            </button>
-            <NotificationToggle />
-          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setFriendsOpen(true)}
+            aria-haspopup="dialog"
+          >
+            <Users className="size-4" />
+            {friends ? `Amigos (${friends.length})` : "Amigos"}
+          </Button>
         }
       />
 
-      {/* Tu puesto */}
-      {myRow && Number(myRow.value) > 0 && (
-        <div className="card flex items-center gap-3 p-3 mb-3">
-          <span className="text-xs text-muted">Tu puesto</span>
-          <span className="font-bold text-lg">{myIndex + 1}º</span>
-          {myRow.move != null && <MoveChip move={myRow.move} />}
-          {myGoal && (
-            <span className="ml-auto text-xs text-muted">
-              {GOAL_SHORT[myGoal]}
-            </span>
-          )}
+      {noFriends && (
+        <div className="card p-4 mb-3 flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <UserPlus className="size-5 text-primary shrink-0" />
+            <p className="font-semibold">Invitá a tus amigos para competir</p>
+          </div>
+          <InviteCard />
         </div>
       )}
 
-      {/* Boards */}
+      {listReady && rows.length > 0 && (
+        <MyPlace rows={rows} meId={meId ?? null} metric={metric} period={period} />
+      )}
+
+      {/* Tablero y período: lo único siempre visible. */}
       <div className="mb-2">
         <Tabs
           scroll
+          ariaLabel="Tablero"
           value={activeBoard}
-          onChange={setBoard}
+          onChange={(v) => setParams({ board: v })}
           options={BOARDS.map((b) => ({
             value: b.key,
             label:
@@ -202,166 +298,179 @@ export default function ScoreboardPage() {
         />
       </div>
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <Tabs
+            ariaLabel="Período"
             value={period}
-            onChange={setPeriod}
+            onChange={(v) => setParams({ period: v === "week" ? null : v })}
             options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
           />
         </div>
-        <button
-          onClick={() => setFiltersOpen((v) => !v)}
-          aria-label="Filtros"
-          className={clsx(
-            "size-9 grid place-items-center rounded-md ring-1 shrink-0 transition",
-            filtersOpen || sex || sameGoal
-              ? "text-primary ring-primary/40 bg-primary/10"
-              : "text-muted ring-border hover:text-fg",
-          )}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
+          aria-expanded={filtersOpen}
+          aria-haspopup="dialog"
+          onClick={() => setFiltersOpen(true)}
         >
           <SlidersHorizontal className="size-4" />
-        </button>
+          {activeFilters.length > 0
+            ? `Filtros · ${activeFilters.length}`
+            : "Filtros"}
+        </Button>
       </div>
 
-      {filtersOpen && (
-        <div className="card p-3 mb-2 flex flex-col gap-3">
-          <div>
-            <p className="text-xs text-muted mb-1.5">Sexo</p>
-            <Tabs
-              value={sex}
-              onChange={setSex}
-              options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
-            />
-          </div>
-          {myGoal && (
-            <button
-              onClick={() => setSameGoal((v) => !v)}
-              className="flex items-center justify-between text-sm"
-            >
-              <span>Solo mi objetivo ({GOAL_SHORT[myGoal]})</span>
-              <span
-                className={clsx(
-                  "px-2 py-0.5 rounded text-xs font-medium ring-1",
-                  sameGoal
-                    ? "bg-primary/15 text-primary ring-primary/40"
-                    : "text-muted ring-border",
-                )}
+      {activeFilters.length > 0 && (
+        <ul className="flex flex-wrap gap-2 mb-2" aria-label="Filtros activos">
+          {activeFilters.map((f) => (
+            <li key={f.key}>
+              <button
+                type="button"
+                onClick={f.clear}
+                aria-label={`Quitar filtro: ${f.label}`}
+                className="relative inline-flex items-center gap-1 h-8 rounded-full bg-primary/10 px-3 text-xs font-medium text-primary ring-1 ring-primary/40 after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                {sameGoal ? "On" : "Off"}
-              </span>
-            </button>
-          )}
-        </div>
+                {f.label}
+                <X className="size-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {activeBoard === "1rm" && (
-        <div className="flex gap-2 mb-3">
-          <Button
-            variant="secondary"
-            className="flex-1 justify-between"
-            onClick={() => setPicker(true)}
-          >
-            <span className="truncate">
-              {exercise ? exercise.name : "Elegí un ejercicio"}
-            </span>
-            <ChevronDown className="size-4" />
-          </Button>
-          <div className="w-28 shrink-0">
-            <Tabs
-              value={bwMode ? "bw" : "abs"}
-              onChange={(v) => setBwMode(v === "bw")}
-              options={[
-                { value: "abs", label: "kg" },
-                { value: "bw", label: "÷peso" },
-              ]}
-            />
-          </div>
-        </div>
+      {needsExercise && (
+        <Button
+          variant="secondary"
+          className="w-full justify-between mb-3"
+          onClick={() => setPicker(true)}
+        >
+          <span className="truncate">
+            {exercise ? exercise.name : "Elegí un ejercicio"}
+          </span>
+          <ChevronDown className="size-4 shrink-0" />
+        </Button>
       )}
 
-      <p className="text-xs text-muted mb-4 px-1">{caption}</p>
+      <p className="text-xs text-muted mb-1 px-1">{caption}</p>
+      {period !== "all" && (
+        <p className="text-xs text-muted mb-4 px-1">
+          ▲▼ = puestos vs {period === "week" ? "la semana pasada" : "el mes pasado"}
+        </p>
+      )}
+      {period === "all" && <div className="mb-3" />}
 
-      {needsExercise && !exercise ? (
+      {!listReady ? (
         <EmptyState
           icon={<Trophy className="size-8" />}
           title="Elegí un ejercicio"
           description="Para comparar la fuerza entre amigos."
         />
-      ) : isLoading ? (
-        <div className="grid place-items-center py-16">
-          <Spinner />
-        </div>
-      ) : isError ? (
-        <EmptyState title="No se pudo cargar el ranking" />
-      ) : !rows.length ? (
-        <EmptyState
-          icon={<Trophy className="size-8" />}
-          title="Sin datos todavía"
-          description={
-            sameGoal
-              ? "Ningún amigo con tu mismo objetivo apareció acá."
-              : "Sumá amigos y entrená para aparecer en el ranking."
-          }
-        />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((row, i) => {
-            const isMe = row.user_id === meId;
-            const g = goalOf.get(row.user_id);
-            return (
-              <li key={row.user_id}>
-                <Link
-                  href={isMe ? "/perfil" : `/amigos/${row.user_id}`}
-                  className={clsx(
-                    "card flex items-center gap-3 p-3.5 hover:ring-1 hover:ring-primary transition",
-                    i === 0 && Number(row.value) > 0 && "ring-1 ring-accent/40",
-                    isMe && "bg-primary/5",
-                  )}
-                >
-                  <div className="w-7 text-center shrink-0">
-                    {i < 3 && Number(row.value) > 0 ? (
-                      <Medal
-                        className={clsx(
-                          "size-5 mx-auto",
-                          i === 0
-                            ? "text-accent"
-                            : i === 1
-                              ? "text-muted"
-                              : "text-amber-700",
-                        )}
-                      />
-                    ) : (
-                      <span className="text-muted text-sm">{i + 1}</span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">
-                      {isMe ? "Vos" : row.display_name ?? row.username}
-                    </p>
-                  </div>
-                  {g && (
-                    <span className="text-[10px] text-muted ring-1 ring-border rounded px-1.5 py-0.5 shrink-0">
-                      {GOAL_SHORT[g]}
-                    </span>
-                  )}
-                  {row.move != null && <MoveChip move={row.move} />}
-                  <span className="font-semibold tabular-nums">
-                    {fmt(Number(row.value))}
-                  </span>
-                  <ChevronRight className="size-4 text-muted shrink-0" />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <div
+          className={clsx(
+            "transition-opacity",
+            query.isFetching && !query.isPending && "opacity-60",
+          )}
+          aria-busy={query.isFetching}
+        >
+          <QueryState
+            query={query}
+            loading={<RowsSkeleton />}
+            errorTitle="No se pudo cargar el ranking"
+            errorDescription="Revisá tu conexión."
+            isEmpty={() => rows.length === 0}
+            empty={
+              <EmptyState
+                icon={<Trophy className="size-8" />}
+                title="Sin datos todavía"
+                description={
+                  sameGoal
+                    ? "Ningún amigo con tu mismo objetivo apareció acá."
+                    : "Sumá amigos y entrená para aparecer en el ranking."
+                }
+                action={noFriends ? <InviteCard /> : undefined}
+              />
+            }
+          >
+            {() => (
+              <ul className="flex flex-col gap-2">
+                {rows.map((row) => (
+                  <ScoreRow
+                    key={row.user_id}
+                    row={row}
+                    isMe={row.user_id === meId}
+                    goal={goalOf.get(row.user_id) ?? null}
+                    metric={metric}
+                    period={period}
+                  />
+                ))}
+              </ul>
+            )}
+          </QueryState>
+        </div>
       )}
 
       <ExercisePickerModal
         open={picker}
         onClose={() => setPicker(false)}
         title="Elegí un ejercicio"
-        onSelect={(ex) => setExercise(ex)}
+        onSelect={(ex) => setParams({ ex: ex.id })}
       />
+
+      <Modal
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filtros"
+        footer={
+          <div className="flex gap-3">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              disabled={activeFilters.length === 0}
+              onClick={() => setParams({ sexo: null, obj: null, bw: null })}
+            >
+              Limpiar
+            </Button>
+            <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
+              Listo
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm text-muted mb-1.5">Sexo</p>
+            <Tabs
+              ariaLabel="Sexo"
+              value={sex}
+              onChange={(v) => setParams({ sexo: v })}
+              options={SEXES.map((s) => ({ value: s.key, label: s.label }))}
+            />
+          </div>
+          {myGoal && (
+            <Switch
+              checked={sameGoal}
+              onChange={(v) => setParams({ obj: v ? "1" : null })}
+              label={`Solo mi objetivo (${GOAL_LABEL[myGoal]})`}
+            />
+          )}
+          {needsExercise && (
+            <div>
+              <p className="text-sm text-muted mb-1.5">Unidad del 1RM</p>
+              <Tabs
+                ariaLabel="Unidad del 1RM"
+                value={bwMode ? "bw" : "abs"}
+                onChange={(v) => setParams({ bw: v === "bw" ? "1" : null })}
+                options={[
+                  { value: "abs", label: "kg" },
+                  { value: "bw", label: "÷ peso" },
+                ]}
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={friendsOpen} onClose={() => setFriendsOpen(false)} title="Amigos">
         <FriendsPanel />
@@ -370,24 +479,164 @@ export default function ScoreboardPage() {
   );
 }
 
+/** "Tu puesto": 3º de 8 · 12 series · a 2 series de Meli. */
+function MyPlace({
+  rows,
+  meId,
+  metric,
+  period,
+}: {
+  rows: ScoreboardRowWithMove[];
+  meId: string | null;
+  metric: Metric;
+  period: Period;
+}) {
+  const me = rows.find((r) => r.user_id === meId) ?? null;
+  const myValue = me ? Number(me.value) : 0;
+
+  if (!me || myValue <= 0) {
+    return (
+      <div className="card p-3 mb-3">
+        <p className="text-sm text-muted">
+          {period === "all"
+            ? "Todavía no sumaste nada. Entrená para entrar al ranking"
+            : `Todavía no sumaste ${PERIOD_WORD[period]}. Entrená para entrar al ranking`}
+        </p>
+      </div>
+    );
+  }
+
+  const tied = rows.some((r) => r.user_id !== me.user_id && r.rank === me.rank);
+  // El siguiente a alcanzar: el de valor más bajo entre los que van adelante.
+  const ahead = rows
+    .filter((r) => Number(r.value) > myValue)
+    .sort((a, b) => Number(a.value) - Number(b.value))[0];
+
+  return (
+    <div className="card p-3 mb-3">
+      <p className="text-xs text-muted">Tu puesto</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold text-lg">
+          {me.rank}º de {rows.length}
+          {tied ? " (empate)" : ""}
+        </span>
+        {me.move != null && <MoveChip move={me.move} />}
+      </div>
+      <p className="text-sm text-muted">
+        {formatMetric(metric, myValue)}
+        {ahead
+          ? ` · a ${formatMetric(metric, Number(ahead.value) - myValue)} de ${
+              ahead.display_name ?? ahead.username
+            }`
+          : " · Vas primero"}
+      </p>
+    </div>
+  );
+}
+
+function ScoreRow({
+  row,
+  isMe,
+  goal,
+  metric,
+  period,
+}: {
+  row: ScoreboardRowWithMove;
+  isMe: boolean;
+  goal: Goal | null;
+  metric: Metric;
+  period: Period;
+}) {
+  const name = isMe ? "Vos" : (row.display_name ?? row.username);
+  const medal = row.rank <= 3 && Number(row.value) > 0;
+  return (
+    <li>
+      <Link
+        // Tu propia fila lleva a tus números (Registro), no al formulario de perfil.
+        href={isMe ? "/registro" : `/amigos/${row.user_id}?period=${period}`}
+        className={clsx(
+          "card flex items-center gap-2.5 p-3 min-h-[60px] hover:ring-1 hover:ring-primary transition",
+          isMe && "ring-1 ring-primary/40 bg-primary/10",
+        )}
+      >
+        <div className="w-6 text-center shrink-0">
+          {medal ? (
+            <Medal
+              aria-label={`Puesto ${row.rank}`}
+              className={clsx(
+                "size-5 mx-auto",
+                row.rank === 1
+                  ? "text-accent"
+                  : row.rank === 2
+                    ? "text-medal-silver"
+                    : "text-medal-bronze",
+              )}
+            />
+          ) : (
+            <span className="text-muted text-sm">{row.rank}</span>
+          )}
+        </div>
+        {/* Slot del delta siempre reservado: así los valores no se corren. */}
+        <div className="w-9 shrink-0 flex justify-center">
+          {row.move != null && <MoveChip move={row.move} />}
+        </div>
+        <div
+          className={clsx(
+            "size-8 rounded-full grid place-items-center text-sm font-semibold uppercase shrink-0",
+            isMe ? "bg-primary/20 text-primary" : "bg-surface-2 text-muted",
+          )}
+          aria-hidden
+        >
+          {(row.display_name ?? row.username ?? "?").slice(0, 1)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className={clsx("font-medium truncate", isMe && "text-primary")}>
+            {name}
+          </p>
+          {goal && (
+            <p className="text-xs text-muted truncate">{GOAL_LABEL[goal]}</p>
+          )}
+        </div>
+        <span
+          className={clsx(
+            "font-semibold tabular-nums shrink-0",
+            isMe && "text-primary",
+          )}
+        >
+          {formatMetric(metric, Number(row.value))}
+        </span>
+        <ChevronRight className="size-4 text-muted shrink-0" />
+      </Link>
+    </li>
+  );
+}
+
 /** Movimiento de puesto vs el período anterior: ▲ subió, ▼ bajó, — se mantuvo. */
 function MoveChip({ move }: { move: number }) {
   if (move === 0)
     return (
-      <span className="text-muted text-xs w-7 text-right shrink-0">—</span>
+      <span role="img" aria-label="Sin cambios" className="text-muted text-xs">
+        <span aria-hidden>—</span>
+      </span>
     );
   const up = move > 0;
+  const n = Math.abs(move);
   const Arrow = up ? ArrowUp : ArrowDown;
   return (
     <span
+      role="img"
+      aria-label={
+        up
+          ? `Subió ${n} ${n === 1 ? "puesto" : "puestos"}`
+          : `Bajó ${n} ${n === 1 ? "puesto" : "puestos"}`
+      }
       className={clsx(
-        "inline-flex items-center gap-0.5 text-xs font-semibold w-7 justify-end shrink-0",
+        "inline-flex items-center gap-0.5 text-xs font-semibold",
         up ? "text-success" : "text-danger",
       )}
-      title={up ? `Subió ${move}` : `Bajó ${Math.abs(move)}`}
     >
-      <Arrow className="size-3" strokeWidth={3} />
-      {Math.abs(move)}
+      <Arrow className="size-3" strokeWidth={3} aria-hidden />
+      <span aria-hidden>{n}</span>
     </span>
   );
 }

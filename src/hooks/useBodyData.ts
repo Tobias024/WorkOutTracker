@@ -27,6 +27,8 @@ export function useSleep() {
 export function useLogSleep() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en BodyProgress: sin toast global duplicado.
+    meta: { silent: true },
     mutationFn: async ({ sleptOn, hours }: { sleptOn: string; hours: number }) => {
       const supabase = createClient();
       const {
@@ -67,6 +69,8 @@ export function useBodyWeight() {
 export function useLogBodyWeight() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en BodyProgress: sin toast global duplicado.
+    meta: { silent: true },
     mutationFn: async ({
       weighedOn,
       weightKg,
@@ -120,6 +124,8 @@ export function useMeasurements() {
 export function useAddMeasurement() {
   const qc = useQueryClient();
   return useMutation({
+    // El error se muestra inline en el form de medidas (Perfil).
+    meta: { silent: true },
     mutationFn: async (
       m: Omit<BodyMeasurement, "id" | "user_id" | "created_at">,
     ) => {

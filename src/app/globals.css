@@ -10,10 +10,17 @@
   --color-muted: #9c9a92;
   --color-primary: #cda548;
   --color-primary-fg: #14120c;
-  --color-success: #38bdf8;
+  --color-success: #34d399; /* verde */
+  --color-success-fg: #34d399; /* texto chico sobre fondos tintados */
   --color-accent: #e8c468;
   --color-danger: #f87171;
   --color-warning: #e0913a;
+  --color-warning-fg: #e0913a;
+  --color-medal-silver: #a8a9ad;
+  --color-medal-bronze: #c08457;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
 
   --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
@@ -36,13 +43,27 @@
   --color-surface-2: #f3e0da; /* inset rosa empolvado */
   --color-border: #e6c9c6; /* borde malva suave */
   --color-fg: #4a2b39; /* texto ciruela/borgoña */
-  --color-muted: #9a6f79; /* malva apagado */
-  --color-primary: #b25c7d; /* rosa/malva principal */
+  --color-muted: #7d5562; /* malva apagado (AA) */
+  --color-primary: #86395a; /* rosa/malva principal (AA) */
   --color-primary-fg: #fff7fb; /* texto sobre primary */
-  --color-success: #4a9db0; /* teal (colorblind-friendly) */
-  --color-accent: #d98c6a; /* durazno/terracota */
-  --color-danger: #d1495b; /* rojo rosado */
-  --color-warning: #cf8a3c; /* ámbar/terracota */
+  --color-success: #2a7048; /* verde bosque cálido (AA) */
+  --color-success-fg: #256340;
+  --color-accent: #d98c6a; /* durazno/terracota (decorativo) */
+  --color-danger: #9f2735; /* rojo rosado (AA) */
+  --color-warning: #8c5415; /* ámbar tostado (AA) */
+  --color-warning-fg: #734410;
+  --color-medal-silver: #7d7f86;
+  --color-medal-bronze: #9a5f2e;
+}
+
+/* Modo daltónico: success deja de ser verde (rojo/verde confunde). */
+:root[data-cb="1"] {
+  --color-success: #38bdf8;
+  --color-success-fg: #38bdf8;
+}
+:root[data-theme="girly"][data-cb="1"] {
+  --color-success: #0d6a7b;
+  --color-success-fg: #0a5a69;
 }
 
 * {
@@ -96,4 +117,24 @@ button {
    pantalla (la página de entrenar setea data-hide-tabbar en el body). */
 body[data-hide-tabbar="1"] [data-tabbar] {
   display: none;
+}
+
+/* Entrada de los toasts (ver Toaster.tsx). */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.toast-in {
+  animation: toast-in 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-in {
+    animation: none;
+  }
 }

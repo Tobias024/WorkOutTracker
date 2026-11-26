@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Spinner } from "@/components/ui";
+import { safeNext } from "@/lib/safe-next";
+import { Button, Field, FieldGroup, Input, Spinner } from "@/components/ui";
 import { clsx } from "@/lib/clsx";
 
 type Sex = "male" | "female";
@@ -23,13 +24,29 @@ function makeUsername(name: string): string {
 }
 
 export default function OnboardingPage() {
+  // useSearchParams exige Suspense en el árbol.
+  return (
+    <Suspense>
+      <OnboardingForm />
+    </Suspense>
+  );
+}
+
+function OnboardingForm() {
   const router = useRouter();
+  // Destino original (invitación, rutina compartida) que el onboarding interrumpió.
+  const dest = safeNext(useSearchParams().get("next"));
   const supabase = createClient();
   const [displayName, setDisplayName] = useState("");
   const [sex, setSex] = useState<Sex | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [errors, setErrors] = useState<{
+    name?: string;
+    sex?: string;
+    form?: string;
+  }>({});
 
   useEffect(() => {
     (async () => {
@@ -46,32 +63,41 @@ export default function OnboardingPage() {
         .eq("id", user.id)
         .maybeSingle();
       if (data?.username) {
-        router.replace("/rutinas");
+        router.replace(dest);
         return;
       }
+      setEmail(user.email ?? "");
       setDisplayName(data?.display_name ?? "");
       setChecking(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     const name = displayName.trim();
-    if (name.length < 2) {
-      setError("Escribí tu nombre.");
-      return;
-    }
-    if (!sex) {
-      setError("Elegí una opción.");
-      return;
-    }
+    const next: typeof errors = {};
+    if (name.length < 2) next.name = "Tu nombre tiene que tener al menos 2 letras.";
+    if (!sex) next.sex = "Elegí una categoría para el ranking.";
+    setErrors(next);
+    if (next.name || next.sex) return;
+
     setLoading(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      // Sin sesión no se puede guardar: se vuelve al login en vez de dejar el
+      // botón girando para siempre.
+      setLoading(false);
+      router.replace("/login");
+      return;
+    }
 
     // Reintenta si el username autogenerado colisiona (muy improbable).
     let lastError: { code?: string; message: string } | null = null;
@@ -83,7 +109,7 @@ export default function OnboardingPage() {
         sex,
       });
       if (!error) {
-        router.replace("/rutinas");
+        router.replace(dest);
         return;
       }
       lastError = error;
@@ -91,7 +117,12 @@ export default function OnboardingPage() {
     }
 
     setLoading(false);
-    setError(lastError?.message ?? "No se pudo guardar. Probá de nuevo.");
+    // Nunca el mensaje crudo de Postgres (inglés y técnico).
+    setErrors({
+      form: lastError
+        ? "No pudimos guardar tu perfil. Probá de nuevo."
+        : undefined,
+    });
   }
 
   if (checking) {
@@ -110,19 +141,23 @@ export default function OnboardingPage() {
           Así te van a ver tus amigos en el ranking.
         </p>
         <form onSubmit={save} className="card p-6 flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted">Nombre</label>
+          <Field label="Nombre" error={errors.name}>
             <Input
               placeholder="Tu nombre"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
+              autoComplete="given-name"
+              maxLength={30}
               autoFocus
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted">Sexo</label>
-            <div className="grid grid-cols-2 gap-3">
+          <FieldGroup
+            label="Categoría del ranking"
+            hint="Lo usamos para separar el ranking por categoría. Podés cambiarlo en tu perfil."
+            error={errors.sex}
+          >
+            <div role="radiogroup" className="grid grid-cols-2 gap-3">
               <SexButton
                 symbol="♂"
                 label="Masculino"
@@ -136,13 +171,24 @@ export default function OnboardingPage() {
                 onClick={() => setSex("female")}
               />
             </div>
-          </div>
+          </FieldGroup>
 
           <Button type="submit" loading={loading} className="mt-1">
             Empezar
           </Button>
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {errors.form && (
+            <p role="alert" className="text-sm text-danger">
+              {errors.form}
+            </p>
+          )}
         </form>
+        <Button
+          variant="ghost"
+          className="w-full mt-3 h-auto min-h-11 py-2 whitespace-normal break-all"
+          onClick={signOut}
+        >
+          No soy {email} · Cerrar sesión
+        </Button>
       </div>
     </main>
   );
@@ -163,7 +209,8 @@ function SexButton({
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
+      role="radio"
+      aria-checked={active}
       className={clsx(
         "flex flex-col items-center justify-center gap-1 rounded-lg py-4 ring-1 transition",
         active

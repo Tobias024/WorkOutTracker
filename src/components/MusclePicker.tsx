@@ -1,51 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
+import { Check } from "lucide-react";
+import { FieldGroup } from "@/components/ui";
 import { MUSCLE_GROUPS, MUSCLES_ES } from "@/lib/i18n-exercise";
 import { clsx } from "@/lib/clsx";
 
 export function Chip({
   active,
   onClick,
+  disabled,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  /** Visible pero no tocable (ej. un músculo que ya es principal). */
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
       className={clsx(
-        "px-3 py-1.5 rounded-full text-xs ring-1 transition",
+        "inline-flex min-h-11 items-center gap-2 rounded-full px-3.5 text-sm ring-1 transition disabled:opacity-50",
         active
-          ? "bg-primary/15 ring-primary text-fg"
+          ? "bg-primary text-primary-fg ring-primary"
           : "bg-surface-2 ring-border text-muted hover:text-fg",
       )}
     >
+      {active && <Check className="size-3.5" aria-hidden />}
       {children}
     </button>
-  );
-}
-
-export function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm text-muted">
-        {label}
-        {hint && <span className="text-xs"> · {hint}</span>}
-      </label>
-      {children}
-    </div>
   );
 }
 
@@ -66,9 +54,12 @@ export function MusclePicker({
   primary,
   secondary,
   onChange,
+  primaryError,
 }: {
   primary: string[];
   secondary: string[];
+  /** Error de validación de los principales (lo muestra el formulario padre). */
+  primaryError?: string | null;
   onChange: (primary: string[], secondary: string[]) => void;
 }) {
   const togglePrimary = (m: string) => {
@@ -90,8 +81,13 @@ export function MusclePicker({
 
   return (
     <>
-      <Field label="Músculos principales" hint="los que mueven el peso">
-        <div className="flex flex-wrap gap-1.5">
+      <FieldGroup
+        label="Músculos principales"
+        hint="los que mueven el peso"
+        required
+        error={primaryError}
+      >
+        <div className="flex flex-wrap gap-2">
           {MUSCLE_GROUPS.map((m) => (
             <Chip
               key={m}
@@ -102,24 +98,32 @@ export function MusclePicker({
             </Chip>
           ))}
         </div>
-      </Field>
+      </FieldGroup>
 
-      <Field
+      <FieldGroup
         label="Músculos secundarios"
         hint="participan; cuentan media serie"
+        optional
       >
-        <div className="flex flex-wrap gap-1.5">
-          {MUSCLE_GROUPS.filter((m) => !primary.includes(m)).map((m) => (
-            <Chip
-              key={m}
-              active={secondary.includes(m)}
-              onClick={() => toggleSecondary(m)}
-            >
-              {MUSCLES_ES[m]}
-            </Chip>
-          ))}
+        <div className="flex flex-wrap gap-2">
+          {/* Los principales quedan visibles pero deshabilitados: si
+              desaparecían, la lista cambiaba de tamaño al tocar arriba. */}
+          {MUSCLE_GROUPS.map((m) => {
+            const isPrimary = primary.includes(m);
+            return (
+              <Chip
+                key={m}
+                active={!isPrimary && secondary.includes(m)}
+                disabled={isPrimary}
+                onClick={() => toggleSecondary(m)}
+              >
+                {MUSCLES_ES[m]}
+                {isPrimary && " (principal)"}
+              </Chip>
+            );
+          })}
         </div>
-      </Field>
+      </FieldGroup>
     </>
   );
 }

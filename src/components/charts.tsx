@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
+import { useState } from "react";
 import {
   LineChart,
   Line,
@@ -11,10 +12,28 @@ import {
 } from "recharts";
 import { clsx } from "@/lib/clsx";
 import { useChartColors } from "@/lib/chart-theme";
+import { fmtNum } from "@/lib/format";
+import { DeltaChip } from "@/components/ui";
 
 export interface LinePoint {
+  /** Epoch ms del bucket/medición: ordena y alinea (la etiqueta d/m no tiene año). */
+  t: number;
+  /** Etiqueta para mostrar (d/m). */
   label: string;
   value: number;
+}
+
+const fmtDM = (t: number) => {
+  const d = new Date(t);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+/** Devuelve el formateador de ticks/tooltip: "d/m" y, sólo si los datos cruzan
+ *  un año calendario, "d/m 'aa". */
+function makeDateFmt(ts: number[]): (t: number) => string {
+  const years = new Set(ts.map((t) => new Date(t).getFullYear()));
+  if (years.size <= 1) return fmtDM;
+  return (t) => `${fmtDM(t)} '${String(new Date(t).getFullYear()).slice(-2)}`;
 }
 
 /** Línea simple (dorada). `faint` dibuja una serie tenue detrás (ej. peso crudo). */
@@ -24,25 +43,33 @@ export function MiniLine({
   height = 170,
   unit = "",
   domain,
+  compact = false,
 }: {
   data: LinePoint[];
   faint?: LinePoint[];
   height?: number;
   unit?: string;
+  /** Sin eje Y y con márgenes mínimos: para small multiples en grillas angostas. */
+  compact?: boolean;
   /** Dominio del eje Y (ej. ["dataMin - 1", "dataMax + 1"] para ceñir). */
   domain?: [number | string, number | string];
 }) {
   const c = useChartColors();
+  const fmt = makeDateFmt(data.map((d) => d.t));
   const merged = data.map((d, i) => ({
-    label: d.label,
+    t: d.t,
     value: d.value,
     faint: faint?.[i]?.value,
   }));
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={merged} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
+      <LineChart
+        data={merged}
+        margin={{ top: 8, right: 6, left: compact ? 6 : -18, bottom: 0 }}
+      >
         <XAxis
-          dataKey="label"
+          dataKey="t"
+          tickFormatter={(t) => fmt(Number(t))}
           stroke={c.axis}
           fontSize={11}
           tickLine={false}
@@ -50,17 +77,21 @@ export function MiniLine({
           minTickGap={22}
         />
         <YAxis
+          hide={compact}
           stroke={c.axis}
           fontSize={11}
           tickLine={false}
           axisLine={false}
           width={40}
           domain={domain}
+          tickFormatter={(v) => fmtNum(Number(v), 1)}
         />
         <Tooltip
           contentStyle={c.tip}
           labelStyle={{ color: c.tipLabel }}
-          formatter={(v) => [`${v}${unit ? ` ${unit}` : ""}`, ""]}
+          itemStyle={{ color: c.tip.color }}
+          labelFormatter={(t) => fmt(Number(t))}
+          formatter={(v) => [`${fmtNum(Number(v), 1)}${unit ? ` ${unit}` : ""}`, ""]}
         />
         {faint && (
           <Line
@@ -78,12 +109,12 @@ export function MiniLine({
   );
 }
 
-function labelKey(l: string): number {
-  const [d, m] = l.split("/").map(Number);
-  return (m || 0) * 100 + (d || 0);
-}
+/** Trazos distintos por serie: codificación redundante al color (daltonismo). */
+const DASHES: (string | undefined)[] = [undefined, "6 3", "2 3", "8 3 2 3"];
 
-/** Varias líneas (una por serie). Alinea por etiqueta de semana. */
+/** Varias líneas (una por serie). Alinea por fecha (t). Incluye una leyenda
+ *  HTML debajo (nombre + último valor + variación); tocar un ítem resalta su
+ *  línea y atenúa las demás. */
 export function MultiLine({
   series,
   height = 190,
@@ -94,59 +125,109 @@ export function MultiLine({
   unit?: string;
 }) {
   const c = useChartColors();
-  const labelSet = new Map<string, number>();
-  for (const s of series)
-    for (const p of s.points) labelSet.set(p.label, labelKey(p.label));
-  const labels = [...labelSet.entries()]
-    .sort((a, b) => a[1] - b[1])
-    .map((e) => e[0]);
-  const rows = labels.map((label) => {
-    const row: Record<string, string | number | null> = { label };
+  const [active, setActive] = useState<number | null>(null);
+  const times = [...new Set(series.flatMap((s) => s.points.map((p) => p.t)))].sort(
+    (a, b) => a - b,
+  );
+  const fmt = makeDateFmt(times);
+  const rows = times.map((t) => {
+    const row: Record<string, number | null> = { t };
     series.forEach((s, i) => {
-      row["s" + i] = s.points.find((p) => p.label === label)?.value ?? null;
+      row["s" + i] = s.points.find((p) => p.t === t)?.value ?? null;
     });
     return row;
   });
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={rows} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
-        <XAxis
-          dataKey="label"
-          stroke={c.axis}
-          fontSize={11}
-          tickLine={false}
-          axisLine={false}
-          minTickGap={22}
-        />
-        <YAxis
-          stroke={c.axis}
-          fontSize={11}
-          tickLine={false}
-          axisLine={false}
-          width={40}
-        />
-        <Tooltip
-          contentStyle={c.tip}
-          labelStyle={{ color: c.tipLabel }}
-          formatter={(v, _n, p) => [
-            `${v}${unit ? ` ${unit}` : ""}`,
-            (p as { name?: string })?.name ?? "",
-          ]}
-        />
-        {series.map((s, i) => (
-          <Line
-            key={i}
-            type="monotone"
-            dataKey={"s" + i}
-            name={s.name}
-            stroke={c.series[i % c.series.length]}
-            strokeWidth={2}
-            dot={false}
-            connectNulls
+    <div>
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart data={rows} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
+          <XAxis
+            dataKey="t"
+            tickFormatter={(t) => fmt(Number(t))}
+            stroke={c.axis}
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            minTickGap={22}
           />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
+          <YAxis
+            stroke={c.axis}
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            tickFormatter={(v) => fmtNum(Number(v), 1)}
+          />
+          <Tooltip
+            contentStyle={c.tip}
+            labelStyle={{ color: c.tipLabel }}
+            itemStyle={{ color: c.tip.color }}
+            labelFormatter={(t) => fmt(Number(t))}
+            formatter={(v, _n, p) => [
+              `${fmtNum(Number(v), 1)}${unit ? ` ${unit}` : ""}`,
+              (p as { name?: string })?.name ?? "",
+            ]}
+          />
+          {series.map((s, i) => (
+            <Line
+              key={i}
+              type="monotone"
+              dataKey={"s" + i}
+              name={s.name}
+              stroke={c.series[i % c.series.length]}
+              strokeWidth={active === i ? 3 : 2}
+              strokeDasharray={DASHES[i % DASHES.length]}
+              strokeOpacity={active == null || active === i ? 1 : 0.25}
+              dot={false}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
+        {series.map((s, i) => {
+          const first = s.points[0]?.value;
+          const last = s.points[s.points.length - 1]?.value;
+          const delta =
+            first != null && last != null && first !== 0 && s.points.length > 1
+              ? ((last - first) / Math.abs(first)) * 100
+              : null;
+          const color = c.series[i % c.series.length];
+          return (
+            <li key={i} className="min-w-0">
+              <button
+                type="button"
+                aria-pressed={active === i}
+                onClick={() => setActive(active === i ? null : i)}
+                className={clsx(
+                  "w-full min-h-11 flex items-center gap-2 rounded-md px-1.5 text-left text-xs",
+                  active === i && "bg-surface-2",
+                )}
+              >
+                <svg width="18" height="8" className="shrink-0" aria-hidden>
+                  <line
+                    x1="0"
+                    y1="4"
+                    x2="18"
+                    y2="4"
+                    stroke={color}
+                    strokeWidth="2.5"
+                    strokeDasharray={DASHES[i % DASHES.length]}
+                  />
+                </svg>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-fg font-medium">{s.name}</span>
+                  <span className="flex items-center gap-1.5 text-muted tabular-nums">
+                    {last != null && `${fmtNum(last, 1)}${unit ? ` ${unit}` : ""}`}
+                    {delta != null && <DeltaChip pct={delta} />}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -216,7 +297,7 @@ export function HBars({
             />
           </div>
           <span className="w-14 text-right tabular-nums">
-            {r.value}
+            {fmtNum(r.value, 1)}
             {unit}
           </span>
         </div>

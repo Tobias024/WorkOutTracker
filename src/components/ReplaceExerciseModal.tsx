@@ -45,25 +45,31 @@ export function ReplaceExerciseModal({
     .slice(0, 60);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Reemplazar "${currentName}"`}>
-      <div className="flex flex-col gap-3">
-        {canSaveForFuture && (
-          <label className="flex items-center gap-2.5 text-sm card p-3 cursor-pointer">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Reemplazar "${currentName}"`}
+      // El toggle va en el pie fijo: siempre a la vista sin scrollear la lista.
+      footer={
+        canSaveForFuture ? (
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm">
             <input
               type="checkbox"
               checked={saveForFuture}
               onChange={(e) => setSaveForFuture(e.target.checked)}
-              className="size-4 accent-[var(--color-primary)]"
+              className="size-5 accent-[var(--color-primary)]"
             />
             <span>
-              Guardar para futuras iteraciones de esta rutina
+              Usar este cambio las próximas veces que hagas esta rutina
               <span className="block text-xs text-muted">
-                Si no lo marcás, el cambio aplica sólo a este entrenamiento.
+                Si no, aplica solo a hoy
               </span>
             </span>
           </label>
-        )}
-
+        ) : undefined
+      }
+    >
+      <div className="flex flex-col gap-3">
         {/* Búsqueda + filtro pegados arriba, igual que en el picker: con el
             teclado abierto la hoja se achica y esto tiene que quedar visible
             mientras se scrollea la lista. */}
@@ -71,7 +77,6 @@ export function ReplaceExerciseModal({
           <div className="relative">
             <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input
-              autoFocus
               placeholder="Buscar reemplazo…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -94,7 +99,19 @@ export function ReplaceExerciseModal({
           <div className="grid place-items-center py-10">
             <Spinner />
           </div>
+        ) : list.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted">
+            No encontramos ejercicios
+            {query ? ` para "${query}"` : ""}. Probá con otro nombre o cambiá
+            el filtro de músculo.
+          </p>
         ) : (
+          <>
+          {currentMuscle && !query && !muscle && (
+            <h3 className="text-xs font-semibold uppercase text-muted">
+              Sugeridos para {muscleEs(currentMuscle)}
+            </h3>
+          )}
           <ul className="flex flex-col gap-1.5">
             {list.map((ex) => (
               <li key={ex.id}>
@@ -123,6 +140,7 @@ export function ReplaceExerciseModal({
               </li>
             ))}
           </ul>
+          </>
         )}
       </div>
     </Modal>

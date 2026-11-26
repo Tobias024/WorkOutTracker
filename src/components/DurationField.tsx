@@ -22,11 +22,27 @@ import { clsx } from "@/lib/clsx";
  * cuando el foco sale del grupo — no de cada caja, para que pasar de minutos a
  * segundos no dispare un guardado a mitad de la edición.
  */
+/**
+ * Pasa el foco al siguiente input de la fila de serie (o suelta el foco si era
+ * el último). Soltarlo dispara el commit en blur de cada campo.
+ */
+export function focusNextInRow(current: HTMLInputElement) {
+  const row = current.closest("[data-setrow]");
+  const inputs = row
+    ? Array.from(row.querySelectorAll<HTMLInputElement>("input"))
+    : [];
+  const next = inputs[inputs.indexOf(current) + 1];
+  if (next) next.focus();
+  else current.blur();
+}
+
 export function DurationField({
   value,
   placeholder,
   onCommit,
   className,
+  size = "md",
+  labelSuffix,
 }: {
   /** Segundos. */
   value: number | null;
@@ -34,6 +50,10 @@ export function DurationField({
   placeholder?: number | null;
   onCommit: (v: number | null) => void;
   className?: string;
+  /** "lg": caja de 44px y texto de 16px, para la fila de serie al entrenar. */
+  size?: "md" | "lg";
+  /** Se agrega a los aria-label, ej. "serie 2". */
+  labelSuffix?: string;
 }) {
   const [mm, setMm] = useState(
     value == null ? "" : String(Math.floor(value / 60)),
@@ -66,8 +86,20 @@ export function DurationField({
       ? "seg"
       : String(Math.floor(placeholder % 60)).padStart(2, "0");
 
-  const box =
-    "h-9 w-full min-w-0 rounded bg-surface px-1 text-center text-sm outline-none ring-1 ring-border focus:ring-primary";
+  const box = clsx(
+    "w-full min-w-0 rounded bg-surface px-1 text-center outline-none ring-1 ring-border focus:ring-primary tabular-nums",
+    size === "lg"
+      ? "h-11 text-base font-semibold text-fg placeholder:text-muted/60 placeholder:font-normal"
+      : "h-9 text-sm",
+  );
+  const suffix = labelSuffix ? `, ${labelSuffix}` : "";
+  const selectAll = (e: React.FocusEvent<HTMLInputElement>) =>
+    e.currentTarget.select();
+  const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    focusNextInRow(e.currentTarget);
+  };
 
   return (
     <div
@@ -77,7 +109,10 @@ export function DurationField({
       <input
         type="text"
         inputMode="numeric"
-        aria-label="Minutos"
+        aria-label={`Minutos${suffix}`}
+        enterKeyHint="next"
+        onFocus={selectAll}
+        onKeyDown={onEnter}
         value={mm}
         placeholder={hintMin}
         onChange={(e) => setMm(digits(e.target.value, 3))}
@@ -87,7 +122,10 @@ export function DurationField({
       <input
         type="text"
         inputMode="numeric"
-        aria-label="Segundos"
+        aria-label={`Segundos${suffix}`}
+        enterKeyHint="done"
+        onFocus={selectAll}
+        onKeyDown={onEnter}
         value={ss}
         placeholder={hintSec}
         onChange={(e) => setSs(digits(e.target.value, 2))}

@@ -1,14 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Check, Copy, Unplug } from "lucide-react";
-import { Button, Spinner } from "@/components/ui";
+import { ConfirmDialog, ErrorState, IconButton, Skeleton } from "@/components/ui";
 import {
   useOAuthConnections,
   useRevokeOAuthConnection,
 } from "@/hooks/useOAuthConnections";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format";
+import { toast } from "@/lib/toast";
+import type { OAuthConnection } from "@/lib/types";
+
+/** Origin del cliente sin romper la hidratación: el server renderiza "" y el
+ *  cliente la URL real en el mismo pase (useSyncExternalStore), en vez de leer
+ *  `window` durante el render (mismatch server/cliente). */
+function useOrigin(): string {
+  return useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => "",
+  );
+}
 
 /**
  * "Conectar tu IA": reemplaza el export/import de .xlsx por un servidor MCP
@@ -17,84 +31,117 @@ import { formatDate } from "@/lib/format";
  * consentimiento, tokens) lo maneja el flujo de OAuth solo.
  */
 export function ConnectedAppsSection() {
+  const origin = useOrigin();
+  const mcpUrl = origin ? `${origin}/mcp` : "";
   const [copied, setCopied] = useState(false);
-  const { data: connections, isLoading } = useOAuthConnections();
+  const connections = useOAuthConnections();
   const revoke = useRevokeOAuthConnection();
-
-  const mcpUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/mcp` : "";
+  const [pending, setPending] = useState<OAuthConnection | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   async function copyUrl() {
-    try {
-      await navigator.clipboard.writeText(mcpUrl);
+    if (await copyToClipboard(mcpUrl)) {
       setCopied(true);
+      toast("Link copiado");
       setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast("No se pudo copiar. Mantené apretado el link para copiarlo.", {
+        tone: "danger",
+      });
+    }
+  }
+
+  async function confirmRevoke() {
+    if (!pending) return;
+    setRevokeError(null);
+    try {
+      await revoke.mutateAsync(pending.id);
+      toast(`Desconectaste ${pending.client_name}`, { tone: "success" });
+      setPending(null);
     } catch {
-      // Clipboard no disponible (http, permisos, etc.): no es crítico, el
-      // usuario puede seleccionar el texto a mano.
+      setRevokeError("No se pudo desconectar. Probá de nuevo.");
     }
   }
 
   return (
-    <div className="card p-6 flex flex-col gap-3 mt-4">
+    <section className="card p-4 flex flex-col gap-3">
       <div>
         <h2 className="font-semibold">Conectar tu IA</h2>
         <p className="text-xs text-muted mt-0.5">
-          Pegá esta URL en la sección de conectores/integraciones de tu
-          asistente de IA (Claude, ChatGPT, etc.). Te va a pedir iniciar
-          sesión en WOLF y confirmar el acceso — después tu IA va a poder ver
-          tu catálogo y tu progreso, armar y editar tus rutinas, y registrar
-          tus entrenamientos por vos.
+          Pegá este link en los conectores de tu asistente (Claude, ChatGPT,
+          etc.). Te va a pedir iniciar sesión en WOLF y confirmar el acceso;
+          después va a poder ver tu catálogo y tu progreso, armar y editar tus
+          rutinas y registrar tus entrenamientos por vos.
         </p>
       </div>
 
-      <div className="flex gap-2">
-        <code className="flex-1 min-w-0 truncate rounded-lg bg-surface-2 px-3 py-2 text-xs">
-          {mcpUrl}
-        </code>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
+      <div className="flex items-center gap-2">
+        <input
+          readOnly
+          value={mcpUrl}
+          aria-label="Link para conectar tu IA"
+          onFocus={(e) => e.currentTarget.select()}
+          className="h-11 flex-1 min-w-0 rounded-md bg-surface-2 px-3 font-mono text-base text-fg outline-none ring-1 ring-border focus:ring-2 focus:ring-primary"
+        />
+        <IconButton
+          label={copied ? "Link copiado" : "Copiar link"}
+          tone={copied ? "primary" : "muted"}
           onClick={copyUrl}
-          aria-label="Copiar URL"
+          disabled={!mcpUrl}
         >
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-        </Button>
+          {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
+        </IconButton>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-2">
-          <Spinner />
-        </div>
-      ) : connections && connections.length > 0 ? (
-        <div className="flex flex-col gap-2 mt-1">
-          <p className="text-xs text-muted">Conectado:</p>
-          {connections.map((c) => (
+      {connections.isPending ? (
+        <Skeleton className="h-14" />
+      ) : connections.isError && !connections.data ? (
+        <ErrorState
+          title="No pudimos cargar tus conexiones"
+          onRetry={() => connections.refetch()}
+          retrying={connections.isFetching}
+        />
+      ) : connections.data && connections.data.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted">Conectadas</p>
+          {connections.data.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2"
+              className="flex items-center justify-between gap-2 rounded-md bg-surface-2 pl-3"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 py-2">
                 <p className="text-sm truncate">{c.client_name}</p>
                 <p className="text-xs text-muted">
                   Desde {formatDate(c.created_at)}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                loading={revoke.isPending}
-                onClick={() => revoke.mutate(c.id)}
-                aria-label="Desconectar"
+              <IconButton
+                label={`Desconectar ${c.client_name}`}
+                tone="danger"
+                onClick={() => {
+                  setRevokeError(null);
+                  setPending(c);
+                }}
               >
-                <Unplug className="size-4" />
-              </Button>
+                <Unplug className="size-5" />
+              </IconButton>
             </div>
           ))}
         </div>
-      ) : null}
-    </div>
+      ) : (
+        <p className="text-xs text-muted">Todavía no conectaste ninguna IA.</p>
+      )}
+
+      <ConfirmDialog
+        open={pending != null}
+        title={`¿Desconectar ${pending?.client_name ?? ""}?`}
+        description="Va a perder el acceso a tu cuenta de WOLF. Si la querés usar de nuevo, la volvés a conectar con el mismo link."
+        confirmLabel="Desconectar"
+        loading={revoke.isPending}
+        error={revokeError}
+        onConfirm={confirmRevoke}
+        onCancel={() => setPending(null)}
+      />
+    </section>
   );
 }

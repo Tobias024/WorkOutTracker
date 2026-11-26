@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useSyncExternalStore } from "react";
 import { REST_MAX_SECONDS } from "@/lib/metrics-goal";
+import type { TrainingProfile } from "@/lib/types";
 
 /** Un descanso más viejo que esto ya no es un descanso: se descarta al volver. */
 export { REST_MAX_SECONDS };
@@ -21,8 +22,10 @@ export { REST_MAX_SECONDS };
  *
  * Se guarda `startedAt` como epoch y no un contador acumulado porque
  * `setInterval` no corre con la app en background: un contador se desincroniza
- * y un epoch se recalcula solo al volver. Es el mismo patrón que
- * `useStopwatchStore`.
+ * y un epoch se recalcula solo al volver.
+ *
+ * `targetSeconds` es el objetivo de la cuenta regresiva; viaja en el store para
+ * que sobreviva a una recarga junto con `startedAt`.
  *
  * `sessionId` viaja con el descanso para no cerrarle la serie a otra sesión si
  * el usuario abre una vieja desde el historial.
@@ -32,7 +35,11 @@ interface RestState {
   setId: string | null;
   /** Epoch ms del arranque del descanso. null = sin descanso corriendo. */
   startedAt: number | null;
-  start: (sessionId: string, setId: string) => void;
+  /** Objetivo de descanso en segundos (cuenta regresiva). null = sin objetivo. */
+  targetSeconds: number | null;
+  start: (sessionId: string, setId: string, targetSeconds: number) => void;
+  /** Suma (o resta) segundos al objetivo del descanso vivo. */
+  addTarget: (seconds: number) => void;
   clear: () => void;
 }
 
@@ -42,12 +49,36 @@ export const useRestStore = create<RestState>()(
       sessionId: null,
       setId: null,
       startedAt: null,
-      start: (sessionId, setId) => set({ sessionId, setId, startedAt: Date.now() }),
-      clear: () => set({ sessionId: null, setId: null, startedAt: null }),
+      targetSeconds: null,
+      start: (sessionId, setId, targetSeconds) =>
+        set({ sessionId, setId, startedAt: Date.now(), targetSeconds }),
+      addTarget: (seconds) =>
+        set((s) => ({
+          targetSeconds: Math.max(0, (s.targetSeconds ?? 0) + seconds),
+        })),
+      clear: () =>
+        set({ sessionId: null, setId: null, startedAt: null, targetSeconds: null }),
     }),
     { name: "wot-rest" },
   ),
 );
+
+/** Objetivo por defecto cuando el store viejo no traía `targetSeconds`. */
+export const REST_DEFAULT_SECONDS = 120;
+
+/**
+ * Objetivo de descanso según la mecánica del ejercicio y el perfil de
+ * entrenamiento: compuesto 3 min, aislamiento 1:30, sin dato 2 min. Fuerza lo
+ * estira ×1.5 (tope 5 min) y resistencia lo fija en 1 min.
+ */
+export function restTargetSeconds(
+  mechanic: string | null,
+  profile: TrainingProfile | null,
+): number {
+  if (profile === "resistencia") return 60;
+  const base = mechanic === "compound" ? 180 : mechanic === "isolation" ? 90 : 120;
+  return profile === "fuerza" ? Math.min(300, Math.round(base * 1.5)) : base;
+}
 
 // ── Reloj compartido ────────────────────────────────────────────────────────
 // `Date.now()` no se puede llamar en render (es impuro y da resultados
@@ -93,8 +124,7 @@ export function useRestSeconds(): number {
 /**
  * `true` una vez montado en el cliente. El banner depende de estado persistido
  * en localStorage, así que sin esperar a la hidratación el server renderiza
- * "sin descanso" y el cliente "con descanso". `StopwatchFab` no lo necesita
- * porque su número arranca en 0 y sólo se corrige después.
+ * "sin descanso" y el cliente "con descanso".
  */
 export function useRestHydrated(): boolean {
   return useSyncExternalStore(

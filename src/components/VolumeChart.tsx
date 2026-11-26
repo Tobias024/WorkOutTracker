@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "@/lib/chart-theme";
+import { fmtCompact, fmtNum } from "@/lib/format";
 
 export interface ChartPoint {
   label: string;
@@ -18,6 +19,15 @@ export interface ChartPoint {
 
 export function VolumeChart({ data }: { data: ChartPoint[] }) {
   const c = useChartColors();
+  // Con menos de 2 períodos con datos no hay tendencia que dibujar: un área
+  // plana en 0 no le dice nada a un usuario nuevo.
+  if (data.filter((d) => d.value > 0).length < 2) {
+    return (
+      <p className="text-sm text-muted">
+        Necesitás al menos 2 semanas de entrenos para ver la tendencia.
+      </p>
+    );
+  }
   return (
     <ResponsiveContainer width="100%" height={180}>
       <AreaChart data={data} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
@@ -40,12 +50,14 @@ export function VolumeChart({ data }: { data: ChartPoint[] }) {
           tickLine={false}
           axisLine={false}
           width={48}
-          tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
+          allowDecimals={false}
+          tickFormatter={(v) => fmtCompact(Number(v))}
         />
         <Tooltip
           contentStyle={c.tip}
           labelStyle={{ color: c.tipLabel }}
-          formatter={(value) => [`${Math.round(Number(value))} kg`, "Volumen"]}
+          itemStyle={{ color: c.tip.color }}
+          formatter={(value) => [`${fmtNum(Number(value))} kg`, "Volumen"]}
         />
         <Area
           type="monotone"

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import {
   Dumbbell,
   Plus,
-  ChevronRight,
   Library,
   ListChecks,
   Check,
@@ -15,15 +14,23 @@ import {
   Zap,
   Upload,
   FileDown,
+  MoreHorizontal,
+  Play,
 } from "lucide-react";
 import {
   PageHeader,
   Button,
+  buttonClasses,
+  IconButton,
   Input,
+  Field,
   Spinner,
+  Badge,
   EmptyState,
   Modal,
+  QueryState,
 } from "@/components/ui";
+import { ShareLinkModal, SheetMenuItem } from "@/components/ShareLinkModal";
 import {
   useRoutines,
   useCreateRoutine,
@@ -31,18 +38,25 @@ import {
   useImportRoutine,
   type SetPlan,
 } from "@/hooks/useRoutines";
-import { useStartEmptyWorkout } from "@/hooks/useWorkout";
+import { useStartEmptyWorkout, useStartWorkout } from "@/hooks/useWorkout";
 import { useExercises, useExerciseMap } from "@/hooks/useExercises";
 import { useHistory } from "@/hooks/useHistory";
-import { copyToClipboard } from "@/lib/clipboard";
 import { readWorkbook } from "@/lib/import-xlsx";
 import { buildRoutineTemplate } from "@/lib/routine-template";
 import { downloadWorkbook } from "@/lib/export-xlsx";
 import { formatDate } from "@/lib/format";
+import { muscleEs } from "@/lib/i18n-exercise";
+import { primaryMuscle } from "@/lib/muscle-contributions";
+import { sessionDate } from "@/lib/metrics";
 import { clsx } from "@/lib/clsx";
 
+/** Estado del flujo de importar: leyendo el archivo, con error, o con vista previa. */
+type ImportState =
+  | { status: "reading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; preview: ImportPreview };
+
 type ImportPreview = {
-  name: string;
   items: { exerciseId: string; plans: SetPlan[] }[];
   unmatched: string[];
   exCount: number;
@@ -66,39 +80,107 @@ function intOrNull(v: string | number | null): number | null {
   return n == null ? null : Math.round(n);
 }
 
+/** "Mi_rutina (3).xlsx" -> "Mi rutina": sin extensión, sin sufijo de copia ni guiones bajos. */
+function cleanRoutineName(fileName: string): string {
+  const base = fileName
+    .replace(/\.(xlsx|xls)$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (base || "Rutina importada").slice(0, 60);
+}
+
+/** Resumen de músculos principales más frecuentes de una rutina (máx. 3). */
+function topMuscles(
+  ids: string[],
+  exMap: ReturnType<typeof useExerciseMap>,
+): string[] {
+  const count = new Map<string, number>();
+  for (const id of ids) {
+    const ex = exMap.get(id);
+    const m = ex ? primaryMuscle(ex) : null;
+    if (m) count.set(m, (count.get(m) ?? 0) + 1);
+  }
+  return [...count.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([m]) => muscleEs(m));
+}
+
 export default function RoutinesPage() {
   const router = useRouter();
-  const { data, isLoading } = useRoutines();
+  const routinesQuery = useRoutines();
+  const data = routinesQuery.data;
   const create = useCreateRoutine();
   const ensureCodes = useEnsureShareCodes();
   const startEmpty = useStartEmptyWorkout();
+  const startRoutine = useStartWorkout();
   const importRoutine = useImportRoutine();
   const { data: exercises } = useExercises();
   const { data: history } = useHistory();
   const exMap = useExerciseMap();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importState, setImportState] = useState<ImportState | null>(null);
+  const [importName, setImportName] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Modo selección para compartir varias rutinas a la vez.
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareCount, setShareCount] = useState(0);
+
+  // "Seguir entrenando": la rutina de la sesión más reciente (el historial
+  // viene ordenado de más nueva a más vieja) que todavía exista y tenga ejercicios.
+  const lastRoutine = (() => {
+    if (!data || !history) return null;
+    const byId = new Map(data.map((r) => [r.id, r]));
+    for (const s of history) {
+      const r = s.routine_id ? byId.get(s.routine_id) : undefined;
+      if (r && r.exercise_ids.length > 0) {
+        return { routine: r, when: sessionDate(s) };
+      }
+    }
+    return null;
+  })();
+
+  const startingId = startRoutine.isPending ? startRoutine.variables : null;
+
+  function handleStart(routineId: string) {
+    startRoutine.mutate(routineId, {
+      onSuccess: (sessionId) => router.push(`/entrenar/${sessionId}`),
+    });
+  }
+
+  function closeCreate() {
+    setOpen(false);
+    setName("");
+    setCreateError(null);
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    const routine = await create.mutateAsync(name.trim());
-    setOpen(false);
-    setName("");
-    window.location.href = `/rutinas/${routine.id}`;
+    setCreateError(null);
+    try {
+      const routine = await create.mutateAsync(name.trim());
+      closeCreate();
+      router.push(`/rutinas/${routine.id}`);
+    } catch {
+      setCreateError("No pudimos crear la rutina. Probá de nuevo.");
+    }
   }
 
   function exitSelect() {
     setSelecting(false);
     setSelected(new Set());
+    setShareError(null);
   }
 
   function toggle(id: string) {
@@ -113,17 +195,19 @@ export default function RoutinesPage() {
   async function shareSelected() {
     const chosen = (data ?? []).filter((r) => selected.has(r.id));
     if (chosen.length === 0) return;
-    const codes = await ensureCodes.mutateAsync(chosen);
-    const base =
-      process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
-    const url = `${base}/r/bundle?c=${codes.join(",")}`;
-    setShareUrl(url);
-    setCopied(await copyToClipboard(url));
+    setShareError(null);
+    try {
+      const codes = await ensureCodes.mutateAsync(chosen);
+      const base = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
+      setShareCount(chosen.length);
+      setShareUrl(`${base}/r/bundle?c=${codes.join(",")}`);
+    } catch {
+      setShareError("No pudimos generar el link. Probá de nuevo.");
+    }
   }
 
   function closeShare() {
     setShareUrl(null);
-    setCopied(false);
     exitSelect();
   }
 
@@ -138,6 +222,8 @@ export default function RoutinesPage() {
     const file = e.target.files?.[0];
     e.target.value = ""; // permite re-elegir el mismo archivo
     if (!file) return;
+    setImportError(null);
+    setImportState({ status: "reading" });
     try {
       const sheets = await readWorkbook(file);
       const key =
@@ -191,26 +277,45 @@ export default function RoutinesPage() {
       }
 
       const items = order.map((id) => ({ exerciseId: id, plans: byEx.get(id)! }));
-      setImportPreview({
-        name: file.name.replace(/\.(xlsx|xls)$/i, "").trim() || "Rutina importada",
-        items,
-        unmatched: [...unmatched],
-        exCount: items.length,
-        setCount: items.reduce((a, it) => a + it.plans.length, 0),
+      setImportName(cleanRoutineName(file.name));
+      setImportState({
+        status: "ready",
+        preview: {
+          items,
+          unmatched: [...unmatched],
+          exCount: items.length,
+          setCount: items.reduce((a, it) => a + it.plans.length, 0),
+        },
       });
     } catch {
-      alert("No se pudo leer el archivo. Usá el template .xlsx descargado.");
+      setImportState({
+        status: "error",
+        message: "No se pudo leer el archivo. Usá el template .xlsx descargado.",
+      });
     }
   }
 
+  function closeImport() {
+    setImportState(null);
+    setImportError(null);
+  }
+
   async function doImport() {
-    if (!importPreview || importPreview.items.length === 0) return;
-    const id = await importRoutine.mutateAsync({
-      name: importPreview.name,
-      items: importPreview.items,
-    });
-    setImportPreview(null);
-    router.push(`/rutinas/${id}`);
+    if (importState?.status !== "ready") return;
+    const { preview } = importState;
+    const finalName = importName.trim();
+    if (preview.items.length === 0 || !finalName) return;
+    setImportError(null);
+    try {
+      const id = await importRoutine.mutateAsync({
+        name: finalName,
+        items: preview.items,
+      });
+      closeImport();
+      router.push(`/rutinas/${id}`);
+    } catch {
+      setImportError("No pudimos importar la rutina. Probá de nuevo.");
+    }
   }
 
   const hasRoutines = !!data?.length;
@@ -226,73 +331,73 @@ export default function RoutinesPage() {
               Cancelar
             </Button>
           ) : (
-            <div className="flex gap-2">
-              {hasRoutines && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setSelecting(true)}
-                >
-                  <ListChecks className="size-4" /> Compartir
-                </Button>
-              )}
-              <Button size="sm" onClick={() => setOpen(true)}>
+            <div className="flex items-center gap-1">
+              <Button size="md" onClick={() => setOpen(true)}>
                 <Plus className="size-4" /> Nueva
               </Button>
+              <IconButton label="Más opciones" onClick={() => setMenuOpen(true)}>
+                <MoreHorizontal className="size-5" />
+              </IconButton>
             </div>
           )
         }
       />
 
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx"
+        className="hidden"
+        onChange={handleFile}
+      />
+
+      {!selecting && lastRoutine && (
+        <section
+          aria-label="Seguir entrenando"
+          className="card mb-3 flex flex-col gap-3 p-4"
+        >
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-muted">
+              Seguir entrenando
+            </p>
+            <p className="mt-0.5 truncate text-lg font-semibold">
+              {lastRoutine.routine.name}
+            </p>
+            <p className="text-xs text-muted">
+              Última vez: {formatDate(lastRoutine.when)}
+            </p>
+          </div>
+          <Button
+            size="lg"
+            className="w-full"
+            loading={startingId === lastRoutine.routine.id}
+            disabled={startRoutine.isPending}
+            onClick={() => handleStart(lastRoutine.routine.id)}
+          >
+            <Play className="size-5" /> Empezar {lastRoutine.routine.name}
+          </Button>
+        </section>
+      )}
+
       {!selecting && (
         <div className="grid grid-cols-2 gap-2.5 mb-4">
-          <button
-            disabled={startEmpty.isPending}
+          <Button
+            variant="secondary"
+            loading={startEmpty.isPending}
             onClick={async () => {
-              const id = await startEmpty.mutateAsync();
-              router.push(`/entrenar/${id}`);
+              try {
+                const id = await startEmpty.mutateAsync();
+                router.push(`/entrenar/${id}`);
+              } catch {
+                // El toast global de mutaciones ya avisa del error.
+              }
             }}
-            className="card flex items-center gap-2.5 p-3 text-left hover:ring-1 hover:ring-primary transition disabled:opacity-60"
           >
-            <div className="size-9 rounded bg-primary/15 grid place-items-center shrink-0">
-              <Zap className="size-5 text-primary" />
-            </div>
-            <span className="text-sm font-medium">Entrenar libre</span>
-          </button>
-          <Link
-            href="/ejercicios"
-            className="card flex items-center gap-2.5 p-3 hover:ring-1 hover:ring-primary transition"
-          >
-            <div className="size-9 rounded bg-surface-2 grid place-items-center shrink-0">
-              <Library className="size-5 text-muted" />
-            </div>
-            <span className="text-sm font-medium">Catálogo</span>
+            <Zap className="size-4" /> Entrenar libre
+          </Button>
+          <Link href="/ejercicios" className={buttonClasses({ variant: "secondary" })}>
+            <Library className="size-4" /> Catálogo
           </Link>
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="card flex items-center gap-2.5 p-3 text-left hover:ring-1 hover:ring-primary transition"
-          >
-            <div className="size-9 rounded bg-surface-2 grid place-items-center shrink-0">
-              <Upload className="size-5 text-muted" />
-            </div>
-            <span className="text-sm font-medium">Importar Excel</span>
-          </button>
-          <button
-            onClick={handleTemplate}
-            className="card flex items-center gap-2.5 p-3 text-left hover:ring-1 hover:ring-primary transition"
-          >
-            <div className="size-9 rounded bg-surface-2 grid place-items-center shrink-0">
-              <FileDown className="size-5 text-muted" />
-            </div>
-            <span className="text-sm font-medium">Template Excel</span>
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={handleFile}
-          />
         </div>
       )}
 
@@ -302,81 +407,111 @@ export default function RoutinesPage() {
         </p>
       )}
 
-      {isLoading ? (
-        <div className="grid place-items-center py-16">
-          <Spinner />
-        </div>
-      ) : !hasRoutines ? (
-        <EmptyState
-          icon={<Dumbbell className="size-8" />}
-          title="Todavía no tenés rutinas"
-          description="Creá tu primera rutina y agregale ejercicios."
-          action={
-            <Button onClick={() => setOpen(true)}>
-              <Plus className="size-4" /> Crear rutina
-            </Button>
-          }
-        />
-      ) : (
-        <ul className="flex flex-col gap-2.5">
-          {data!.map((r) =>
-            selecting ? (
-              <li key={r.id}>
-                <button
-                  onClick={() => toggle(r.id)}
-                  className={clsx(
-                    "card flex items-center gap-3 p-4 w-full text-left transition",
-                    selected.has(r.id)
-                      ? "ring-1 ring-primary"
-                      : "hover:ring-1 hover:ring-border",
-                  )}
-                >
-                  <div
+      <QueryState
+        query={routinesQuery}
+        errorTitle="No pudimos cargar tus rutinas"
+        isEmpty={(d) => d.length === 0}
+        empty={
+          <EmptyState
+            icon={<Dumbbell className="size-8" />}
+            title="Todavía no tenés rutinas"
+            description="Creá tu primera rutina y agregale ejercicios."
+            action={
+              <Button onClick={() => setOpen(true)}>
+                <Plus className="size-4" /> Crear rutina
+              </Button>
+            }
+          />
+        }
+      >
+        {(routines) => (
+          <ul className="flex flex-col gap-2.5">
+            {routines.map((r) => {
+              const n = r.exercise_ids.length;
+              const muscles = topMuscles(r.exercise_ids, exMap);
+              const summary = [
+                n === 0 ? "Sin ejercicios" : `${n} ejercicio${n === 1 ? "" : "s"}`,
+                ...(muscles.length ? [muscles.join(", ")] : []),
+              ].join(" · ");
+              return selecting ? (
+                <li key={r.id}>
+                  <button
+                    onClick={() => toggle(r.id)}
+                    aria-pressed={selected.has(r.id)}
                     className={clsx(
-                      "size-6 rounded-md grid place-items-center shrink-0 ring-1 transition",
+                      "card flex items-center gap-3 p-4 w-full text-left transition",
                       selected.has(r.id)
-                        ? "bg-primary text-primary-fg ring-primary"
-                        : "bg-surface-2 ring-border text-transparent",
+                        ? "ring-1 ring-primary"
+                        : "hover:ring-1 hover:ring-border",
                     )}
                   >
-                    <Check className="size-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{r.name}</p>
-                    <p className="text-xs text-muted">
-                      Actualizada {formatDate(r.updated_at)}
-                    </p>
-                  </div>
-                </button>
-              </li>
-            ) : (
-              <li key={r.id}>
-                <Link
-                  href={`/rutinas/${r.id}`}
-                  className="card flex items-center gap-3 p-4 hover:ring-1 hover:ring-primary transition"
+                    <div
+                      className={clsx(
+                        "size-6 rounded-md grid place-items-center shrink-0 ring-1 transition",
+                        selected.has(r.id)
+                          ? "bg-primary text-primary-fg ring-primary"
+                          : "bg-surface-2 ring-border text-transparent",
+                      )}
+                    >
+                      <Check className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{r.name}</p>
+                      <p className="text-xs text-muted truncate">{summary}</p>
+                    </div>
+                  </button>
+                </li>
+              ) : (
+                <li
+                  key={r.id}
+                  className="card flex items-center pr-2 hover:ring-1 hover:ring-primary transition"
                 >
-                  <div className="size-10 rounded-md bg-primary/15 grid place-items-center">
-                    <Dumbbell className="size-5 text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{r.name}</p>
-                    <p className="text-xs text-muted">
-                      Actualizada {formatDate(r.updated_at)}
-                      {r.share_code && " · Compartida"}
-                    </p>
-                  </div>
-                  <ChevronRight className="size-5 text-muted" />
-                </Link>
-              </li>
-            ),
-          )}
-        </ul>
-      )}
+                  {/* El play es hermano del Link (no hijo): un botón dentro de
+                      un <a> es HTML inválido y el tap navegaría igual. */}
+                  <Link
+                    href={`/rutinas/${r.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 p-4"
+                  >
+                    <div className="size-10 shrink-0 rounded-md bg-primary/15 grid place-items-center">
+                      <Dumbbell className="size-5 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{r.name}</p>
+                      <p className="text-xs text-muted truncate">{summary}</p>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                        Actualizada {formatDate(r.updated_at)}
+                        {r.share_code && <Badge>Compartida</Badge>}
+                      </p>
+                    </div>
+                  </Link>
+                  <IconButton
+                    label={`Empezar ${r.name}`}
+                    tone="primary"
+                    disabled={n === 0 || startRoutine.isPending}
+                    onClick={() => handleStart(r.id)}
+                  >
+                    {startingId === r.id ? (
+                      <Spinner />
+                    ) : (
+                      <Play className="size-5" />
+                    )}
+                  </IconButton>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </QueryState>
 
       {/* Barra inferior de acción en modo selección (por encima de la TabBar). */}
       {selecting && (
         <div className="fixed inset-x-0 bottom-20 px-4 z-30">
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-2xl flex flex-col gap-2">
+            {shareError && (
+              <p role="alert" className="card px-3 py-2 text-sm text-danger">
+                {shareError}
+              </p>
+            )}
             <Button
               size="lg"
               className="w-full shadow-lg"
@@ -384,94 +519,152 @@ export default function RoutinesPage() {
               loading={ensureCodes.isPending}
               onClick={shareSelected}
             >
-              <Share2 className="size-5" /> Compartir {selected.size || ""}
+              <Share2 className="size-5" />{" "}
+              {selected.size === 0
+                ? "Elegí al menos una"
+                : `Compartir ${selected.size} ${selected.size === 1 ? "rutina" : "rutinas"}`}
             </Button>
           </div>
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Nueva rutina">
+      <Modal open={menuOpen} onClose={() => setMenuOpen(false)} title="Más opciones">
+        <div className="flex flex-col">
+          <SheetMenuItem
+            icon={<Upload className="size-5" />}
+            onClick={() => {
+              setMenuOpen(false);
+              fileRef.current?.click();
+            }}
+          >
+            Importar Excel
+          </SheetMenuItem>
+          <SheetMenuItem
+            icon={<FileDown className="size-5" />}
+            onClick={() => {
+              setMenuOpen(false);
+              void handleTemplate();
+            }}
+          >
+            Template Excel
+          </SheetMenuItem>
+          {hasRoutines && (
+            <SheetMenuItem
+              icon={<ListChecks className="size-5" />}
+              onClick={() => {
+                setMenuOpen(false);
+                setSelecting(true);
+              }}
+            >
+              Compartir varias
+            </SheetMenuItem>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={open} onClose={closeCreate} title="Nueva rutina">
         <form onSubmit={handleCreate} className="flex flex-col gap-3">
-          <Input
-            autoFocus
-            placeholder="Ej: Push día 1"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button type="submit" loading={create.isPending}>
+          <Field label="Nombre de la rutina" error={createError}>
+            <Input
+              autoFocus
+              maxLength={60}
+              placeholder="Ej: Push día 1"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <Button
+            type="submit"
+            loading={create.isPending}
+            disabled={!name.trim()}
+          >
             Crear
           </Button>
         </form>
       </Modal>
 
-      <Modal
+      <ShareLinkModal
         open={!!shareUrl}
         onClose={closeShare}
-        title={`Compartir ${selected.size} rutina${selected.size === 1 ? "" : "s"}`}
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">
-            {copied
-              ? "¡Link copiado! Pegáselo a quien quieras."
-              : "Copiá este link y pasáselo a quien quieras."}
-          </p>
-          <Input readOnly value={shareUrl ?? ""} onFocus={(e) => e.target.select()} />
-          <Button
-            onClick={async () => setCopied(await copyToClipboard(shareUrl ?? ""))}
-          >
-            {copied ? (
-              <>
-                <Check className="size-4" /> Copiado
-              </>
-            ) : (
-              "Copiar link"
-            )}
-          </Button>
-          <p className="text-xs text-muted text-center">
-            Se comparte la estructura. Tus pesos y notas no se comparten.
-          </p>
-        </div>
-      </Modal>
+        url={shareUrl ?? ""}
+        title={`Compartir ${shareCount} ${shareCount === 1 ? "rutina" : "rutinas"}`}
+      />
 
       <Modal
-        open={!!importPreview}
-        onClose={() => setImportPreview(null)}
+        open={!!importState}
+        onClose={closeImport}
         title="Importar rutina"
       >
-        {importPreview && (
+        {importState?.status === "reading" && (
+          <div className="flex items-center justify-center gap-3 py-8 text-sm text-muted">
+            <Spinner /> Leyendo el archivo…
+          </div>
+        )}
+        {importState?.status === "error" && (
           <div className="flex flex-col gap-3">
-            {importPreview.items.length === 0 ? (
+            <p role="alert" className="text-sm text-danger">
+              {importState.message}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={closeImport}>
+                Cerrar
+              </Button>
+              <Button
+                onClick={() => {
+                  closeImport();
+                  fileRef.current?.click();
+                }}
+              >
+                Elegir otro archivo
+              </Button>
+            </div>
+          </div>
+        )}
+        {importState?.status === "ready" && (
+          <div className="flex flex-col gap-3">
+            {importState.preview.items.length === 0 ? (
               <p className="text-sm text-muted">
                 No se reconoció ningún ejercicio. Revisá que los slugs coincidan
                 con la hoja “Ejercicios” del template.
               </p>
             ) : (
-              <p className="text-sm text-muted">
-                Vas a crear{" "}
-                <span className="text-fg font-medium">{importPreview.name}</span>{" "}
-                con {importPreview.exCount} ejercicios y {importPreview.setCount}{" "}
-                series.
-              </p>
+              <>
+                <Field label="Nombre de la rutina">
+                  <Input
+                    maxLength={60}
+                    value={importName}
+                    onChange={(e) => setImportName(e.target.value)}
+                  />
+                </Field>
+                <p className="text-sm text-muted">
+                  {importState.preview.exCount} ejercicios y{" "}
+                  {importState.preview.setCount} series.
+                </p>
+              </>
             )}
-            {importPreview.unmatched.length > 0 && (
+            {importState.preview.unmatched.length > 0 && (
               <div className="text-sm">
                 <p className="text-danger mb-1">
-                  No reconocidos ({importPreview.unmatched.length}):
+                  No reconocidos ({importState.preview.unmatched.length}):
                 </p>
                 <p className="text-muted text-xs break-words">
-                  {importPreview.unmatched.join(", ")}
+                  {importState.preview.unmatched.join(", ")}
                 </p>
               </div>
             )}
+            {importError && (
+              <p role="alert" className="text-sm text-danger">
+                {importError}
+              </p>
+            )}
             <div className="flex gap-2 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setImportPreview(null)}
-              >
+              <Button variant="secondary" onClick={closeImport}>
                 Cancelar
               </Button>
               <Button
-                disabled={importPreview.items.length === 0}
+                disabled={
+                  importState.preview.items.length === 0 || !importName.trim()
+                }
                 loading={importRoutine.isPending}
                 onClick={doImport}
               >

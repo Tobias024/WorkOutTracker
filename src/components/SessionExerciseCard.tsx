@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   MoreVertical,
@@ -9,17 +9,19 @@ import {
   Trash2,
   Info,
   ChevronDown,
+  CheckCircle2,
   StickyNote,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
-import { Button, Badge } from "@/components/ui";
+import { Button, Badge, IconButton, Modal } from "@/components/ui";
+import { toast, undoable } from "@/lib/toast";
 import { ExerciseImage } from "@/components/ExerciseImage";
 import { ExerciseDetailModal } from "@/components/ExerciseDetailModal";
 import { ExerciseNoteEditor } from "@/components/ExerciseNoteEditor";
 import { ReplaceExerciseModal } from "@/components/ReplaceExerciseModal";
-import { SetRow, type PlannedSet } from "@/components/SetRow";
+import { SetRow, SetRowHeader, type PlannedSet } from "@/components/SetRow";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { primaryMuscle } from "@/lib/muscle-contributions";
 import { countsForStrengthVolume, totalVolume } from "@/lib/metrics";
@@ -48,6 +50,9 @@ export function SessionExerciseCard({
   onEndMove,
   onMove,
   onSetCompleted,
+  expanded: expandedProp,
+  onExpandedChange,
+  onExerciseCompleted,
 }: {
   we: SessionExercise;
   exercise?: Exercise;
@@ -62,20 +67,55 @@ export function SessionExerciseCard({
   isLast?: boolean;
   onUpdateSet: (id: string, patch: Partial<WorkoutSet>) => void;
   onAddSet: () => void;
-  onDeleteSet: (id: string) => void;
+  /** Puede devolver la promesa de la mutación: flushUndoables() la espera. */
+  onDeleteSet: (id: string) => void | Promise<unknown>;
   onRemove: () => void;
   onReplace: (newExercise: Exercise, saveForFuture: boolean) => void;
   onStartMove?: () => void;
   onEndMove?: () => void;
   onMove?: (dir: "up" | "down") => void;
   /** El usuario tildó una serie (para arrancar el cronómetro de descanso). */
-  onSetCompleted?: (setId: string) => void;
+  onSetCompleted?: (
+    setId: string,
+    info: { isWarmup: boolean; mechanic: string | null },
+  ) => void;
+  /** Card desplegada. Lo controla la página (para auto-expandir la siguiente). */
+  expanded?: boolean;
+  onExpandedChange?: (v: boolean) => void;
+  /** Todas las series de trabajo pasaron a completadas (una vez por transición). */
+  onExerciseCompleted?: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Series escondidas mientras corre el "Deshacer" de eliminar serie.
+  const [hiddenSets, setHiddenSets] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState(false);
   const [replace, setReplace] = useState(false);
   const [detail, setDetail] = useState(false);
-  // Plegados por defecto: sólo se ve el nombre + resumen; tap en el header despliega.
-  const [collapsed, setCollapsed] = useState(true);
+  // Plegada por defecto: sólo se ve el nombre + resumen; tap en el header despliega.
+  // Si la página no controla el estado, cae a uno interno.
+  const [innerExpanded, setInnerExpanded] = useState(false);
+  const expanded = expandedProp ?? innerExpanded;
+  const setExpanded = (v: boolean) => {
+    if (onExpandedChange) onExpandedChange(v);
+    else setInnerExpanded(v);
+  };
+
+  // Al pasar la app a segundo plano, un input enfocado todavía no commiteó (el
+  // commit es en blur): se lo blurea para que el valor tipeado no se pierda.
+  useEffect(() => {
+    const onHide = () => {
+      const el = document.activeElement;
+      if (
+        document.hidden &&
+        el instanceof HTMLElement &&
+        (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) &&
+        cardRef.current?.contains(el)
+      )
+        el.blur();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
 
   const { data: note } = useExerciseNote(we.exercise_id);
   const hasNote = !!note?.trim();
@@ -84,7 +124,14 @@ export function SessionExerciseCard({
   const { data: prefs } = useTrainingProfile();
   const profile = prefs?.trainingProfile ?? null;
 
-  const completedSets = we.sets.filter((s) => s.completed);
+  const visibleSets = we.sets.filter((s) => !hiddenSets.has(s.id));
+  const completedSets = visibleSets.filter((s) => s.completed);
+  const workSets = visibleSets.filter((s) => !s.is_warmup);
+  const workDone = workSets.filter((s) => s.completed).length;
+  // Terminada: todas las series de trabajo completas (el calentamiento no cuenta).
+  const finished = workSets.length > 0 && workDone === workSets.length;
+  // Próxima pendiente: la primera sin tildar, en orden de serie.
+  const nextSetId = visibleSets.find((s) => !s.completed)?.id;
   const kind: MetricKind = exercise?.metric_kind ?? "reps_weight";
   const volume = countsForStrengthVolume(kind) ? totalVolume(completedSets) : 0;
   // Un ejercicio por tiempo o distancia no tiene tonelaje: el resumen util es
@@ -220,14 +267,73 @@ export function SessionExerciseCard({
     onUpdateSet(set.id, adopt(set, patch));
     if (!patch.completed) return;
     // Tildó una serie: arranca el cronómetro de descanso (solo el tick real).
-    onSetCompleted?.(set.id);
-    const sorted = [...we.sets].sort((a, b) => a.set_number - b.set_number);
-    const isLast = sorted[sorted.length - 1]?.id === set.id;
-    if (!isLast) return;
-    for (const s of sorted) {
-      if (s.id !== set.id && !s.completed)
-        onUpdateSet(s.id, adopt(s, { completed: true }));
+    // Las series de calentamiento no disparan el descanso.
+    if (!set.is_warmup && patch.is_warmup !== true)
+      onSetCompleted?.(set.id, {
+        isWarmup: false,
+        mechanic: exercise?.mechanic ?? null,
+      });
+    // Las escondidas (eliminación pendiente) no se autocompletan.
+    const sorted = [...visibleSets].sort((a, b) => a.set_number - b.set_number);
+    const isLastSet = sorted[sorted.length - 1]?.id === set.id;
+    const auto: WorkoutSet[] = [];
+    const reverts: Array<{ id: string; prev: Partial<WorkoutSet> }> = [];
+    if (isLastSet) {
+      for (const s of sorted) {
+        if (s.id === set.id || s.completed) continue;
+        const applied = adopt(s, { completed: true });
+        // Valores previos de TODO lo que adopt() toca, capturados antes de mutar.
+        const prev: Record<string, unknown> = {};
+        for (const k of Object.keys(applied))
+          prev[k] = (s as unknown as Record<string, unknown>)[k];
+        reverts.push({ id: s.id, prev: prev as Partial<WorkoutSet> });
+        auto.push(s);
+        onUpdateSet(s.id, applied);
+      }
     }
+    if (auto.length > 0) {
+      const nums = auto.map((s) => s.set_number);
+      const list =
+        nums.length === 1
+          ? `la serie ${nums[0]}`
+          : `las series ${nums.slice(0, -1).join(", ")} y ${nums[nums.length - 1]}`;
+      toast(`Se completaron también ${list}`, {
+        action: {
+          label: "Deshacer",
+          onClick: () => reverts.forEach((r) => onUpdateSet(r.id, r.prev)),
+        },
+      });
+    }
+    // ¿Esta acción cerró el ejercicio? Solo si antes no estaba terminado.
+    if (!set.is_warmup && !finished) {
+      const autoIds = new Set(auto.map((s) => s.id));
+      const allDone = workSets.every(
+        (s) => s.id === set.id || s.completed || autoIds.has(s.id),
+      );
+      if (allDone) onExerciseCompleted?.();
+    }
+  }
+
+  /** Esconde la fila y deja 5 s para deshacer antes de borrar de verdad. */
+  function handleDeleteSet(set: WorkoutSet) {
+    const unhide = () =>
+      setHiddenSets((h) => {
+        const next = new Set(h);
+        next.delete(set.id);
+        return next;
+      });
+    setHiddenSets((h) => new Set(h).add(set.id));
+    undoable({
+      message: `Serie ${set.set_number} eliminada`,
+      commit: () => {
+        const done = onDeleteSet(set.id);
+        // Si el borrado falla, el rollback devuelve la serie al cache: se la
+        // vuelve a mostrar en vez de dejarla escondida para siempre.
+        setTimeout(unhide, 3000);
+        return done;
+      },
+      undo: unhide,
+    });
   }
 
   // Modo "mover": esta card seleccionada muestra flechas y bloquea lo demás.
@@ -272,12 +378,18 @@ export function SessionExerciseCard({
 
   return (
     <div
+      ref={cardRef}
       className={clsx(
         "card p-3",
         moveMode && "opacity-50 pointer-events-none",
         // Dorado suave cuando superaste lo de la última vez. Va en la card y no
         // en la fila para que se lea plegado, que es como se recorre la lista.
-        improved && "ring-1 ring-accent/40 bg-accent/5",
+        improved && "bg-accent/5",
+        finished
+          ? "ring-1 ring-success/40"
+          : expanded && workSets.length > 0
+            ? "ring-1 ring-primary/60"
+            : improved && "ring-1 ring-accent/40",
       )}
     >
       <div className="flex items-center gap-3">
@@ -295,12 +407,22 @@ export function SessionExerciseCard({
 
         {/* Tap en el header (nombre + badges) pliega/despliega las series. */}
         <button
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => setExpanded(!expanded)}
           className="min-w-0 flex-1 flex items-center gap-2 text-left"
-          aria-expanded={!collapsed}
+          aria-expanded={expanded}
         >
           <div className="min-w-0 flex-1">
-            <p className="font-medium truncate">{exercise?.name ?? "…"}</p>
+            <p
+              className={clsx(
+                "flex items-center gap-1.5 font-medium",
+                finished && "text-muted",
+              )}
+            >
+              {finished && (
+                <CheckCircle2 className="size-4 shrink-0 text-success" />
+              )}
+              <span className="truncate">{exercise?.name ?? "…"}</span>
+            </p>
             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
               {improved && (
                 <Badge className="gap-1 bg-accent/15 text-accent ring-accent/30">
@@ -322,12 +444,17 @@ export function SessionExerciseCard({
               {kind !== "reps_weight" && doneSeconds > 0 && (
                 <Badge>{formatDuration(doneSeconds)}</Badge>
               )}
-              {collapsed && (
-                <Badge>
-                  {completedSets.length}/{we.sets.length} series
+              {workSets.length > 0 && (
+                <Badge
+                  className={clsx(
+                    finished && "bg-success/15 text-success-fg ring-success/30",
+                  )}
+                >
+                  {workDone}/{workSets.length}
+                  {!expanded && " series"}
                 </Badge>
               )}
-              {collapsed && hasNote && (
+              {!expanded && hasNote && (
                 <StickyNote className="size-3.5 text-accent shrink-0" />
               )}
             </div>
@@ -335,89 +462,96 @@ export function SessionExerciseCard({
           <ChevronDown
             className={clsx(
               "size-4 text-muted shrink-0 transition-transform",
-              !collapsed && "rotate-180",
+              expanded && "rotate-180",
             )}
           />
         </button>
 
-        <div className="relative">
-          <button
-            onClick={() => setMenu((m) => !m)}
-            className="size-9 grid place-items-center rounded text-muted hover:text-fg"
-          >
-            <MoreVertical className="size-5" />
-          </button>
-          {menu && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setMenu(false)}
-              />
-              <div className="absolute right-0 top-10 z-20 card p-1 w-48 shadow-xl">
-                <MenuItem
-                  icon={<ArrowUpDown className="size-4" />}
-                  onClick={() => {
-                    setMenu(false);
-                    onStartMove?.();
-                  }}
-                >
-                  Mover
-                </MenuItem>
-                <MenuItem
-                  icon={<Repeat className="size-4" />}
-                  onClick={() => {
-                    setMenu(false);
-                    setReplace(true);
-                  }}
-                >
-                  Reemplazar por…
-                </MenuItem>
-                <MenuItem
-                  icon={<Info className="size-4" />}
-                  onClick={() => {
-                    setMenu(false);
-                    setDetail(true);
-                  }}
-                >
-                  Ver detalle
-                </MenuItem>
-                <MenuItem
-                  icon={<Trash2 className="size-4" />}
-                  danger
-                  onClick={() => {
-                    setMenu(false);
-                    onRemove();
-                  }}
-                >
-                  Quitar del entreno
-                </MenuItem>
-              </div>
-            </>
-          )}
-        </div>
+        <IconButton
+          label="Opciones del ejercicio"
+          aria-haspopup="dialog"
+          aria-expanded={menu}
+          onClick={() => setMenu(true)}
+        >
+          <MoreVertical className="size-5" />
+        </IconButton>
       </div>
 
-      {!collapsed && (
+      {/* Hoja inferior y no dropdown: en la última card un menú absoluto se
+          cortaba contra el borde de la pantalla. */}
+      <Modal
+        open={menu}
+        onClose={() => setMenu(false)}
+        title={exercise?.name ?? "Ejercicio"}
+      >
+        <div className="flex flex-col">
+          <MenuItem
+            icon={<ArrowUpDown className="size-4" />}
+            onClick={() => {
+              setMenu(false);
+              onStartMove?.();
+            }}
+          >
+            Mover
+          </MenuItem>
+          <MenuItem
+            icon={<Repeat className="size-4" />}
+            onClick={() => {
+              setMenu(false);
+              setReplace(true);
+            }}
+          >
+            Reemplazar por…
+          </MenuItem>
+          <MenuItem
+            icon={<Info className="size-4" />}
+            onClick={() => {
+              setMenu(false);
+              setDetail(true);
+            }}
+          >
+            Ver detalle
+          </MenuItem>
+          <div className="mt-1 border-t border-border pt-1">
+            <MenuItem
+              icon={<Trash2 className="size-4" />}
+              danger
+              onClick={() => {
+                setMenu(false);
+                onRemove();
+              }}
+            >
+              Quitar del entreno
+            </MenuItem>
+          </div>
+        </div>
+      </Modal>
+
+      {expanded && (
         <>
-          <div className="flex flex-col gap-1.5 mt-3">
-            {we.sets.map((set) => (
+          <div className="mt-3 mb-1">
+            <SetRowHeader kind={kind} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {visibleSets.map((set) => (
               <SetRow
                 key={set.id}
                 set={set}
-                kind={exercise?.metric_kind ?? "reps_weight"}
+                kind={kind}
+                isNext={set.id === nextSetId}
                 ghost={ghostFor(set.set_number)}
                 planned={plannedFor(set)}
                 profile={profile}
                 onChange={(patch) => handleSetChange(set, patch)}
-                onDelete={() => onDeleteSet(set.id)}
+                onDelete={() => handleDeleteSet(set)}
               />
             ))}
           </div>
 
           <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2 w-full"
+            variant="secondary"
+            size="md"
+            className="mt-2 w-full border border-dashed border-border"
             onClick={onAddSet}
           >
             <Plus className="size-4" /> Agregar serie
@@ -433,7 +567,10 @@ export function SessionExerciseCard({
         currentName={exercise?.name ?? ""}
         currentMuscle={exercise ? primaryMuscle(exercise) ?? undefined : undefined}
         canSaveForFuture={!!we.routine_exercise_id}
-        onReplace={onReplace}
+        onReplace={(ex, save) => {
+          onReplace(ex, save);
+          toast(`Cambiado por ${ex.name}`);
+        }}
       />
       <ExerciseDetailModal
         exercise={detail ? exercise ?? null : null}
@@ -458,7 +595,7 @@ function MenuItem({
     <button
       onClick={onClick}
       className={clsx(
-        "w-full flex items-center gap-2.5 rounded px-3 py-2 text-sm text-left hover:bg-surface-2",
+        "w-full min-h-11 flex items-center gap-2.5 rounded-md px-3 text-sm text-left hover:bg-surface-2",
         danger ? "text-danger" : "text-fg",
       )}
     >

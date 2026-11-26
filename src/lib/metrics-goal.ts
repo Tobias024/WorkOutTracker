@@ -9,6 +9,7 @@ import type {
 } from "@/lib/types";
 import { goalParams } from "@/lib/goal-params";
 import {
+  localMidnight,
   directMuscles,
   estimate1RM,
   sessionDate,
@@ -31,6 +32,8 @@ const WEEK = 7 * 86400000;
 const DAY = 86400000;
 
 export interface Pt {
+  /** Timestamp (ms) del bucket/medición: ordena y alinea (la etiqueta d/m no tiene año). */
+  t: number;
   label: string;
   value: number;
 }
@@ -43,7 +46,7 @@ function weekLabel(ms: number): string {
 function weeklySorted(map: Map<number, number>): Pt[] {
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([wk, v]) => ({ label: weekLabel(wk), value: v }));
+    .map(([wk, v]) => ({ t: wk, label: weekLabel(wk), value: v }));
 }
 
 function ms(s: HistorySession): number {
@@ -159,7 +162,8 @@ export function e1rmSeriesByExercise(
   const out: ExerciseSeries[] = [];
   for (const [exId, m] of byEx) {
     const series = weeklySorted(m).map((p) => ({
-      label: p.label,
+      t: p.t,
+    label: p.label,
       value: Math.round(p.value),
     }));
     if (series.length === 0) continue;
@@ -258,6 +262,7 @@ export function heavyRirTrend(
   const m = new Map<number, number>();
   for (const [wk, a] of sum) m.set(wk, a.n ? a.s / a.n : 0);
   return weeklySorted(m).map((p) => ({
+    t: p.t,
     label: p.label,
     value: Math.round(p.value * 10) / 10,
   }));
@@ -505,6 +510,7 @@ export function repsPerSetWeekly(
   const m = new Map<number, number>();
   for (const [wk, a] of sum) m.set(wk, a.n ? a.s / a.n : 0);
   return weeklySorted(m).map((p) => ({
+    t: p.t,
     label: p.label,
     value: Math.round(p.value * 10) / 10,
   }));
@@ -541,6 +547,7 @@ export function sessionDensityWeekly(
   const m = new Map<number, number>();
   for (const [wk, a] of agg) m.set(wk, a.min ? a.reps / a.min : 0);
   return weeklySorted(m).map((p) => ({
+    t: p.t,
     label: p.label,
     value: Math.round(p.value * 10) / 10,
   }));
@@ -652,7 +659,7 @@ function weightTrendFromRaw(
 ): BwSeries {
   if (raw.length === 0)
     return { points: [], ma: [], ratePctPerWeek: null, last: null };
-  const points = raw.map((r) => ({ label: weekLabel(r.t), value: r.w }));
+  const points = raw.map((r) => ({ t: r.t, label: weekLabel(r.t), value: r.w }));
   // Media móvil trailing de 7 días en cada medición (con su timestamp, que la
   // regresión necesita: los registros son irregulares, no una serie diaria).
   const maRaw = raw.map((r) => {
@@ -661,6 +668,7 @@ function weightTrendFromRaw(
     return { t: r.t, v: win.reduce((a, x) => a + x.w, 0) / win.length };
   });
   const ma = maRaw.map((p) => ({
+    t: p.t,
     label: weekLabel(p.t),
     value: Math.round(p.v * 10) / 10,
   }));
@@ -736,7 +744,8 @@ export function strengthRetentionIndex(
   return {
     name: top.name,
     series: top.series.map((p) => ({
-      label: p.label,
+      t: p.t,
+    label: p.label,
       value: Math.round((p.value / base) * 100),
     })),
   };
@@ -763,6 +772,7 @@ export function sleepSeries(
   // rows viene ordenado asc por slept_on ("YYYY-MM-DD" → comparación lexicográfica ok).
   const recent = rows.filter((r) => r.slept_on >= cutoffKey);
   const points = recent.map((r) => ({
+    t: localMidnight(r.slept_on).getTime(),
     label: labelFromDate(r.slept_on),
     value: r.hours,
   }));
@@ -788,7 +798,7 @@ export function measurementSeries(
       name,
       points: rows
         .filter((r) => r[key] != null)
-        .map((r) => ({ label: labelFromDate(r.measured_on), value: Number(r[key]) })),
+        .map((r) => ({ t: localMidnight(r.measured_on).getTime(), label: labelFromDate(r.measured_on), value: Number(r[key]) })),
     }))
     .filter((s) => s.points.length > 0);
 }
@@ -797,7 +807,7 @@ export function measurementSeries(
 export function waistSeries(rows: BodyMeasurement[]): Pt[] {
   return rows
     .filter((r) => r.waist_cm != null)
-    .map((r) => ({ label: labelFromDate(r.measured_on), value: Number(r.waist_cm) }));
+    .map((r) => ({ t: localMidnight(r.measured_on).getTime(), label: labelFromDate(r.measured_on), value: Number(r.waist_cm) }));
 }
 
 // ── Base (Fase 4): Listo para entrenar ──────────────────────────────────────
@@ -806,6 +816,8 @@ export interface Readiness {
   muscle: string;
   days: number;
   lag: number;
+  /** Series que faltan para cubrir el MEV esta semana (0 si ya está cubierto). */
+  missingSets: number;
   score: number;
 }
 
@@ -871,6 +883,7 @@ export function readinessByMuscle(
       muscle: mu,
       days,
       lag,
+      missingSets: Math.max(0, Math.ceil(mev - sets - EPSILON)),
       score: lag * LAG_WEIGHT + recovery * RECOVERY_WEIGHT,
     });
   }

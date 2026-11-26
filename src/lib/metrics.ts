@@ -245,6 +245,9 @@ export interface WeeklyStats {
   prevCompleted: number | null;
   /** % de la última semana anterior vs la previa (null si no hay base). */
   deltaPct: number | null;
+  /** % de la semana en curso (lunes→hoy) vs el MISMO tramo de la semana pasada
+   *  (lunes→mismo día de la semana, inclusive). null si ese tramo vale 0/no hay datos. */
+  currentVsLastPct: number | null;
   /** Promedio del valor sobre todas las semanas anteriores con datos. */
   avgCompleted: number;
   completedCount: number;
@@ -278,6 +281,20 @@ export function weeklyMetricStats<T extends SessionDateLike>(
   }
   completed.sort((a, b) => b.wkMs - a.wkMs);
 
+  // Mismo tramo de la semana pasada: [lunes pasado, mañana 00:00 - 7 días).
+  const lastWeekStart = new Date(curMs);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const sameSpanEnd = new Date();
+  sameSpanEnd.setHours(0, 0, 0, 0);
+  sameSpanEnd.setDate(sameSpanEnd.getDate() + 1 - 7);
+  const lastSameSpan = valueOf(
+    (byWeek.get(lastWeekStart.getTime()) ?? []).filter(
+      (s) => new Date(sessionDate(s)).getTime() < sameSpanEnd.getTime(),
+    ),
+  );
+  const currentVsLastPct =
+    lastSameSpan > 0 ? ((current - lastSameSpan) / lastSameSpan) * 100 : null;
+
   const lastCompleted = completed[0]?.value ?? null;
   const prevCompleted = completed[1]?.value ?? null;
   const deltaPct =
@@ -294,6 +311,7 @@ export function weeklyMetricStats<T extends SessionDateLike>(
     lastCompleted,
     prevCompleted,
     deltaPct,
+    currentVsLastPct,
     avgCompleted,
     completedCount: completed.length,
   };

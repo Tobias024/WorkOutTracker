@@ -4,6 +4,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useActiveSession, ACTIVE_SESSION_KEY } from "@/hooks/useWorkout";
+import { toast } from "@/lib/toast";
 
 /**
  * Candado de sesión: si hay un entrenamiento en curso (sesión sin finalizar),
@@ -30,6 +31,9 @@ export function ActiveSessionGuard() {
     if (!effective) return;
     const target = `/entrenar/${effective}`;
     if (pathname === target || pathname.startsWith("/onboarding")) return;
+    // Avisamos por qué rebota (con id para no apilar el mismo toast si el
+    // guard corre dos veces seguidas).
+    toast("Tenés un entreno en curso", { id: "active-session-redirect" });
     router.replace(target);
   }, [activeId, isLoading, isError, pathname, router]);
 

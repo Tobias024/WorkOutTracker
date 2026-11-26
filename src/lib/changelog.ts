@@ -20,6 +20,17 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.0",
+    date: "2026-11-19",
+    notable: true,
+    items: [
+      "Entrenar es más cómodo: botones y campos más grandes, el descanso es una cuenta regresiva que vibra cuando termina, y antes de cerrar el entreno ves un resumen de lo que hiciste.",
+      "Si borrás una serie, un ejercicio o una rutina por error, tenés unos segundos para deshacerlo. Y si algo no se pudo guardar, la app te avisa en vez de fallar en silencio.",
+      "Perfil ahora tiene su propio tab y junta tus amigos, los avisos, la apariencia y el nuevo modo daltónico, que cambia el verde por celeste para distinguir mejor subidas y bajadas.",
+      "Registro es más claro: lo de esta semana arriba, gráficos con leyenda y semanas de lunes a domingo. Y el ranking trata bien los empates: mismo valor, mismo puesto.",
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-11-25",
     notable: true,

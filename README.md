@@ -10,8 +10,8 @@ para deploy en **Vercel**. UI en español, tema oscuro y mobile-first.
 
 - **Rutinas**: creá rutinas, agregá ejercicios de un catálogo (~870, con imágenes),
   definí series/reps objetivo y reordená.
-- **Ejecución**: registrá peso, reps y comentarios por serie. **Cronómetro** flotante
-  opcional para descansos, y tiempo de sesión con inicio/fin **editable**.
+- **Ejecución**: registrá peso, reps y comentarios por serie. **Descanso** automático
+  con cuenta regresiva y aviso al llegar al objetivo, y tiempo de sesión con inicio/fin **editable**.
 - **Reemplazar por…**: durante el entrenamiento cambiá un ejercicio sólo por esta vez
   o guardalo para futuras iteraciones de la rutina.
 - **Registro**: historial, volumen total/semanal, volumen por músculo, frecuencia y

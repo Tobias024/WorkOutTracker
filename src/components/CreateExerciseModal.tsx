@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
-import { Modal, Input, Textarea, Button } from "@/components/ui";
+import { useRef, useState } from "react";
+import { Modal, Input, Textarea, Button, Field, FieldGroup } from "@/components/ui";
 import {
   FORCE_ES,
   MECHANIC_ES,
@@ -10,7 +10,7 @@ import {
   METRIC_KIND_ES,
 } from "@/lib/i18n-exercise";
 import { useCreateExercise } from "@/hooks/useExercises";
-import { Chip, Field, MusclePicker } from "@/components/MusclePicker";
+import { Chip, MusclePicker } from "@/components/MusclePicker";
 import { METRIC_KINDS, type Exercise, type MetricKind } from "@/lib/types";
 
 /** Crea un ejercicio custom con los campos que alimentan los cálculos
@@ -37,9 +37,20 @@ export function CreateExerciseModal({
   const [imageUrl, setImageUrl] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Errores por campo; se calculan al tocar "Crear ejercicio", no antes.
+  const [errors, setErrors] = useState<Partial<
+    Record<"name" | "primary" | "mechanic" | "force", string>
+  >>({});
+  const bodyRef = useRef<HTMLDivElement>(null);
 
-  const valid =
-    name.trim().length >= 2 && primary.length > 0 && !!mechanic && !!force;
+  function validate() {
+    const e: typeof errors = {};
+    if (name.trim().length < 2) e.name = "Poné un nombre de al menos 2 letras.";
+    if (primary.length === 0) e.primary = "Elegí al menos un músculo principal.";
+    if (!mechanic) e.mechanic = "Elegí la mecánica.";
+    if (!force) e.force = "Elegí el tipo de fuerza.";
+    return e;
+  }
 
   function reset() {
     setMetricKind("reps_weight");
@@ -52,11 +63,21 @@ export function CreateExerciseModal({
     setImageUrl("");
     setDescription("");
     setError(null);
+    setErrors({});
   }
 
   async function submit() {
-    if (!valid) {
-      setError("Completá nombre, músculos principales, mecánica y fuerza.");
+    const e = validate();
+    setErrors(e);
+    setError(null);
+    const first = (["name", "primary", "mechanic", "force"] as const).find(
+      (k) => e[k],
+    );
+    if (first) {
+      // Se llega al primer error aunque esté fuera de pantalla.
+      bodyRef.current
+        ?.querySelector(`[data-field="${first}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     try {
@@ -79,30 +100,51 @@ export function CreateExerciseModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Crear ejercicio">
-      <div className="flex flex-col gap-4">
-        <Field label="Nombre">
-          <Input
-            placeholder="Ej: Curl inclinado con mancuernas"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Crear ejercicio"
+      footer={
+        <div className="flex flex-col gap-2">
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <Button size="lg" onClick={submit} loading={create.isPending}>
+            Crear ejercicio
+          </Button>
+        </div>
+      }
+    >
+      <div ref={bodyRef} className="flex flex-col gap-5">
+        <div data-field="name">
+          <Field label="Nombre" required error={errors.name}>
+            <Input
+              placeholder="Ej: Curl inclinado con mancuernas"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div data-field="primary" className="flex flex-col gap-5">
+          <MusclePicker
+            primary={primary}
+            secondary={secondary}
+            primaryError={errors.primary}
+            onChange={(p, sec) => {
+              setPrimary(p);
+              setSecondary(sec);
+            }}
           />
-        </Field>
+        </div>
 
-        <MusclePicker
-          primary={primary}
-          secondary={secondary}
-          onChange={(p, sec) => {
-            setPrimary(p);
-            setSecondary(sec);
-          }}
-        />
-
-        <Field
+        <FieldGroup
           label="Cómo se mide"
           hint="define qué campos vas a cargar en cada serie"
         >
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {METRIC_KINDS.map((k) => (
               <Chip
                 key={k}
@@ -113,31 +155,33 @@ export function CreateExerciseModal({
               </Chip>
             ))}
           </div>
-        </Field>
+        </FieldGroup>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Mecánica" hint="obligatorio">
-            <div className="flex flex-wrap gap-1.5">
+        <div data-field="mechanic">
+          <FieldGroup label="Mecánica" required error={errors.mechanic}>
+            <div className="flex flex-wrap gap-2">
               {Object.entries(MECHANIC_ES).map(([k, v]) => (
                 <Chip key={k} active={mechanic === k} onClick={() => setMechanic(k)}>
                   {v}
                 </Chip>
               ))}
             </div>
-          </Field>
-          <Field label="Fuerza" hint="obligatorio">
-            <div className="flex flex-wrap gap-1.5">
+          </FieldGroup>
+        </div>
+        <div data-field="force">
+          <FieldGroup label="Fuerza" required error={errors.force}>
+            <div className="flex flex-wrap gap-2">
               {Object.entries(FORCE_ES).map(([k, v]) => (
                 <Chip key={k} active={force === k} onClick={() => setForce(k)}>
                   {v}
                 </Chip>
               ))}
             </div>
-          </Field>
+          </FieldGroup>
         </div>
 
-        <Field label="Equipo" hint="opcional">
-          <div className="flex flex-wrap gap-1.5">
+        <FieldGroup label="Equipo" optional>
+          <div className="flex flex-wrap gap-2">
             {Object.entries(EQUIPMENT_ES).map(([k, v]) => (
               <Chip
                 key={k}
@@ -148,17 +192,19 @@ export function CreateExerciseModal({
               </Chip>
             ))}
           </div>
-        </Field>
+        </FieldGroup>
 
-        <Field label="Imagen (URL)" hint="opcional">
+        <Field label="Imagen (URL)" optional>
           <Input
+            type="url"
+            inputMode="url"
             placeholder="https://…"
             value={imageUrl}
             onChange={(e) => setImageUrl(e.target.value)}
           />
         </Field>
 
-        <Field label="Descripción / notas" hint="opcional">
+        <Field label="Descripción / notas" optional>
           <Textarea
             rows={2}
             placeholder="Ej: banco a 30°, agarre neutro…"
@@ -166,12 +212,6 @@ export function CreateExerciseModal({
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-
-        <Button onClick={submit} loading={create.isPending} disabled={!valid}>
-          Crear ejercicio
-        </Button>
       </div>
     </Modal>
   );
