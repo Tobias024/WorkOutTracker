@@ -3,6 +3,8 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import {
   Dumbbell,
@@ -40,14 +42,13 @@ import {
 } from "@/hooks/useRoutines";
 import { useStartEmptyWorkout, useStartWorkout } from "@/hooks/useWorkout";
 import { useExercises, useExerciseMap } from "@/hooks/useExercises";
-import { useHistory } from "@/hooks/useHistory";
+import { historyQueryOptions } from "@/hooks/useHistory";
 import { readWorkbook } from "@/lib/import-xlsx";
 import { buildRoutineTemplate } from "@/lib/routine-template";
 import { downloadWorkbook } from "@/lib/export-xlsx";
 import { formatDate } from "@/lib/format";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { primaryMuscle } from "@/lib/muscle-contributions";
-import { sessionDate } from "@/lib/metrics";
 import { clsx } from "@/lib/clsx";
 
 /** Estado del flujo de importar: leyendo el archivo, con error, o con vista previa. */
@@ -118,7 +119,16 @@ export default function RoutinesPage() {
   const startRoutine = useStartWorkout();
   const importRoutine = useImportRoutine();
   const { data: exercises } = useExercises();
-  const { data: history } = useHistory();
+  const qc = useQueryClient();
+  const { data: lastSessions } = useQuery({
+    queryKey: ["history", "last-session-by-routine"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await createClient().rpc("last_session_by_routine");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
   const exMap = useExerciseMap();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importState, setImportState] = useState<ImportState | null>(null);
@@ -139,12 +149,15 @@ export default function RoutinesPage() {
   // "Seguir entrenando": la rutina de la sesión más reciente (el historial
   // viene ordenado de más nueva a más vieja) que todavía exista y tenga ejercicios.
   const lastRoutine = (() => {
-    if (!data || !history) return null;
+    if (!data || !lastSessions) return null;
     const byId = new Map(data.map((r) => [r.id, r]));
-    for (const s of history) {
-      const r = s.routine_id ? byId.get(s.routine_id) : undefined;
+    const sorted = [...lastSessions].sort((a, b) =>
+      a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
+    );
+    for (const s of sorted) {
+      const r = byId.get(s.routine_id);
       if (r && r.exercise_ids.length > 0) {
-        return { routine: r, when: sessionDate(s) };
+        return { routine: r, when: s.last_at };
       }
     }
     return null;
@@ -212,9 +225,10 @@ export default function RoutinesPage() {
   }
 
   async function handleTemplate() {
+    const history = await qc.fetchQuery(historyQueryOptions);
     await downloadWorkbook(
       "wolf-template-rutina.xlsx",
-      buildRoutineTemplate(exercises ?? [], history ?? [], exMap),
+      buildRoutineTemplate(exercises ?? [], history, exMap),
     );
   }
 

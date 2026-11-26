@@ -9,6 +9,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LineChart,
@@ -38,12 +40,17 @@ import {
   Tabs,
 } from "@/components/ui";
 import { toast } from "@/lib/toast";
-import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
-import { MuscleDonut, type MusclePoint } from "@/components/MuscleDonut";
+import type { ChartPoint } from "@/components/VolumeChart";
+import type { MusclePoint } from "@/components/MuscleDonut";
 import { MuscleSetsBar, type MuscleSetRow } from "@/components/MuscleSetsBar";
 import { PatternBalance, type BalanceData } from "@/components/PatternBalance";
 import { ConsistencyHeatmap, type HeatCell } from "@/components/ConsistencyHeatmap";
-import { useHistory, type HistorySession } from "@/hooks/useHistory";
+import {
+  useHistory,
+  historyExportQueryOptions,
+  type HistorySession,
+  type HistorySessionFull,
+} from "@/hooks/useHistory";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { useAchievements } from "@/hooks/useAchievements";
 import { useDeleteSession } from "@/hooks/useWorkout";
@@ -262,7 +269,18 @@ export default function RegistroPage() {
   );
 }
 
+// recharts se carga recién cuando el gráfico se va a mostrar.
+const VolumeChart = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.VolumeChart),
+  { ssr: false, loading: () => <div className="h-[180px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+const MuscleDonut = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MuscleDonut),
+  { ssr: false, loading: () => <div className="h-[132px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+
 function RegistroContent() {
+  const qc = useQueryClient();
   const history = useHistory();
   const { data, isPending, isError, isFetching, refetch } = history;
   const exMap = useExerciseMap();
@@ -421,17 +439,6 @@ function RegistroContent() {
       .sort((a, b) => b[1].orm - a[1].orm)
       .slice(0, 6);
 
-    // Series efectivas (hard sets) por músculo como series/semana, para comparar
-    // contra las marcas MEV/MAV/MRV (que son semanales). Se calculan dos ventanas:
-    // 7 días (conteo directo de la última semana, el default correcto) y 30 días
-    // (promedio semanal, más suave). Ver computeHardSets.
-    const hardSets7 = computeHardSets(
-      sessions, exMap, 7, first ?? null, now, trainingProfile,
-    );
-    const hardSets30 = computeHardSets(
-      sessions, exMap, 30, first ?? null, now, trainingProfile,
-    );
-
     // Balance de patrones (últimos 30 días): push/pull de force, comp/aisl de mechanic.
     const cutoff30 = new Date(now);
     cutoff30.setDate(cutoff30.getDate() - 30);
@@ -486,8 +493,6 @@ function RegistroContent() {
       muscleDonut,
       byMonth,
       prs,
-      hardSets7,
-      hardSets30,
       balance,
       heatWeeks,
       heatMax,
@@ -496,9 +501,27 @@ function RegistroContent() {
       sparklines: e1rmSeriesByExercise(sessions, exMap, 12).slice(0, 12),
       retention: strengthRetentionIndex(sessions, exMap, 16),
     };
-    // todayKey: recomputar al cambiar de día para que el gráfico/ventanas avancen.
+    // todayKey no se lee dentro: es solo disparador para recomputar al cambiar de día
+    // (el gráfico/ventanas usan new Date()). hardSets vive en su propio memo (trainingProfile).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, exMap, todayKey]);
+
+  // Series efectivas (hard sets) por músculo como series/semana, para comparar
+  // contra las marcas MEV/MAV/MRV (que son semanales). Dos ventanas: 7 días
+  // (conteo directo de la última semana, el default correcto) y 30 días
+  // (promedio semanal, más suave). Ver computeHardSets. Memo propio porque
+  // depende de trainingProfile (umbrales según objetivo).
+  const { hardSets7, hardSets30 } = useMemo(() => {
+    const sessions = data ?? [];
+    const now = new Date();
+    const first = firstSessionDate(sessions);
+    return {
+      hardSets7: computeHardSets(sessions, exMap, 7, first ?? null, now, trainingProfile),
+      hardSets30: computeHardSets(sessions, exMap, 30, first ?? null, now, trainingProfile),
+    };
+    // todayKey: solo disparador para recomputar al cambiar de día (now = new Date()).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, exMap, todayKey, trainingProfile]);
 
   // Métricas por semana (distingue semana en curso de semanas anteriores).
   const weekMetrics = useMemo(() => {
@@ -641,7 +664,13 @@ function RegistroContent() {
     to: Date | null,
     tag: string,
   ): Promise<string | null> {
-    const sessions = (data ?? []).filter((s) => {
+    let all: HistorySessionFull[];
+    try {
+      all = await qc.fetchQuery(historyExportQueryOptions);
+    } catch {
+      return "No se pudo cargar el historial. Probá de nuevo.";
+    }
+    const sessions = all.filter((s) => {
       const d = new Date(sessionDate(s));
       if (from && d < from) return false;
       if (to && d > to) return false;
@@ -750,7 +779,7 @@ function RegistroContent() {
    * "series efectivas" no significa lo mismo para dos personas con objetivos
    * distintos. Todo eso se explica acá en vez de dejarlo a la inferencia.
    */
-  function buildReadmeSheet(sessions: HistorySession[]): SheetCell[][] {
+  function buildReadmeSheet(sessions: HistorySessionFull[]): SheetCell[][] {
     const gp = goalParams(trainingProfile);
     const objetivo = trainingProfile ?? "hipertrofia (por defecto)";
     return [
@@ -858,7 +887,7 @@ function RegistroContent() {
           : "Series efectivas por músculo (prom. semanal · últ. 30 días)",
       ],
       ["Músculo", "Series/sem", "MEV", "MAV", "MRV", "Estado"],
-      ...(hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30).map((r) => [
+      ...(hardWindow === "7d" ? hardSets7 : hardSets30).map((r) => [
         muscleEs(r.muscle),
         Math.round(r.sets * 10) / 10,
         r.mev,
@@ -1039,7 +1068,7 @@ function RegistroContent() {
         />
       </div>
       <MuscleSetsBar
-        data={hardWindow === "7d" ? metrics.hardSets7 : metrics.hardSets30}
+        data={hardWindow === "7d" ? hardSets7 : hardSets30}
         windowDays={hardWindow === "7d" ? 7 : 30}
       />
     </SectionCard>

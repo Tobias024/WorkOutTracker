@@ -11,3 +11,14 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-
 export function createClient() {
   return createBrowserClient<Database>(URL, ANON_KEY);
 }
+
+/**
+ * Id del usuario logueado SIN ir a la red: lee la sesión local (cookie) que
+ * @supabase/ssr mantiene y refresca. Alcanza para filtrar/decidir en el
+ * cliente: la seguridad real la da la RLS, que valida el JWT en Postgres.
+ * `auth.getUser()` hace un request a Supabase Auth en cada llamada.
+ */
+export async function getUserId(): Promise<string | null> {
+  const { data } = await createClient().auth.getSession();
+  return data.session?.user.id ?? null;
+}

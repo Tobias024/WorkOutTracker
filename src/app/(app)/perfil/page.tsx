@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Sparkles, Users } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import {
   Button,
   ConfirmDialog,
@@ -81,9 +81,8 @@ export default function PerfilPage() {
   const friends = useFriends();
 
   async function loadProfile() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: sess } = await supabase.auth.getSession();
+    const user = sess.session?.user;
     if (!user) {
       router.replace("/login");
       return;
@@ -147,10 +146,8 @@ export default function PerfilPage() {
     }
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      const uid = await getUserId();
+      if (!uid) {
         router.replace("/login");
         return;
       }
@@ -166,7 +163,7 @@ export default function PerfilPage() {
           height_cm: heightNum,
           weight_kg: weightNum,
         })
-        .eq("id", user.id);
+        .eq("id", uid);
 
       if (error) {
         setError(error.message);

@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { SectionCard, Button, Field } from "@/components/ui";
-import { MiniLine } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
+
+// recharts se carga recién cuando hay un gráfico para mostrar.
+const MiniLine = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MiniLine),
+  { ssr: false, loading: () => <div className="h-[170px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+const MiniLineSmall = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MiniLine),
+  { ssr: false, loading: () => <div className="h-[80px] animate-pulse rounded-lg bg-surface-2" /> },
+);
 import { dateKey } from "@/lib/metrics";
 import { clsx } from "@/lib/clsx";
 import { fmtNum } from "@/lib/format";
@@ -53,7 +63,7 @@ function WeightCard({ sessions }: { sessions: HistorySession[] }) {
   const log = useLogBodyWeight();
   const [kg, setKg] = useState("");
   const [editing, setEditing] = useState(false);
-  const bw = bodyWeightTrend(logs ?? [], sessions, 120);
+  const bw = useMemo(() => bodyWeightTrend(logs ?? [], sessions, 120), [logs, sessions]);
   const rate = bw.ratePctPerWeek;
   const weightKg = kg === "" ? null : Number(kg.replace(",", "."));
   const validWeight = weightKg != null && weightKg >= 25 && weightKg <= 400;
@@ -406,7 +416,7 @@ function MeasurementsCard() {
                   {last != null ? `${fmtNum(last, 1)} cm` : "—"}
                 </p>
                 {s.points.length >= 2 ? (
-                  <MiniLine
+                  <MiniLineSmall
                     data={s.points}
                     height={80}
                     unit="cm"

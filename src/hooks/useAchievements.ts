@@ -2,7 +2,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { Achievement } from "@/lib/types";
 
 export function useAchievements(limit = 10) {
@@ -10,14 +10,12 @@ export function useAchievements(limit = 10) {
     queryKey: ["achievements"],
     queryFn: async (): Promise<Achievement[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data, error } = await supabase
         .from("achievements")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .order("created_at", { ascending: false })
         .limit(limit);
       if (error) throw error;

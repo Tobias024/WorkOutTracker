@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   onlineManager,
   useIsMutating,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
@@ -28,7 +29,8 @@ import {
 import { ExercisePickerModal } from "@/components/ExercisePickerModal";
 import { SessionExerciseCard } from "@/components/SessionExerciseCard";
 import { PrCelebrationModal } from "@/components/PrCelebrationModal";
-import { RestTimer } from "@/components/RestTimer";
+import { RestBanner } from "@/components/RestBanner";
+import { ElapsedClock, useElapsedSeconds } from "@/components/ElapsedClock";
 import { FinishWorkoutSheet } from "@/components/FinishWorkoutSheet";
 import {
   useWorkoutSession,
@@ -39,21 +41,19 @@ import {
 } from "@/hooks/useWorkout";
 import { useSessionMutations } from "@/hooks/useWorkoutMutations";
 import { useExerciseMap } from "@/hooks/useExercises";
-import { useHistory } from "@/hooks/useHistory";
 import { useBodyWeight } from "@/hooks/useBodyData";
 import { useTrainingProfile } from "@/hooks/useGoal";
 import { createClient } from "@/lib/supabase/client";
-import { formatClock, formatVolume, formatDuration } from "@/lib/format";
+import { formatVolume, formatDuration } from "@/lib/format";
 import {
   useRestStore,
-  useRestSeconds,
   useRestHydrated,
   restTargetSeconds,
-  REST_DEFAULT_SECONDS,
   REST_MAX_SECONDS,
 } from "@/hooks/useRestTimer";
 import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
 import { flushUndoables, undoable } from "@/lib/toast";
+import { newId } from "@/lib/uuid";
 import type { SessionPr } from "@/lib/types";
 
 /** Sesión abierta hace más que esto al entrar = probablemente olvidada. */
@@ -146,7 +146,6 @@ function SessionView({
     sessionId,
   );
   const exMap = useExerciseMap();
-  const { data: history } = useHistory();
   const { data: prefs } = useTrainingProfile();
   const profile = prefs?.trainingProfile ?? null;
   const m = useSessionMutations(sessionId);
@@ -165,27 +164,31 @@ function SessionView({
     [data.exercises, hiddenExercises],
   );
 
+  // Tonelaje de la sesión anterior de la misma rutina: solo se muestra en la
+  // vista de sesión terminada, así que se pide recién ahí (RPC liviana).
+  const routineId = session.routine_id;
+  const { data: prevTonnage = null } = useQuery({
+    queryKey: ["history", "prev-routine-sets", routineId, sessionId],
+    enabled: ended && !!routineId,
+    queryFn: async (): Promise<number | null> => {
+      const { data, error } = await createClient().rpc(
+        "previous_routine_session_sets",
+        { p_routine_id: routineId as string, p_exclude: sessionId },
+      );
+      if (error) throw error;
+      if (!data || data.length === 0) return null;
+      return totalVolume(data.filter(isCountableSet));
+    },
+  });
+
   // Resumen de la sesión (para la vista de una sesión finalizada del historial):
   // tonelaje como carga externa + series efectivas + Δ vs la misma rutina.
   const summary = useMemo(() => {
     const sets = exercises.flatMap((e) => e.sets);
     const tonnage = totalVolume(sets.filter(isCountableSet));
     const hardSets = sets.filter((s) => isHardSet(s, profile)).length;
-    let prevTonnage: number | null = null;
-    const rid = session.routine_id;
-    if (rid && history) {
-      const prev = history.find(
-        (h) => h.routine_id === rid && h.ended_at && h.id !== sessionId,
-      );
-      if (prev)
-        prevTonnage = totalVolume(
-          prev.workout_exercises
-            .flatMap((we) => we.workout_sets)
-            .filter(isCountableSet),
-        );
-    }
     return { tonnage, hardSets, prevTonnage };
-  }, [exercises, session.routine_id, history, sessionId, profile]);
+  }, [exercises, prevTonnage, profile]);
 
   // Progreso: solo series de trabajo (los calentamientos no cuentan).
   const progress = useMemo(() => {
@@ -194,7 +197,6 @@ function SessionView({
   }, [exercises]);
 
   const [picker, setPicker] = useState(false);
-  const [now, setNow] = useState(0);
   const [prs, setPrs] = useState<SessionPr[]>([]);
   // #2 reordenar: id del ejercicio seleccionado para mover (null = sin mover).
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -229,12 +231,15 @@ function SessionView({
   });
 
   // Cronómetro de descanso: vive en un store persistido (ver useRestTimer).
-  const rest = useRestStore();
-  const restNow = useRestSeconds();
+  // Selectores (no el store entero) y sin suscribirse al reloj: el tick vive en
+  // las hojas <RestBanner> / <ElapsedClock>. En handlers: useRestStore.getState().
+  const restStartedAt = useRestStore((s) => s.startedAt);
+  const restSetId = useRestStore((s) => s.setId);
+  const restSessionId = useRestStore((s) => s.sessionId);
   const restHydrated = useRestHydrated();
   /** Hay un descanso corriendo y es de ESTA sesión. */
   const restOfThisSession =
-    rest.startedAt != null && rest.setId != null && rest.sessionId === sessionId;
+    restStartedAt != null && restSetId != null && restSessionId === sessionId;
 
   // Indicador offline: cambios en pausa esperando red.
   const online = useSyncExternalStore(
@@ -244,23 +249,15 @@ function SessionView({
   );
   const pendingMutations = useIsMutating();
 
-  useEffect(() => {
-    const tick = () => setNow(Date.now());
-    tick();
-    if (ended) return;
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [ended]);
-
   // Descansos que hay que tirar al entrar: los de OTRA sesión (abrir una vieja
   // desde el historial no debe cerrarle la serie a la que está en curso) y los
   // que quedaron colgados más del tope — un "descanso" de ayer no es un
   // descanso, y guardarlo ensuciaría el promedio con un outlier gigante.
   useEffect(() => {
-    if (rest.startedAt == null) return;
-    const stale = Date.now() - rest.startedAt > REST_MAX_SECONDS * 1000;
-    if (rest.sessionId !== sessionId || stale) rest.clear();
-  }, [rest, sessionId]);
+    if (restStartedAt == null) return;
+    const stale = Date.now() - restStartedAt > REST_MAX_SECONDS * 1000;
+    if (restSessionId !== sessionId || stale) useRestStore.getState().clear();
+  }, [restStartedAt, restSessionId, sessionId]);
 
   // En un entrenamiento activo (cargado y sin finalizar) ocultamos la TabBar
   // inferior para aprovechar la pantalla. Al finalizar o salir, reaparece.
@@ -271,21 +268,6 @@ function SessionView({
       delete document.body.dataset.hideTabbar;
     };
   }, [ended]);
-
-  const elapsed = session.started_at
-    ? ended && session.duration_seconds != null
-      ? session.duration_seconds
-      : Math.max(
-          0,
-          Math.floor(
-            ((ended && session.ended_at
-              ? new Date(session.ended_at).getTime()
-              : now) -
-              new Date(session.started_at).getTime()) /
-              1000,
-          ),
-        )
-    : 0;
 
   // Editar inicio/fin a mano: además de guardar la fecha, recalcula la duración
   // si quedan ambos extremos (si no, finish() nunca corrió y la duración vieja
@@ -344,7 +326,7 @@ function SessionView({
     rememberActiveSession(null);
     // La sesión se cerró: el descanso vivo ya no tiene serie siguiente que
     // medir. Sin esto quedaría persistido y reaparecería en la próxima.
-    rest.clear();
+    useRestStore.getState().clear();
     // Recién ahora cambió el ranking: dispara los avisos (subiste / te pasaron).
     // Fire-and-forget, pero logueamos el resultado/errores (antes se tragaban).
     fetch("/api/rank/notify", { method: "POST" })
@@ -397,7 +379,7 @@ function SessionView({
     await deleteSession.mutateAsync(sessionId);
     rememberActiveSession(null);
     qc.setQueryData(["active-session"], null);
-    rest.clear();
+    useRestStore.getState().clear();
     setDiscardOpen(false);
     router.replace("/rutinas");
   }
@@ -427,21 +409,21 @@ function SessionView({
     info: { isWarmup: boolean; mechanic: string | null },
   ) {
     if (info.isWarmup) return;
-    rest.start(sessionId, setId, restTargetSeconds(info.mechanic, profile));
+    useRestStore.getState().start(sessionId, setId, restTargetSeconds(info.mechanic, profile));
   }
 
   /** Botón del banner: es la señal explícita de que arrancó la serie siguiente. */
   function stopRest() {
-    const { setId, startedAt } = rest;
+    const { setId, startedAt } = useRestStore.getState();
     if (!restOfThisSession || setId == null || startedAt == null) return;
     saveRest(setId, Math.round((Date.now() - startedAt) / 1000));
-    rest.clear();
+    useRestStore.getState().clear();
   }
 
   /** Mecánica del ejercicio de la serie en descanso, para el subtítulo. */
   const restMechanic = (() => {
     if (!restOfThisSession) return null;
-    const we = data.exercises.find((e) => e.sets.some((s) => s.id === rest.setId));
+    const we = data.exercises.find((e) => e.sets.some((s) => s.id === restSetId));
     return we ? (exMap.get(we.exercise_id)?.mechanic ?? null) : null;
   })();
   const restHint =
@@ -516,7 +498,7 @@ function SessionView({
     return { name: exMap.get(pr.exercise_id)?.name ?? "Ejercicio", reps };
   }
 
-  const subtitle = `${formatClock(elapsed)} · ${progress.done}/${progress.total} series`;
+  const subtitleSuffix = ` · ${progress.done}/${progress.total} series`;
   const showRest = restHydrated && restOfThisSession && !ended;
 
   return (
@@ -544,7 +526,12 @@ function SessionView({
               className="block w-full min-w-0 truncate rounded bg-transparent px-1 text-base font-bold text-fg outline-none focus:ring-1 focus:ring-primary"
             />
             <p className="px-1 font-mono tabular-nums text-xs text-muted">
-              {subtitle}
+              <ElapsedClock
+                startedAt={session.started_at}
+                endedAt={session.ended_at}
+                durationSeconds={session.duration_seconds}
+                suffix={subtitleSuffix}
+              />
             </p>
           </div>
           {!ended && (
@@ -574,14 +561,7 @@ function SessionView({
         )}
         {showRest && (
           <div className="mt-2">
-            <RestTimer
-              elapsed={restNow}
-              startedAt={rest.startedAt ?? 0}
-              targetSeconds={rest.targetSeconds ?? REST_DEFAULT_SECONDS}
-              hint={restHint}
-              onAdd={(sec) => rest.addTarget(sec)}
-              onStart={stopRest}
-            />
+            <RestBanner hint={restHint} onStart={stopRest} />
           </div>
         )}
       </div>
@@ -596,7 +576,11 @@ function SessionView({
               Duración
             </div>
             <span className="font-mono text-lg tabular-nums">
-              {formatClock(elapsed)}
+              <ElapsedClock
+                startedAt={session.started_at}
+                endedAt={session.ended_at}
+                durationSeconds={session.duration_seconds}
+              />
             </span>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3">
@@ -701,6 +685,7 @@ function SessionView({
               onUpdateSet={(id, patch) => m.updateSet.mutate({ id, patch })}
               onAddSet={() =>
                 m.addSet.mutate({
+                  id: newId(),
                   workoutExerciseId: we.id,
                   // max + 1 y no length + 1: con series borradas (o escondidas
                   // esperando el "Deshacer") el length repetiría un número.
@@ -761,15 +746,17 @@ function SessionView({
         onClose={() => setPicker(false)}
         onSelect={(ex) =>
           m.addExercise.mutate({
+            id: newId(),
+            setIds: [newId(), newId(), newId()],
             exerciseId: ex.id,
             position: exercises.length,
           })
         }
       />
 
-      <FinishWorkoutSheet
+      <LiveFinishSheet
         open={finishOpen}
-        durationSeconds={elapsed}
+        startedAt={session.started_at}
         doneSets={progress.done}
         totalSets={progress.total}
         tonnage={summary.tonnage}
@@ -929,4 +916,16 @@ function SessionView({
       </Modal>
     </div>
   );
+}
+
+/** Hoja de cierre con duración en vivo: el reloj solo corre mientras está abierta. */
+function LiveFinishSheet({
+  startedAt,
+  ...props
+}: { startedAt: string | null } & Omit<
+  React.ComponentProps<typeof FinishWorkoutSheet>,
+  "durationSeconds"
+>) {
+  const durationSeconds = useElapsedSeconds(startedAt, null, null, props.open);
+  return <FinishWorkoutSheet {...props} durationSeconds={durationSeconds} />;
 }

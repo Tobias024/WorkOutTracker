@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { HistorySession } from "@/hooks/useHistory";
+import type { HistorySessionFull } from "@/hooks/useHistory";
 import { effectiveDrops, sessionDate, dateKey, rirOf } from "@/lib/metrics";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { primaryMuscle } from "@/lib/muscle-contributions";
@@ -14,7 +14,7 @@ type Cell = string | number | null;
  * efectiva de la sesión y la traducción de músculo.
  */
 export function buildSessionsRows(
-  sessions: HistorySession[],
+  sessions: HistorySessionFull[],
   exMap: Map<string, Exercise>,
   /** Nota fija por ejercicio (`user_exercise_notes`), indexada por exercise_id. */
   notes?: Map<string, string>,

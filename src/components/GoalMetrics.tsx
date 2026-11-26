@@ -8,9 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import dynamic from "next/dynamic";
 import { Check } from "lucide-react";
 import { DeltaChip, SectionCard } from "@/components/ui";
-import { MiniLine, MultiLine, Sparkline, StackedBar, HBars, type LinePoint } from "@/components/charts";
+import type { LinePoint } from "@/components/charts";
 import { Ref } from "@/components/PaperLink";
 import { muscleEs } from "@/lib/i18n-exercise";
 import { fmtDaysAgo, fmtNum, formatClock } from "@/lib/format";
@@ -18,6 +19,28 @@ import { clsx } from "@/lib/clsx";
 import type { TrainingProfile, Exercise } from "@/lib/types";
 import { goalParams, rirProductiveLabel } from "@/lib/goal-params";
 import type { HistorySession } from "@/hooks/useHistory";
+
+// recharts se carga recién cuando hay un gráfico para mostrar.
+const MiniLine = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MiniLine),
+  { ssr: false, loading: () => <div className="h-[170px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+const MultiLine = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.MultiLine),
+  { ssr: false, loading: () => <div className="h-[190px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+const Sparkline = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.Sparkline),
+  { ssr: false, loading: () => <div className="h-[34px] animate-pulse rounded bg-surface-2" /> },
+);
+const StackedBar = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.StackedBar),
+  { ssr: false, loading: () => <div className="h-8 animate-pulse rounded-full bg-surface-2" /> },
+);
+const HBars = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.HBars),
+  { ssr: false, loading: () => <div className="h-24 animate-pulse rounded-lg bg-surface-2" /> },
+);
 import {
   e1rmSeriesByExercise,
   intensityZones,

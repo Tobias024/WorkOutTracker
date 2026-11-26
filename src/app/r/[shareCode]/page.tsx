@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Dumbbell, Download } from "lucide-react";
 import { Button, Spinner, Badge, buttonClasses } from "@/components/ui";
 import { ExerciseImage } from "@/components/ExerciseImage";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 import type { RoutinePreview } from "@/lib/types";
 
 type Load =
@@ -60,17 +60,15 @@ export default function SharedRoutinePage() {
   useEffect(() => {
     (async () => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setAuthed(!!user);
-      if (user) {
+      const uid = await getUserId();
+      setAuthed(!!uid);
+      if (uid) {
         // /r está fuera de (app): un usuario nuevo sin perfil pasa primero por
         // onboarding y vuelve acá.
         const { data: profile } = await supabase
           .from("profiles")
           .select("username")
-          .eq("id", user.id)
+          .eq("id", uid)
           .maybeSingle();
         if (!profile?.username) {
           router.replace(

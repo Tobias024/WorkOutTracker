@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 
 /** Días de la semana que el usuario planea entrenar (0=domingo … 6=sábado). */
 export function useWeeklyPlan() {
@@ -10,14 +10,12 @@ export function useWeeklyPlan() {
     queryKey: ["weekly-plan"],
     queryFn: async (): Promise<number[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data, error } = await supabase
         .from("profiles")
         .select("planned_weekdays")
-        .eq("id", user.id)
+        .eq("id", uid)
         .maybeSingle();
       if (error) throw error;
       return data?.planned_weekdays ?? [];
@@ -31,14 +29,12 @@ export function usePlannedSince() {
     queryKey: ["planned-since"],
     queryFn: async (): Promise<string | null> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
+      const uid = await getUserId();
+      if (!uid) return null;
       const { data } = await supabase
         .from("profiles")
         .select("planned_since")
-        .eq("id", user.id)
+        .eq("id", uid)
         .maybeSingle();
       return data?.planned_since ?? null;
     },
@@ -50,10 +46,8 @@ export function useSetWeeklyPlan() {
   return useMutation({
     mutationFn: async (weekdays: number[]) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       // Al cambiar la meta, la vigencia arranca ahora: los días previos no se
       // juzgan como fallados (nunca se prometieron).
       const { error } = await supabase
@@ -62,7 +56,7 @@ export function useSetWeeklyPlan() {
           planned_weekdays: [...weekdays].sort((a, b) => a - b),
           planned_since: new Date().toISOString(),
         })
-        .eq("id", user.id);
+        .eq("id", uid);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -84,14 +78,12 @@ export function useWeeklyPlanOverrides() {
     queryKey: ["weekly-plan-overrides"],
     queryFn: async (): Promise<WeeklyPlanOverride[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
+      const uid = await getUserId();
+      if (!uid) return [];
       const { data, error } = await supabase
         .from("weekly_plan_overrides")
         .select("week_start, weekdays")
-        .eq("user_id", user.id);
+        .eq("user_id", uid);
       if (error) throw error;
       return data ?? [];
     },
@@ -111,13 +103,11 @@ export function useSetWeeklyPlanOverride() {
       weekdays: number[];
     }) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase.from("weekly_plan_overrides").upsert(
         {
-          user_id: user.id,
+          user_id: uid,
           week_start: weekStart,
           weekdays: [...weekdays].sort((a, b) => a - b),
         },

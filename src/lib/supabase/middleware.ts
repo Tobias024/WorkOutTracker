@@ -97,10 +97,12 @@ export async function updateSession(request: NextRequest) {
   // Un error acá (config inválida, red, etc.) no debe tirar abajo todo el
   // sitio con un 500 — se trata como "sin sesión" y se deja que el guard
   // de rutas privadas redirija a /login normalmente.
-  let user = null;
+  // getClaims() verifica el JWT localmente (JWKS) y sólo refresca/consulta
+  // a Auth si hace falta (token vencido o clave simétrica).
+  let user = false;
   try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    const { data } = await supabase.auth.getClaims();
+    user = !!data?.claims?.sub;
   } catch (err) {
     console.error("middleware: fallo al obtener la sesión", err);
   }

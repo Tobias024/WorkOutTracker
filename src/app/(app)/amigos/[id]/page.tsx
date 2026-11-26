@@ -9,7 +9,6 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import {
   PageHeader,
@@ -20,34 +19,39 @@ import {
   Skeleton,
   buttonClasses,
 } from "@/components/ui";
-import { VolumeChart, type ChartPoint } from "@/components/VolumeChart";
-import { createClient } from "@/lib/supabase/client";
+import dynamic from "next/dynamic";
+import type { ChartPoint } from "@/components/VolumeChart";
 import {
   useFriendMetrics,
   useCommonExercises,
   useCurrentUserId,
 } from "@/hooks/useFriendProfile";
-import { useRemoveFriend } from "@/hooks/useFriends";
+import { useFriends, useRemoveFriend } from "@/hooks/useFriends";
 import { useExerciseMap } from "@/hooks/useExercises";
 import { fmtNum, formatVolume, formatWeight, formatDuration } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { clsx } from "@/lib/clsx";
 import type { Period } from "@/lib/period";
 
+// recharts se carga recién cuando el gráfico se va a mostrar (chunk compartido
+// con Registro vía charts-entry).
+const VolumeChart = dynamic(
+  () => import("@/components/charts-entry").then((m) => m.VolumeChart),
+  { ssr: false, loading: () => <div className="h-[180px] animate-pulse rounded-lg bg-surface-2" /> },
+);
+
+/** Deriva del listado de amigos (RPC my_friends): no lee profiles ajenos.
+ *  data: undefined = cargando, null = no es amigo / no existe. */
 function useFriendInfo(friendId: string) {
-  return useQuery({
-    queryKey: ["profile", friendId],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, username, display_name")
-        .eq("id", friendId)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
+  const friends = useFriends();
+  const data = friends.data
+    ? (friends.data.find((f) => f.id === friendId) ?? null)
+    : undefined;
+  return {
+    data,
+    isError: friends.isError,
+    refetch: friends.refetch,
+  };
 }
 
 type Cmp = -1 | 0 | 1;

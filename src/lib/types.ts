@@ -9,6 +9,19 @@ export type Sex = "male" | "female";
 
 /** @deprecated Reemplazado por training_profile + body_objective. Se conserva
  *  la columna y se sincroniza para no romper el scoreboard. */
+/** Serie de la sesión anterior de una rutina (para el Δ de tonelaje). */
+export interface PrevRoutineSet {
+  reps: number | null;
+  weight: number | null;
+  completed: boolean;
+  is_warmup: boolean;
+  rpe: number | null;
+  drops: SetDrop[] | null;
+}
+
+/** Lo que se muestra de un amigo: nunca peso, altura ni perfil de entrenamiento. */
+export type FriendSummary = Pick<Profile, "id" | "username" | "display_name" | "goal">;
+
 export type Goal = "fuerza" | "hipertrofia" | "resistencia" | "perdida_grasa";
 
 /** Perfil de entrenamiento: qué métricas de entrenamiento se priorizan. */
@@ -539,6 +552,31 @@ export type Database = {
           p_exercises: McpLogExerciseItem[];
         };
         Returns: string;
+      };
+      /** Amigos aceptados con sólo los campos públicos (0040). */
+      my_friends: {
+        Args: Record<string, never>;
+        Returns: FriendSummary[];
+      };
+      /** Último uso (started_at ?? created_at) por ejercicio, sesiones propias incl. activas (0046). */
+      exercise_last_used: {
+        Args: Record<string, never>;
+        Returns: { exercise_id: string; last_at: string }[];
+      };
+      /** Sesión más reciente (por created_at) de cada rutina propia (0046). */
+      last_session_by_routine: {
+        Args: Record<string, never>;
+        Returns: { routine_id: string; created_at: string; last_at: string }[];
+      };
+      /** Series de la última sesión TERMINADA de la rutina, excluyendo p_exclude (0046). */
+      previous_routine_session_sets: {
+        Args: { p_routine_id: string; p_exclude: string };
+        Returns: PrevRoutineSet[];
+      };
+      /** Intercambia la posición de dos ejercicios de la misma rutina, atómico (0040). */
+      swap_positions: {
+        Args: { p_a: string; p_b: string };
+        Returns: undefined;
       };
     };
   };

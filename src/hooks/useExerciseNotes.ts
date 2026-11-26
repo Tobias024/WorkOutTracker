@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getUserId } from "@/lib/supabase/client";
 
 /**
  * Nota fija del usuario sobre un ejercicio, compartida entre TODAS sus rutinas
@@ -60,10 +60,8 @@ export function useUpsertExerciseNote() {
       note: string;
     }) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
 
       const trimmed = note.trim();
       if (trimmed === "") {
@@ -71,14 +69,14 @@ export function useUpsertExerciseNote() {
         const { error } = await supabase
           .from("user_exercise_notes")
           .delete()
-          .eq("user_id", user.id)
+          .eq("user_id", uid)
           .eq("exercise_id", exerciseId);
         if (error) throw error;
         return "";
       }
 
       const { error } = await supabase.from("user_exercise_notes").upsert(
-        { user_id: user.id, exercise_id: exerciseId, note: trimmed },
+        { user_id: uid, exercise_id: exerciseId, note: trimmed },
         { onConflict: "user_id,exercise_id" },
       );
       if (error) throw error;

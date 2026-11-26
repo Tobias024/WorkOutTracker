@@ -2,37 +2,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/types";
+import { createClient, getUserId } from "@/lib/supabase/client";
+import type { FriendSummary } from "@/lib/types";
 
 export function useFriends() {
   return useQuery({
     queryKey: ["friends"],
-    queryFn: async (): Promise<Profile[]> => {
+    queryFn: async (): Promise<FriendSummary[]> => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: rels, error } = await supabase
-        .from("friendships")
-        .select("requester_id, addressee_id")
-        .eq("status", "accepted");
+      const { data, error } = await supabase.rpc("my_friends");
       if (error) throw error;
-
-      const ids = (rels ?? []).map((r) =>
-        r.requester_id === user.id ? r.addressee_id : r.requester_id,
-      );
-      if (ids.length === 0) return [];
-
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", ids);
-      // Sin esto, un fallo acá se veía como "no tenés amigos".
-      if (profilesError) throw profilesError;
-      return (profiles ?? []) as Profile[];
+      return (data ?? []) as FriendSummary[];
     },
   });
 }
@@ -70,15 +50,13 @@ export function useRemoveFriend() {
     meta: { silent: true },
     mutationFn: async (friendId: string) => {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("No autenticado");
+      const uid = await getUserId();
+      if (!uid) throw new Error("No autenticado");
       const { error } = await supabase
         .from("friendships")
         .delete()
         .or(
-          `and(requester_id.eq.${user.id},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${user.id})`,
+          `and(requester_id.eq.${uid},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${uid})`,
         );
       if (error) throw error;
     },

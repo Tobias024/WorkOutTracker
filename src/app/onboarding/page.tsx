@@ -51,8 +51,9 @@ function OnboardingForm() {
   useEffect(() => {
     (async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) {
         router.replace("/login");
         return;
@@ -89,8 +90,9 @@ function OnboardingForm() {
 
     setLoading(true);
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) {
       // Sin sesión no se puede guardar: se vuelve al login en vez de dejar el
       // botón girando para siempre.
@@ -109,6 +111,13 @@ function OnboardingForm() {
         sex,
       });
       if (!error) {
+        // El nuevo JWT trae app_metadata.onboarded; si falla, el layout tiene
+        // fallback a profiles.
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+          // ignorar
+        }
         router.replace(dest);
         return;
       }
