@@ -24,6 +24,7 @@ export const CHANGELOG: Release[] = [
     date: "2026-11-26",
     items: [
       "Al lado del número de cada serie hay un botón ⋮ que abre el mismo menú (agregar bajada, comentario, eliminar): antes solo se abría tocando el número, y no era obvio.",
+      "El descanso vuelve a ser un cronómetro que suma: el anillo se completa en vez de vaciarse, y el número no cuenta para atrás.",
     ],
   },
   {

@@ -10,9 +10,11 @@ const R = 18;
 const CIRC = 2 * Math.PI * R;
 
 /**
- * Banner de descanso con cuenta regresiva y anillo de progreso. Al llegar a 0
- * vibra una sola vez, se tiñe de verde y sigue contando en positivo ("+0:15"),
- * porque pasarse del objetivo también es información útil para el usuario.
+ * Banner de descanso: cronómetro CRECIENTE (no cuenta regresiva) — el tiempo
+ * transcurrido nunca baja, solo lo frena arrancar la próxima serie (onStart).
+ * El objetivo sugerido se ve en el anillo, que se completa al alcanzarlo, y
+ * al llegar vibra una sola vez — pero el número sigue sumando después, no
+ * se reinicia ni resta.
  */
 export function RestTimer({
   elapsed,
@@ -32,9 +34,8 @@ export function RestTimer({
   onAdd: (seconds: number) => void;
   onStart: () => void;
 }) {
-  const remaining = targetSeconds - elapsed;
-  const done = remaining <= 0;
-  const frac = targetSeconds > 0 ? Math.max(0, remaining) / targetSeconds : 0;
+  const done = elapsed >= targetSeconds;
+  const frac = targetSeconds > 0 ? Math.min(1, elapsed / targetSeconds) : 0;
 
   // Flag por descanso: sumar "+30 s" después de vibrar no debe volver a vibrar
   // salvo que el descanso sea otro (otro startedAt).
@@ -49,9 +50,7 @@ export function RestTimer({
     }
   }, [done, startedAt]);
 
-  const label = done
-    ? `+${formatClock(-remaining)}`
-    : formatClock(remaining);
+  const label = formatClock(elapsed);
 
   return (
     <div
