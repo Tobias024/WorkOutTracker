@@ -46,8 +46,47 @@ function isPublic(pathname: string) {
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
 
+/**
+ * Un link de mail de Supabase (recuperar contraseña, magic link, confirmar
+ * cuenta) que cae en una página cualquiera con `?code=` / `?token_hash=` en
+ * vez de en /auth/callback. Pasa cuando Supabase no acepta el redirectTo
+ * (no está en la allow list de Redirect URLs) y usa la Site URL: el usuario
+ * llegaba a "/?code=…", sin sesión, y se lo mandaba al login con el código
+ * sin canjear — "olvidé mi contraseña" nunca llegaba a pedir la nueva.
+ * Se reenvía al callback, conservando la página destino como `next`.
+ */
+function strayAuthCallback(request: NextRequest): NextResponse | null {
+  const { pathname, searchParams } = request.nextUrl;
+  if (pathname.startsWith("/auth/") || pathname.startsWith("/oauth") || pathname.startsWith("/api"))
+    return null;
+  const code = searchParams.get("code");
+  const tokenHash = searchParams.get("token_hash");
+  const type = searchParams.get("type");
+  if (!code && !(tokenHash && type)) return null;
+
+  const rest = new URLSearchParams(searchParams);
+  for (const k of ["code", "token_hash", "type"]) rest.delete(k);
+  const leftover = rest.toString();
+  const dest = request.nextUrl.clone();
+  dest.pathname = "/auth/callback";
+  dest.search = "";
+  if (code) dest.searchParams.set("code", code);
+  if (tokenHash && type) {
+    dest.searchParams.set("token_hash", tokenHash);
+    dest.searchParams.set("type", type);
+  }
+  // "/" y "/login" no son destinos útiles: el callback cae a su default
+  // (o a /auth/reset-password si la sesión es de recuperación).
+  if (pathname !== "/" && pathname !== "/login")
+    dest.searchParams.set("next", pathname + (leftover ? `?${leftover}` : ""));
+  return NextResponse.redirect(dest);
+}
+
 /** Refresca la sesión y protege rutas privadas. */
 export async function updateSession(request: NextRequest) {
+  const stray = strayAuthCallback(request);
+  if (stray) return stray;
+
   // El layout de (app) es un server component y no conoce el pathname: se lo
   // pasamos en un header de request para que mande a onboarding con ?next=
   // (si no, un usuario nuevo que llegó por un link pierde el destino).

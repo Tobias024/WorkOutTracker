@@ -41,6 +41,12 @@ export function translateError(message: string): string {
   if (/new password should be different/i.test(message)) {
     return "La contraseña nueva tiene que ser distinta de la anterior.";
   }
+  // El link se abrió en otro navegador que el que lo pidió (típico: el
+  // navegador interno de la app de mail en el celular): el code_verifier de
+  // PKCE vive en las cookies del navegador original.
+  if (/code verifier not found/i.test(message)) {
+    return "Abrí el link en el mismo navegador donde lo pediste (no en la app del mail), o pedí uno nuevo desde ahí.";
+  }
   if (/auth session missing/i.test(message)) {
     return AUTH_ERROR_ES["Auth session missing"];
   }

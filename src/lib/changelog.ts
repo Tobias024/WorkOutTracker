@@ -20,6 +20,14 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.1",
+    date: "2026-11-26",
+    notable: true,
+    items: [
+      "“Olvidé mi contraseña” vuelve a funcionar: el link del mail te lleva directo a elegir la contraseña nueva, en vez de dejarte en el login.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-11-25",
     notable: true,
