@@ -403,14 +403,16 @@ export function SessionExerciseCard({
       className={clsx(
         "card p-3",
         moveMode && "opacity-50 pointer-events-none",
-        // Dorado suave cuando superaste lo de la última vez. Va en la card y no
-        // en la fila para que se lea plegado, que es como se recorre la lista.
-        improved && "bg-accent/5",
-        finished
-          ? "ring-1 ring-success/40"
-          : expanded && workSets.length > 0
-            ? "ring-1 ring-primary/60"
-            : improved && "ring-1 ring-accent/40",
+        // Dorado cuando superaste lo de la última vez. Va en la card y no en la
+        // fila para que se lea plegado, que es como se recorre la lista. Gana
+        // sobre el verde de terminado y el azul de abierto: un ejercicio
+        // mejorado casi siempre termina completo, y el verde lo tapaba (el
+        // terminado igual se lee por el check y el nombre en gris).
+        improved
+          ? "bg-accent/5 ring-1 ring-accent/60"
+          : finished
+            ? "ring-1 ring-success/40"
+            : expanded && workSets.length > 0 && "ring-1 ring-primary/60",
       )}
     >
       <div className="flex items-center gap-3">

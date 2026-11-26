@@ -20,6 +20,13 @@ export interface Release {
 /** Más nueva primero. `CHANGELOG[0].version` es la versión actual. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.4",
+    date: "2026-11-26",
+    items: [
+      "Vuelve el recuadro dorado en los ejercicios donde superaste lo de la última vez, aunque ya los hayas terminado.",
+    ],
+  },
+  {
     version: "0.5.3",
     date: "2026-11-26",
     notable: true,
