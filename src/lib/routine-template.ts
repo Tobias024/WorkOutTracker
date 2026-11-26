@@ -2,7 +2,7 @@
 import type { HistorySession } from "@/hooks/useHistory";
 import type { Exercise } from "@/lib/types";
 import type { SheetSpec, SheetCell } from "@/lib/export-xlsx";
-import { estimate1RM, sessionDate, isCountableSet } from "@/lib/metrics";
+import { bestSetE1rm, sessionDate, isCountableSet } from "@/lib/metrics";
 import { muscleEs, equipmentEs } from "@/lib/i18n-exercise";
 import { primaryMuscle } from "@/lib/muscle-contributions";
 
@@ -30,7 +30,7 @@ export function buildRoutineTemplate(
     for (const we of s.workout_exercises) {
       for (const set of we.workout_sets) {
         if (!isCountableSet(set)) continue;
-        const e = estimate1RM(set.weight ?? 0, set.reps ?? 0);
+        const e = bestSetE1rm(set);
         const cur = prog.get(we.exercise_id);
         if (!cur) {
           prog.set(we.exercise_id, {

@@ -155,7 +155,7 @@ export function SessionExerciseCard({
       ? {
           weight: s.weight,
           reps: s.reps,
-          drops: s.drops,
+          drops: adoptableDrops(s),
           duration_seconds: s.duration_seconds,
           distance_m: s.distance_m,
         }
@@ -261,11 +261,29 @@ export function SessionExerciseCard({
     return next;
   }
 
+  /**
+   * Una serie de reps (no warmup) no se puede dar por hecha sin reps: no suma
+   * volumen ni e1RM pero contaba como completada. El peso puede faltar
+   * (ejercicios con peso corporal).
+   */
+  function missingReps(set: WorkoutSet, next: Partial<WorkoutSet>): boolean {
+    if (kind !== "reps_weight" || set.is_warmup || next.is_warmup) return false;
+    const reps = "reps" in next ? next.reps : set.reps;
+    return reps == null;
+  }
+
   // Si se completa la última serie del ejercicio, completa también las anteriores
   // (evita tener que tildear una por una cuando se hicieron todas seguidas).
-  function handleSetChange(set: WorkoutSet, patch: Partial<WorkoutSet>) {
-    onUpdateSet(set.id, adopt(set, patch));
-    if (!patch.completed) return;
+  // `set` es la versión más reciente que conoce la fila (SetRow la adelanta a
+  // las props), así adopt() no confunde con "vacía" una serie recién tipeada.
+  function handleSetChange(
+    set: WorkoutSet,
+    patch: Partial<WorkoutSet>,
+  ): Partial<WorkoutSet> | false {
+    const next = adopt(set, patch);
+    if (next.completed && missingReps(set, next)) return false;
+    onUpdateSet(set.id, next);
+    if (!patch.completed) return next;
     // Tildó una serie: arranca el cronómetro de descanso (solo el tick real).
     // Las series de calentamiento no disparan el descanso.
     if (!set.is_warmup && patch.is_warmup !== true)
@@ -282,6 +300,8 @@ export function SessionExerciseCard({
       for (const s of sorted) {
         if (s.id === set.id || s.completed) continue;
         const applied = adopt(s, { completed: true });
+        // Las que siguen sin reps quedan sin tildar, a la vista para cargarlas.
+        if (missingReps(s, applied)) continue;
         // Valores previos de TODO lo que adopt() toca, capturados antes de mutar.
         const prev: Record<string, unknown> = {};
         for (const k of Object.keys(applied))
@@ -312,6 +332,7 @@ export function SessionExerciseCard({
       );
       if (allDone) onExerciseCompleted?.();
     }
+    return next;
   }
 
   /** Esconde la fila y deja 5 s para deshacer antes de borrar de verdad. */
@@ -542,7 +563,7 @@ export function SessionExerciseCard({
                 ghost={ghostFor(set.set_number)}
                 planned={plannedFor(set)}
                 profile={profile}
-                onChange={(patch) => handleSetChange(set, patch)}
+                onChange={(patch, latest) => handleSetChange(latest, patch)}
                 onDelete={() => handleDeleteSet(set)}
               />
             ))}
@@ -603,4 +624,24 @@ function MenuItem({
       {children}
     </button>
   );
+}
+
+/**
+ * Bajadas de la última vez que vale la pena repetir al tildar una serie vacía.
+ * Los drop-sets viejos quedaron con huecos (la primera bajada sin reps, o
+ * bajadas vacías): copiarlos tal cual propagaba la corrupción de sesión en
+ * sesión. La primera se completa con la serie base; del resto sólo quedan las
+ * completas; si no sobrevive ninguna bajada extra, no hay drop-set que adoptar.
+ */
+function adoptableDrops(s: {
+  reps: number | null;
+  weight: number | null;
+  drops?: SetDrop[] | null;
+}): SetDrop[] | null {
+  if (!s.drops || s.drops.length <= 1) return null;
+  const [d0, ...rest] = s.drops;
+  const first = { reps: d0.reps ?? s.reps, weight: d0.weight ?? s.weight };
+  if (first.reps == null || first.weight == null) return null;
+  const tail = rest.filter((d) => d.reps != null && d.weight != null);
+  return tail.length > 0 ? [first, ...tail] : null;
 }

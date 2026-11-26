@@ -22,6 +22,38 @@ export function effectiveDrops(s: SetLike): SetDrop[] {
   return [{ reps: s.reps, weight: s.weight }];
 }
 
+/**
+ * Limpia el array de bajadas antes de persistirlo o adoptarlo: saca las
+ * bajadas (después de la primera, que espeja la serie base) sin reps NI peso
+ * — típicamente un "Agregar bajada" tocado sin querer — y devuelve `null` si
+ * queda una sola (una serie simple no lleva `drops`). Las bajadas a medio
+ * cargar se conservan: no hay de dónde completarlas y las métricas ya las
+ * saltean.
+ */
+export function sanitizeDrops(
+  drops: SetDrop[] | null | undefined,
+): SetDrop[] | null {
+  if (!drops || drops.length === 0) return null;
+  const kept = drops.filter(
+    (d, i) => i === 0 || d.reps != null || d.weight != null,
+  );
+  return kept.length > 1 ? kept : null;
+}
+
+/**
+ * Mejor 1RM estimado de una serie, recorriendo sus bajadas completas (misma
+ * regla que `set_estimate_1rm` en SQL y la lista de PRs). 0 si ninguna tiene
+ * reps y peso.
+ */
+export function bestSetE1rm(s: SetLike): number {
+  let best = 0;
+  for (const d of effectiveDrops(s)) {
+    if (!d.weight || !d.reps) continue;
+    best = Math.max(best, estimate1RM(d.weight, d.reps));
+  }
+  return best;
+}
+
 // ── Tipo de medición del ejercicio ──────────────────────────────────────────
 
 /** Lleva carga en kg (el campo `weight` de la serie tiene sentido). */

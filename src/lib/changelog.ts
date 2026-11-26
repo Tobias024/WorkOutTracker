@@ -21,13 +21,17 @@ export interface Release {
 export const CHANGELOG: Release[] = [
   {
     version: "0.5.0",
-    date: "2026-11-19",
+    date: "2026-11-25",
     notable: true,
     items: [
       "Entrenar es más cómodo: botones y campos más grandes, el descanso es una cuenta regresiva que vibra cuando termina, y antes de cerrar el entreno ves un resumen de lo que hiciste.",
       "Si borrás una serie, un ejercicio o una rutina por error, tenés unos segundos para deshacerlo. Y si algo no se pudo guardar, la app te avisa en vez de fallar en silencio.",
       "Perfil ahora tiene su propio tab y junta tus amigos, los avisos, la apariencia y el nuevo modo daltónico, que cambia el verde por celeste para distinguir mejor subidas y bajadas.",
       "Registro es más claro: lo de esta semana arriba, gráficos con leyenda y semanas de lunes a domingo. Y el ranking trata bien los empates: mismo valor, mismo puesto.",
+      "La app abre y cambia de pantalla más rápido, y durante el entreno la pantalla está más liviana. Rutinas y el buscador de ejercicios cargan sin bajar todo tu historial.",
+      "Podés editar una serie apenas la agregás, sin que aparezca “No se pudo guardar”. Y en el perfil de un amigo ves sus 10 mejores marcas.",
+      "Las bajadas ya no pierden reps ni peso aunque toques ✓ sin cerrar el teclado, y arreglamos las que ya tenías guardadas con huecos.",
+      "Para completar una serie tienen que estar las reps. Tu progreso de 1RM y el Excel ahora también cuentan las bajadas.",
     ],
   },
   {

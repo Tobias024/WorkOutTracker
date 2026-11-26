@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -104,7 +104,16 @@ export function SetRow({
   kind?: MetricKind;
   /** Es la próxima serie pendiente del ejercicio: se resalta y muestra el RIR. */
   isNext?: boolean;
-  onChange: (patch: Partial<WorkoutSet>) => void;
+  /**
+   * Recibe el patch y la serie MÁS RECIENTE conocida por esta fila (ver
+   * `latest` abajo), no la de las props. Devuelve el patch que efectivamente
+   * se aplicó (puede sumar lo adoptado del ghost/plan), o `false` si lo
+   * rechazó (p. ej. completar sin reps).
+   */
+  onChange: (
+    patch: Partial<WorkoutSet>,
+    latest: WorkoutSet,
+  ) => Partial<WorkoutSet> | false | void;
   onDelete: () => void;
 }) {
   const [showComment, setShowComment] = useState(!!set.comment);
@@ -115,10 +124,41 @@ export function SetRow({
 
   const n = set.set_number;
 
-  const drops: SetDrop[] =
-    set.drops && set.drops.length > 0
-      ? set.drops
-      : [{ reps: set.reps, weight: set.weight }];
+  // Última versión conocida de la serie, adelantada a las props. Un blur y un
+  // tap seguidos (tipear reps y tocar ✓ o la X de una bajada sin cerrar el
+  // teclado) corren antes de que el patch del blur vuelva como props: el
+  // optimistic update espera a cancelQueries y React Query notifica con
+  // setTimeout(0). Construir el segundo patch desde las props pisaba lo recién
+  // tipeado con null — así se guardaban las bajadas con reps/peso vacíos.
+  const latest = useRef(set);
+  const seen = useRef(set);
+  useEffect(() => {
+    // Sólo se toman de las props los campos que CAMBIARON en ellas (cache,
+    // rollback, refetch): un patch local que todavía no llegó no se pierde.
+    const prev = seen.current;
+    seen.current = set;
+    if (prev === set) return;
+    const next: Record<string, unknown> = { ...latest.current };
+    for (const k of Object.keys(set) as (keyof WorkoutSet)[]) {
+      if (set[k] !== prev[k]) next[k] = set[k];
+    }
+    latest.current = next as unknown as WorkoutSet;
+  }, [set]);
+
+  // Completar una serie de reps sin reps no se permite (no suma volumen ni
+  // e1RM pero contaba como hecha): se marca el campo y se lo enfoca.
+  const [needsReps, setNeedsReps] = useState(false);
+  const repsInput = useRef<HTMLInputElement>(null);
+
+  /** Manda el patch construido sobre `latest` y lo adelanta ahí mismo. */
+  function emit(patch: Partial<WorkoutSet>): boolean {
+    const applied = onChange(patch, latest.current);
+    if (applied === false) return false;
+    latest.current = { ...latest.current, ...(applied ?? patch) };
+    return true;
+  }
+
+  const drops = dropsOf(set);
 
   const rir = rirOf(set);
 
@@ -187,9 +227,11 @@ export function SetRow({
         .join(" × ")
     : "";
 
+  // Las bajadas se recalculan desde `latest`, nunca desde el `drops` del
+  // render: es el array entero el que se reescribe en cada cambio.
   function commitDrops(next: SetDrop[]) {
     const first = next[0] ?? { reps: null, weight: null };
-    onChange({
+    emit({
       drops: next.length > 1 ? next : null,
       weight: first.weight,
       reps: first.reps,
@@ -197,20 +239,31 @@ export function SetRow({
   }
 
   function updateDrop(index: number, patch: Partial<SetDrop>) {
-    commitDrops(drops.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+    if (index === 0 && patch.reps != null) setNeedsReps(false);
+    commitDrops(
+      dropsOf(latest.current).map((d, i) =>
+        i === index ? { ...d, ...patch } : d,
+      ),
+    );
   }
 
   function addDrop() {
-    commitDrops([...drops, { reps: null, weight: null }]);
+    commitDrops([...dropsOf(latest.current), { reps: null, weight: null }]);
   }
 
   function removeDrop(index: number) {
-    commitDrops(drops.filter((_, i) => i !== index));
+    commitDrops(dropsOf(latest.current).filter((_, i) => i !== index));
+  }
+
+  function toggleCompleted() {
+    const ok = emit({ completed: !latest.current.completed });
+    setNeedsReps(!ok);
+    if (!ok) repsInput.current?.focus();
   }
 
   function setRir(v: number | null) {
     // Guarda en la columna rpe (rpe = 10 − rir); toggle si se re-toca el mismo.
-    onChange({ rpe: v == null ? null : 10 - v });
+    emit({ rpe: v == null ? null : 10 - v });
   }
 
   // Una sola sugerencia por serie: la matriz ya resolvió el cruce de reps y
@@ -298,7 +351,14 @@ export function SetRow({
             inputMode="numeric"
             enterKeyHint="done"
             // Sólo cuando lo que falta son las reps y no la carga.
-            ring={advice?.action === "seguir" ? RING.off : undefined}
+            ring={
+              needsReps
+                ? RING.far
+                : advice?.action === "seguir"
+                  ? RING.off
+                  : undefined
+            }
+            inputRef={repsInput}
             onCommit={(v) => updateDrop(0, { reps: v })}
           />
         )}
@@ -312,7 +372,7 @@ export function SetRow({
             inputMode="decimal"
             enterKeyHint="next"
             onCommit={(v) =>
-              onChange({ distance_m: v == null ? null : Math.round(v * 1000) })
+              emit({ distance_m: v == null ? null : Math.round(v * 1000) })
             }
           />
         )}
@@ -321,7 +381,7 @@ export function SetRow({
             key={set.duration_seconds ?? "empty"}
             value={set.duration_seconds}
             placeholder={hint.duration_seconds}
-            onCommit={(v) => onChange({ duration_seconds: v })}
+            onCommit={(v) => emit({ duration_seconds: v })}
             size="lg"
             labelSuffix={`serie ${n}`}
             className="flex-1"
@@ -330,7 +390,7 @@ export function SetRow({
 
         <button
           type="button"
-          onClick={() => onChange({ is_warmup: !set.is_warmup })}
+          onClick={() => emit({ is_warmup: !latest.current.is_warmup })}
           aria-label="Calentamiento"
           aria-pressed={set.is_warmup}
           title="Calentamiento (no cuenta)"
@@ -348,7 +408,7 @@ export function SetRow({
             y depende de que el foco se suelte antes del click. */}
         <button
           type="button"
-          onClick={() => onChange({ completed: !set.completed })}
+          onClick={toggleCompleted}
           aria-label={`Completar serie ${n}`}
           aria-pressed={set.completed}
           className={clsx(
@@ -361,6 +421,12 @@ export function SetRow({
           <Check className="size-6" />
         </button>
       </div>
+
+      {needsReps && (
+        <p role="alert" className="mt-1 text-xs text-danger">
+          Cargá las reps para completar la serie.
+        </p>
+      )}
 
       {/* RIR segmentado (oculto en warmups y en series futuras). */}
       {showRir && (
@@ -495,7 +561,7 @@ export function SetRow({
           autoFocus={!set.comment}
           aria-label={`Comentario, serie ${n}`}
           placeholder="Comentario…"
-          onBlur={(e) => onChange({ comment: e.target.value || null })}
+          onBlur={(e) => emit({ comment: e.target.value || null })}
           className="mt-1.5 h-11 w-full rounded-md bg-surface px-2.5 text-base outline-none ring-1 ring-border focus:ring-primary"
         />
       )}
@@ -572,6 +638,13 @@ function SetMenuItem({
   );
 }
 
+/** Bajadas de la serie, o el par base como única "bajada" si es simple. */
+function dropsOf(s: WorkoutSet): SetDrop[] {
+  return s.drops && s.drops.length > 0
+    ? s.drops
+    : [{ reps: s.reps, weight: s.weight }];
+}
+
 function NumberField({
   value,
   placeholder,
@@ -579,6 +652,7 @@ function NumberField({
   inputMode,
   enterKeyHint,
   ring,
+  inputRef,
   onCommit,
 }: {
   value: number | null;
@@ -588,6 +662,7 @@ function NumberField({
   enterKeyHint: "next" | "done";
   /** Ring de estado (desvío vs. plan). Por defecto, el borde neutro. */
   ring?: string;
+  inputRef?: Ref<HTMLInputElement>;
   onCommit: (v: number | null) => void;
 }) {
   const [invalid, setInvalid] = useState(false);
@@ -595,6 +670,7 @@ function NumberField({
   // coma, que un input number rechaza como badInput. Se acepta "72,5".
   return (
     <input
+      ref={inputRef}
       type="text"
       inputMode={inputMode}
       enterKeyHint={enterKeyHint}

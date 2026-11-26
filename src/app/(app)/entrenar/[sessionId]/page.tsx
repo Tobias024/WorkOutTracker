@@ -51,7 +51,12 @@ import {
   restTargetSeconds,
   REST_MAX_SECONDS,
 } from "@/hooks/useRestTimer";
-import { totalVolume, isCountableSet, isHardSet } from "@/lib/metrics";
+import {
+  totalVolume,
+  isCountableSet,
+  isHardSet,
+  sanitizeDrops,
+} from "@/lib/metrics";
 import { flushUndoables, undoable } from "@/lib/toast";
 import { newId } from "@/lib/uuid";
 import type { SessionPr } from "@/lib/types";
@@ -289,6 +294,29 @@ function SessionView({
   }
 
   /**
+   * Bajadas vacías que quedaron de un "Agregar bajada" sin usar: se limpian
+   * antes de cerrar, así no llegan al historial ni al ghost de la próxima.
+   * Un fallo acá no bloquea el cierre (las métricas ya ignoran bajadas vacías).
+   */
+  async function cleanEmptyDrops() {
+    const current = qc.getQueryData<FullSession>(["session", sessionId]);
+    const dirty = (current?.exercises ?? [])
+      .flatMap((ex) => ex.sets)
+      .filter(
+        (st) =>
+          st.drops != null &&
+          JSON.stringify(sanitizeDrops(st.drops)) !== JSON.stringify(st.drops),
+      );
+    await Promise.all(
+      dirty.map((st) =>
+        m.updateSet
+          .mutateAsync({ id: st.id, patch: { drops: sanitizeDrops(st.drops) } })
+          .catch((e) => console.warn("No se pudieron limpiar las bajadas:", e)),
+      ),
+    );
+  }
+
+  /**
    * Cierra la sesión. `endIso` permite fijar un fin distinto de "ahora" (sesión
    * olvidada). Devuelve false si no se pudo cerrar, para que el llamador deje
    * el sheet abierto con el error.
@@ -309,6 +337,7 @@ function SessionView({
     try {
       // Borrados con "Deshacer" todavía pendientes se aplican antes de cerrar.
       await flushUndoables();
+      await cleanEmptyDrops();
       await m.updateSession.mutateAsync({
         ended_at: endIso,
         duration_seconds: duration,

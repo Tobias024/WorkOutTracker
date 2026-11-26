@@ -41,6 +41,7 @@ export function buildSessionsRows(
       "plan_peso_kg",
       "comentario",
       "nota_ejercicio",
+      "bajada",
     ],
   ];
 
@@ -90,6 +91,9 @@ export function buildSessionsRows(
             // filas de un drop-set parecerían tres comentarios distintos.
             ci === 0 ? (set.comment ?? "") : "",
             ci === 0 ? note : "",
+            // 0 = la serie base; 1…n = cada bajada del drop-set. Sin esto las
+            // filas de un drop-set se confunden con series repetidas.
+            ci,
           ]);
         });
       });

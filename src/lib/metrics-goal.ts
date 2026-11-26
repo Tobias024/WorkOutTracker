@@ -11,7 +11,7 @@ import { goalParams } from "@/lib/goal-params";
 import {
   localMidnight,
   directMuscles,
-  estimate1RM,
+  bestSetE1rm,
   sessionDate,
   weekStart,
   isCountableSet,
@@ -146,8 +146,10 @@ export function e1rmSeriesByExercise(
     const wk = weekStart(new Date(t)).getTime();
     for (const we of s.workout_exercises) {
       for (const set of we.workout_sets) {
-        if (!isCountableSet(set) || !set.weight || !set.reps) continue;
-        const e = estimate1RM(set.weight, set.reps);
+        if (!isCountableSet(set)) continue;
+        // Recorre las bajadas: si la serie base quedó sin reps (drop-sets
+        // viejos), el e1RM sale igual de la bajada completa.
+        const e = bestSetE1rm(set);
         if (e <= 0) continue;
         let m = byEx.get(we.exercise_id);
         if (!m) {
@@ -196,11 +198,10 @@ function refE1rm(sessions: HistorySession[], cutoff: number): Map<string, number
     if (ms(s) < cutoff) continue;
     for (const we of s.workout_exercises)
       for (const set of we.workout_sets) {
-        if (!isCountableSet(set) || !set.weight || !set.reps) continue;
-        ref.set(
-          we.exercise_id,
-          Math.max(ref.get(we.exercise_id) ?? 0, estimate1RM(set.weight, set.reps)),
-        );
+        if (!isCountableSet(set)) continue;
+        const e = bestSetE1rm(set);
+        if (e <= 0) continue;
+        ref.set(we.exercise_id, Math.max(ref.get(we.exercise_id) ?? 0, e));
       }
   }
   return ref;

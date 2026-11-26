@@ -821,6 +821,10 @@ function RegistroContent() {
       ],
       ["comentario", "Comentario del usuario en esa serie. Aparece una vez por serie."],
       ["nota_ejercicio", "La nota fija de ese ejercicio, repetida por conveniencia."],
+      [
+        "bajada",
+        "0 = la serie en sí; 1, 2… = cada bajada de un drop-set (mismo número de serie). Para contar series, filtrá bajada = 0; para el volumen, sumá todas las filas.",
+      ],
       ["musculo", "Músculo principal ya resuelto, el mismo con el que la app cuenta el volumen."],
       [],
       ["Definiciones que dependen del objetivo"],
